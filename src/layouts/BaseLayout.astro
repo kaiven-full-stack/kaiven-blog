@@ -1,0 +1,125 @@
+---
+import '@fontsource/ma-shan-zheng';
+import '@fontsource/noto-serif-sc/400.css';
+import '@fontsource/noto-serif-sc/700.css';
+import '../styles/global.css';
+import Seal from '../components/Seal.astro';
+import BrushRule from '../components/BrushRule.astro';
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const { title, description = '听雨——记录日子里细碎的好时光' } = Astro.props;
+const pageTitle = title ? `${title} · 听雨` : '听雨 · 记录日子里细碎的好时光';
+
+const navItems = [
+  { href: '/', label: '首页' },
+  { href: '/archives/', label: '归档' },
+  { href: '/tags/', label: '标签' },
+  { href: '/search/', label: '搜索' },
+  { href: '/about/', label: '关于' },
+];
+
+const currentPath = Astro.url.pathname;
+---
+
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="generator" content={Astro.generator} />
+    <meta name="description" content={description} />
+    <title>{pageTitle}</title>
+    <link rel="alternate" type="application/rss+xml" title="听雨" href="/rss.xml" />
+    <!-- 主题初始化要在渲染前执行，避免闪白：亮色优先 -->
+    <script is:inline>
+      (function () {
+        var saved = localStorage.getItem('theme');
+        if (
+          saved === 'dark' ||
+          (saved !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+        ) {
+          document.documentElement.classList.add('dark');
+        }
+      })();
+    </script>
+  </head>
+
+  <body class="min-h-screen antialiased">
+    <header
+      class="sticky top-0 z-10 border-b border-line bg-paper/90 backdrop-blur-sm"
+      style="border-bottom-width: 1px"
+    >
+      <div class="mx-auto flex max-w-3xl items-center justify-between gap-4 px-5 py-3.5">
+        <a href="/" class="flex items-center gap-2.5" aria-label="返回首页">
+          <Seal chars="听雨" size="md" />
+          <span class="hidden font-brush text-xl tracking-wide text-ink sm:block">听雨</span>
+        </a>
+
+        <nav class="flex items-center gap-1 sm:gap-4">
+          {
+            navItems.map((item) => (
+              <a
+                href={item.href}
+                class:list={[
+                  'px-1.5 py-1 text-[15px] transition-colors hover:text-cinnabar',
+                  currentPath === item.href ? 'text-cinnabar' : 'text-ink-soft',
+                ]}
+              >
+                {item.label}
+              </a>
+            ))
+          }
+
+          <button
+            id="theme-toggle"
+            class="ml-1 grid h-8 w-8 place-items-center rounded-full text-ink-soft transition-colors hover:text-cinnabar"
+            aria-label="切换明暗主题"
+          >
+            <!-- 月亮（亮色时显示） -->
+            <svg class="h-[18px] w-[18px] dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+            </svg>
+            <!-- 太阳（暗色时显示） -->
+            <svg class="hidden h-[18px] w-[18px] dark:block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="4"></circle>
+              <path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"></path>
+            </svg>
+          </button>
+        </nav>
+      </div>
+    </header>
+
+    <main class="mx-auto max-w-3xl px-5">
+      <slot />
+    </main>
+
+    <footer class="mt-20">
+      <div class="mx-auto flex max-w-3xl flex-col items-center gap-4 px-5 pb-10">
+        <BrushRule />
+        <div class="flex items-center gap-3 text-sm text-ink-faint">
+          <Seal chars="雨窗闲笔" size="sm" />
+          <span>听雨 · 记录日子里细碎的好时光</span>
+        </div>
+        <div class="flex items-center gap-4 text-[13px] text-ink-faint">
+          <a href="/rss.xml" class="transition-colors hover:text-cinnabar">RSS 订阅</a>
+          <span aria-hidden="true">·</span>
+          <span>由 Astro 驱动</span>
+        </div>
+      </div>
+    </footer>
+
+    <script is:inline>
+      document.getElementById('theme-toggle').addEventListener('click', function () {
+        var root = document.documentElement;
+        root.classList.toggle('dark');
+        localStorage.setItem('theme', root.classList.contains('dark') ? 'dark' : 'light');
+        window.dispatchEvent(new Event('theme-changed'));
+      });
+    </script>
+  </body>
+</html>

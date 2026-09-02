@@ -1,0 +1,34 @@
+---
+import { getCollection } from 'astro:content';
+import BaseLayout from '../layouts/BaseLayout.astro';
+import PostCard from '../components/PostCard.astro';
+import Mountains from '../components/Mountains.astro';
+import Seal from '../components/Seal.astro';
+
+const posts = (await getCollection('blog', ({ data }) => !data.draft)).sort(
+  (a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf(),
+);
+---
+
+<BaseLayout>
+  <!-- 介绍区：淡墨远山 + 竖排词句 -->
+  <section class="relative -mx-5 overflow-hidden px-5 pb-14 pt-16 sm:pt-20">
+    <Mountains class="pointer-events-none absolute inset-x-0 bottom-0 h-40 w-full text-ink" />
+
+    <div class="relative mx-auto flex max-w-xl flex-col items-center">
+      <Seal chars="听雨" size="lg" />
+      <h1 class="sr-only">听雨</h1>
+      <p class="vertical-text mt-7 font-brush text-lg text-ink-soft">少年听雨歌楼上</p>
+      <p class="mt-7 max-w-sm text-center text-[15px] leading-relaxed text-ink-soft">
+        记录日子里细碎的好时光——散步、读书、雨声，和一些没什么用处但想通了很开心的事。
+      </p>
+    </div>
+  </section>
+
+  <!-- 文章流 -->
+  <section aria-label="文章列表">
+    <div class="flex flex-col gap-7">
+      {posts.map((post) => <PostCard post={post} />)}
+    </div>
+  </section>
+</BaseLayout>

@@ -1,0 +1,48 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Seal from '../components/Seal.astro';
+import Mountains from '../components/Mountains.astro';
+---
+
+<BaseLayout title="关于" description="关于「听雨」和写它的人">
+  <section class="relative -mx-5 overflow-hidden px-5 pt-12 sm:pt-16">
+    <Mountains class="pointer-events-none absolute inset-x-0 bottom-0 h-32 w-full text-ink opacity-60" />
+
+    <div class="relative mx-auto max-w-[34em]">
+      <div class="flex items-center gap-4">
+        <Seal chars="听雨" size="lg" />
+        <h1 class="font-brush text-4xl text-ink">关于</h1>
+      </div>
+
+      <div class="prose-ink mt-10">
+        <p>你好，我是 kaiven。「听雨」是我的个人博客，写生活里那些细碎的好时光。</p>
+
+        <p>
+          白天上班，晚上和周末写字。这个博客不追热点、不立 flag，更新的频率大概和下雨差不多——有时候密集，有时候半个月不见踪影，但总会回来。
+        </p>
+
+        <p>
+          站名取自蒋捷的〈虞美人〉：「少年听雨歌楼上，红烛昏罗帐。壮年听雨客舟中，江阔云低、断雁叫西风。」人在不同的年纪听同一场雨，听出的是不一样的心事。我希望过几年回头看这些文章，也能看见各个时期的自己。
+        </p>
+
+        <h2>这里写什么</h2>
+        <ul>
+          <li>散步路上看见的云和水面</li>
+          <li>读到一半舍不得读完的书</li>
+          <li>一些没什么用处但想通了很开心的事</li>
+        </ul>
+
+        <h2>联系我</h2>
+        <p>
+          <!-- TODO: 换成你的联系方式，比如 GitHub / 邮箱 -->
+          GitHub：<a href="https://github.com/your-github-name" rel="noopener">your-github-name</a>
+        </p>
+
+        <blockquote>
+          <p>而今听雨僧庐下，鬓已星星也。悲欢离合总无情，一任阶前、点滴到天明。</p>
+          <p>——蒋捷〈虞美人·听雨〉末段，与君共勉</p>
+        </blockquote>
+      </div>
+    </div>
+  </section>
+</BaseLayout>

@@ -1,0 +1,38 @@
+---
+import { getCollection } from 'astro:content';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PostCard from '../../components/PostCard.astro';
+
+export async function getStaticPaths() {
+  const posts = await getCollection('blog', ({ data }) => !data.draft);
+  const tags = [...new Set(posts.flatMap((post) => post.data.tags))];
+  return tags.map((tag) => ({
+    params: { tag },
+    props: {
+      posts: posts
+        .filter((post) => post.data.tags.includes(tag))
+        .sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf()),
+    },
+  }));
+}
+
+const { tag } = Astro.params;
+const { posts } = Astro.props;
+---
+
+<BaseLayout title={`标签：${tag}`} description={`听雨 · 标签「${tag}」下的文章`}>
+  <section class="pt-12 sm:pt-16">
+    <div class="flex items-baseline gap-3">
+      <h1 class="font-brush text-4xl text-ink">{tag}</h1>
+      <span class="text-sm text-ink-faint">{posts.length} 篇</span>
+    </div>
+
+    <div class="mt-12 flex flex-col gap-7">
+      {posts.map((post) => <PostCard post={post} />)}
+    </div>
+
+    <nav class="mt-10 text-sm">
+      <a href="/tags/" class="text-ink-soft transition-colors hover:text-cinnabar">← 全部标签</a>
+    </nav>
+  </section>
+</BaseLayout>

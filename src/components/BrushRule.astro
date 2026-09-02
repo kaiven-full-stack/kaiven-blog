@@ -1,0 +1,20 @@
+---
+/** 笔锋分割线：起笔轻、中段重、收笔轻的墨痕 */
+interface Props {
+  class?: string;
+}
+
+const { class: className = '' } = Astro.props;
+---
+
+<svg
+  viewBox="0 0 120 8"
+  preserveAspectRatio="none"
+  aria-hidden="true"
+  class={`brush-rule block h-2 w-24 ${className}`}
+>
+  <path
+    d="M0 3.2 C 30 0.5, 70 6.5, 120 3.4 L 120 4.6 C 70 8.2, 30 2.2, 0 4.4 Z"
+    fill="currentColor"
+    opacity="0.55"></path>
+</svg>

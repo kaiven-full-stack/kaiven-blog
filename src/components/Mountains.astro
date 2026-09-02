@@ -1,0 +1,31 @@
+---
+/** 淡墨远山：首页介绍区背景，透明度压低，似宣纸上洇开的墨 */
+interface Props {
+  class?: string;
+}
+
+const { class: className = '' } = Astro.props;
+---
+
+<svg
+  viewBox="0 0 800 220"
+  preserveAspectRatio="xMidYMax slice"
+  aria-hidden="true"
+  class={className}
+>
+  <!-- 远层：最淡 -->
+  <path
+    d="M0 220 L0 150 Q 80 90 160 130 T 330 110 Q 400 85 470 120 T 640 105 Q 720 85 800 125 L 800 220 Z"
+    fill="currentColor"
+    opacity="0.10"></path>
+  <!-- 中层 -->
+  <path
+    d="M0 220 L0 185 Q 120 130 240 170 T 480 155 Q 580 135 660 165 T 800 160 L 800 220 Z"
+    fill="currentColor"
+    opacity="0.14"></path>
+  <!-- 近层：略深，山脚留白 -->
+  <path
+    d="M0 220 L0 205 Q 200 165 330 195 T 560 190 Q 680 175 800 200 L 800 220 Z"
+    fill="currentColor"
+    opacity="0.18"></path>
+</svg>

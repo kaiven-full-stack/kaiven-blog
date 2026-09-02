@@ -1,0 +1,38 @@
+---
+/**
+ * 朱文方印。chars 为印文：1-2 字竖排（站名印），4 字田字格（闲章落款）。
+ */
+interface Props {
+  chars: string;
+  size?: 'sm' | 'md' | 'lg';
+}
+
+const { chars, size = 'md' } = Astro.props;
+
+const sizeMap = {
+  sm: 'w-7 h-7 text-[15px]',
+  md: 'w-9 h-9 text-[19px]',
+  lg: 'w-14 h-14 text-[30px]',
+};
+
+const isQuad = chars.length === 4;
+const isVertical = chars.length <= 2;
+---
+
+<span class={`seal ${sizeMap[size]}`}>
+  {
+    isQuad ? (
+      <span class="grid grid-cols-2 grid-rows-2 gap-x-0.5 gap-y-0.5 leading-none tracking-normal">
+        {chars.split('').map((c) => (
+          <span class="block">{c}</span>
+        ))}
+      </span>
+    ) : isVertical ? (
+      <span class="vertical-text leading-none" style="letter-spacing: 0.08em;">
+        {chars}
+      </span>
+    ) : (
+      <span class="leading-none">{chars}</span>
+    )
+  }
+</span>

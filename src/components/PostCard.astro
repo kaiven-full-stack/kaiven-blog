@@ -1,0 +1,52 @@
+---
+import type { CollectionEntry } from 'astro:content';
+import { cnDate } from '../utils/date';
+import BrushRule from './BrushRule.astro';
+
+interface Props {
+  post: CollectionEntry<'blog'>;
+}
+
+const { post } = Astro.props;
+const { title, description, pubDate, tags } = post.data;
+---
+
+<article class="group">
+  <a href={`/posts/${post.id}/`} class="block">
+    <div class="flex items-baseline justify-between gap-4">
+      <h2
+        class="font-brush text-[1.55rem] leading-snug text-ink transition-colors group-hover:text-cinnabar"
+      >
+        {title}
+      </h2>
+      <time
+        datetime={pubDate.toISOString().slice(0, 10)}
+        class="shrink-0 text-[13px] text-ink-faint"
+      >
+        {cnDate(pubDate)}
+      </time>
+    </div>
+
+    {
+      description && (
+        <p class="mt-2 line-clamp-2 text-[15px] leading-relaxed text-ink-soft">
+          {description}
+        </p>
+      )
+    }
+
+    {
+      tags.length > 0 && (
+        <div class="mt-3 flex flex-wrap gap-2">
+          {tags.map((tag) => (
+            <span class="tag-pill rounded-full px-2.5 py-0.5 text-xs">{tag}</span>
+          ))}
+        </div>
+      )
+    }
+  </a>
+
+  <div class="mt-5 opacity-70 transition-opacity group-hover:opacity-100">
+    <BrushRule />
+  </div>
+</article>

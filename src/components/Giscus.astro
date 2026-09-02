@@ -1,0 +1,56 @@
+---
+/**
+ * giscus 评论（基于 GitHub Discussions）。
+ *
+ * 启用步骤（部署前必做）：
+ * 1. 把本仓库推到 GitHub 并设为 public，在仓库 Settings → General → Features 勾选 Discussions
+ * 2. 安装 giscus App: https://github.com/apps/giscus
+ * 3. 到 https://giscus.app/zh-CN 生成配置，把下面四个常量替换成你的值
+ */
+const REPO = 'your-github-name/kaiven-blog'; // TODO: 换成你的仓库
+const REPO_ID = ''; // TODO: giscus.app 生成
+const CATEGORY = 'Announcements';
+const CATEGORY_ID = ''; // TODO: giscus.app 生成
+---
+
+{
+  REPO_ID && CATEGORY_ID ? (
+    <section class="mt-14">
+      <script
+        is:inline
+        src="https://giscus.app/client.js"
+        data-repo={REPO}
+        data-repo-id={REPO_ID}
+        data-category={CATEGORY}
+        data-category-id={CATEGORY_ID}
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="light"
+        data-lang="zh-CN"
+        data-loading="lazy"
+        crossorigin="anonymous"
+        async
+      />
+      <script is:inline>
+        // 跟随站点明暗切换评论区主题
+        function syncGiscusTheme() {
+          const dark = document.documentElement.classList.contains('dark');
+          const iframe = document.querySelector('iframe.giscus-frame');
+          iframe?.contentWindow?.postMessage(
+            { giscus: { setConfig: { theme: dark ? 'dark' : 'light' } } },
+            'https://giscus.app',
+          );
+        }
+        window.addEventListener('theme-changed', syncGiscusTheme);
+      </script>
+    </section>
+  ) : (
+    <section class="mt-14 rounded border border-dashed border-line px-5 py-4 text-sm text-ink-faint">
+      评论区尚未启用：仓库公开并开启 Discussions 后，在
+      <code>src/components/Giscus.astro</code> 顶部填入 giscus 配置即可。
+    </section>
+  )
+}
