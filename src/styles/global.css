@@ -22,6 +22,8 @@
   --ink-faint: #a29d90; /* 清墨 */
   --cinnabar: #b03a2e; /* 朱砂 */
   --line: #ddd5c4; /* 分割线 */
+  /* 宣纸纤维纹：细纤维噪点 + 大块云斑两层，铺在纸色上，背景才不像网页底色 */
+  --paper-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='260'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.33 0 0 0 0 0.30 0 0 0 0 0.24 0 0 0 0.06 0'/%3E%3C/filter%3E%3Cfilter id='m'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.06' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.33 0 0 0 0 0.30 0 0 0 0 0.24 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='260' height='260' filter='url(%23f)'/%3E%3Crect width='260' height='260' filter='url(%23m)'/%3E%3C/svg%3E");
 }
 
 .dark {
@@ -31,14 +33,28 @@
   --ink-faint: #5d5a52; /* 清墨 */
   --cinnabar: #c9503f; /* 朱砂微亮，夜里不闷 */
   --line: #34363c;
+  --paper-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='260'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.85 0 0 0 0 0.83 0 0 0 0 0.78 0 0 0 0.05 0'/%3E%3C/filter%3E%3Cfilter id='m'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.06' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.85 0 0 0 0 0.83 0 0 0 0 0.78 0 0 0 0.04 0'/%3E%3C/filter%3E%3Crect width='260' height='260' filter='url(%23f)'/%3E%3Crect width='260' height='260' filter='url(%23m)'/%3E%3C/svg%3E");
 }
 
 html {
   scroll-behavior: smooth;
 }
 
+/* 100vw 含滚动条宽度，clip 掉溢出的几像素 */
+html,
+body {
+  overflow-x: clip;
+}
+
+/* 全出血：在居中容器里撑满视口宽，给通栏的远山用 */
+.full-bleed {
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+}
+
 body {
   background-color: var(--paper);
+  background-image: var(--paper-grain);
   color: var(--ink);
   font-family: var(--font-body);
   /* 纸面过渡，切主题时不生硬 */
@@ -58,9 +74,16 @@ body {
   color: #f6f3ec;
   font-family: var(--font-brush);
   line-height: 1;
-  border-radius: 3px;
-  /* 印泥的不均匀感：内圈细白边 + 轻微渗透阴影 */
+  /* 手盖的印不会四边齐整：不规则圆角 */
+  border-radius: 5px 7px 6px 8px / 7px 5px 8px 6px;
+  /* 印泥不均匀：几处没沾满的纸色斑点 */
+  background-image:
+    radial-gradient(circle at 30% 25%, rgba(246, 243, 236, 0.16) 0 11%, transparent 12%),
+    radial-gradient(circle at 72% 62%, rgba(246, 243, 236, 0.12) 0 8%, transparent 9%),
+    radial-gradient(circle at 52% 42%, rgba(246, 243, 236, 0.09) 0 5%, transparent 6%);
+  /* 内圈细白边 + 轻微渗透阴影；边缘毛刺由 BaseLayout 的 #seal-rough 滤镜补 */
   box-shadow: inset 0 0 0 1.5px rgba(246, 243, 236, 0.35), 0 1px 3px rgba(176, 58, 46, 0.25);
+  filter: url(#seal-rough);
   user-select: none;
 }
 
@@ -186,13 +209,24 @@ body {
 }
 
 /* ---------- 标签 ---------- */
+/* 不用胶囊框：纯文字前点一粒墨，像随手钤的记号 */
 .tag-pill {
-  border: 1px solid var(--line);
   color: var(--ink-soft);
-  transition: color 0.2s ease, border-color 0.2s ease;
+  transition: color 0.2s ease;
+}
+
+.tag-pill::before {
+  content: '';
+  display: inline-block;
+  width: 0.32em;
+  height: 0.32em;
+  margin-right: 0.45em;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.45;
+  vertical-align: 0.14em;
 }
 
 .tag-pill:hover {
   color: var(--cinnabar);
-  border-color: var(--cinnabar);
 }

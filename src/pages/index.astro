@@ -11,17 +11,26 @@ const posts = (await getCollection('blog', ({ data }) => !data.draft)).sort(
 ---
 
 <BaseLayout>
-  <!-- 介绍区：淡墨远山 + 竖排词句 -->
-  <section class="relative -mx-5 overflow-hidden px-5 pb-14 pt-16 sm:pt-20">
-    <Mountains class="pointer-events-none absolute inset-x-0 bottom-0 h-40 w-full text-ink" />
+  <!-- 介绍区：画式构图——右侧竖排词句+印章如题跋落款，左侧介绍文字，底部淡墨远山 -->
+  <section class="full-bleed relative overflow-hidden">
+    <Mountains class="pointer-events-none absolute inset-x-0 bottom-0 h-32 w-full text-ink" />
 
-    <div class="relative mx-auto flex max-w-xl flex-col items-center">
-      <Seal chars="听雨" size="lg" />
-      <h1 class="sr-only">听雨</h1>
-      <p class="vertical-text mt-7 font-brush text-lg text-ink-soft">少年听雨歌楼上</p>
-      <p class="mt-7 max-w-sm text-center text-[15px] leading-relaxed text-ink-soft">
+    <div
+      class="relative mx-auto flex max-w-[60rem] flex-col-reverse items-start gap-10 px-5 pb-40 pt-12 sm:flex-row sm:items-end sm:justify-between sm:pt-16"
+    >
+      <p class="max-w-sm text-[15px] leading-relaxed text-ink-soft">
         记录日子里细碎的好时光——散步、读书、雨声，和一些没什么用处但想通了很开心的事。
       </p>
+
+      <div class="flex items-center gap-4 sm:flex-col">
+        <div class="order-2 sm:order-1">
+          <p class="vertical-text font-brush text-lg text-ink-soft">少年听雨歌楼上</p>
+        </div>
+        <div class="order-1 sm:order-2">
+          <Seal chars="听雨" size="md" />
+        </div>
+      </div>
+      <h1 class="sr-only">听雨</h1>
     </div>
   </section>
 

@@ -1,5 +1,5 @@
 ---
-/** 淡墨远山：首页介绍区背景，透明度压低，似宣纸上洇开的墨 */
+/** 淡墨远山：毛边洇染、脊浓脚淡、层间云雾断口，仿宣纸上洇开的墨 */
 interface Props {
   class?: string;
 }
@@ -13,19 +13,66 @@ const { class: className = '' } = Astro.props;
   aria-hidden="true"
   class={className}
 >
-  <!-- 远层：最淡 -->
+  <defs>
+    <!-- 湍流置换让山脊长出毛边，高斯模糊模拟墨洇；越远越糊 -->
+    <filter id="m-far" x="-15%" y="-15%" width="130%" height="130%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.012 0.05" numOctaves="3" seed="7" result="n" />
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="24" />
+      <feGaussianBlur stdDeviation="2.2" />
+    </filter>
+    <filter id="m-mid" x="-15%" y="-15%" width="130%" height="130%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.018 0.06" numOctaves="3" seed="21" result="n" />
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="16" />
+      <feGaussianBlur stdDeviation="1.1" />
+    </filter>
+    <filter id="m-near" x="-15%" y="-15%" width="130%" height="130%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.024 0.08" numOctaves="2" seed="4" result="n" />
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="10" />
+      <feGaussianBlur stdDeviation="0.4" />
+    </filter>
+    <filter id="m-mist" x="-30%" y="-60%" width="160%" height="220%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.01 0.05" numOctaves="2" seed="11" result="n" />
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="18" />
+      <feGaussianBlur stdDeviation="7" />
+    </filter>
+
+    <!-- 山内浓淡：脊部略浓，山脚淡出成雾 -->
+    <linearGradient id="g-far" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="currentColor" stop-opacity="0.13" />
+      <stop offset="0.7" stop-color="currentColor" stop-opacity="0.05" />
+      <stop offset="1" stop-color="currentColor" stop-opacity="0" />
+    </linearGradient>
+    <linearGradient id="g-mid" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="currentColor" stop-opacity="0.17" />
+      <stop offset="0.75" stop-color="currentColor" stop-opacity="0.06" />
+      <stop offset="1" stop-color="currentColor" stop-opacity="0" />
+    </linearGradient>
+    <linearGradient id="g-near" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="currentColor" stop-opacity="0.22" />
+      <stop offset="0.8" stop-color="currentColor" stop-opacity="0.08" />
+      <stop offset="1" stop-color="currentColor" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+
+  <!-- 远层：最糊，像雾后面的山影 -->
   <path
-    d="M0 220 L0 150 Q 80 90 160 130 T 330 110 Q 400 85 470 120 T 640 105 Q 720 85 800 125 L 800 220 Z"
-    fill="currentColor"
-    opacity="0.10"></path>
+    filter="url(#m-far)"
+    fill="url(#g-far)"
+    d="M-30 220 L-30 150 Q 80 90 160 130 T 330 110 Q 400 85 470 120 T 640 105 Q 720 85 830 125 L 830 220 Z"
+  ></path>
+  <!-- 云雾：横一道纸色，把远山山脚断开 -->
+  <rect filter="url(#m-mist)" fill="var(--paper)" opacity="0.45" x="-40" y="148" width="880" height="26" />
   <!-- 中层 -->
   <path
-    d="M0 220 L0 185 Q 120 130 240 170 T 480 155 Q 580 135 660 165 T 800 160 L 800 220 Z"
-    fill="currentColor"
-    opacity="0.14"></path>
-  <!-- 近层：略深，山脚留白 -->
+    filter="url(#m-mid)"
+    fill="url(#g-mid)"
+    d="M-30 220 L-30 185 Q 120 130 240 170 T 480 155 Q 580 135 660 165 T 830 160 L 830 220 Z"
+  ></path>
+  <rect filter="url(#m-mist)" fill="var(--paper)" opacity="0.35" x="-40" y="180" width="880" height="20" />
+  <!-- 近层：相对实，山脚仍淡出 -->
   <path
-    d="M0 220 L0 205 Q 200 165 330 195 T 560 190 Q 680 175 800 200 L 800 220 Z"
-    fill="currentColor"
-    opacity="0.18"></path>
+    filter="url(#m-near)"
+    fill="url(#g-near)"
+    d="M-30 220 L-30 205 Q 200 165 330 195 T 560 190 Q 680 175 830 200 L 830 220 Z"
+  ></path>
 </svg>

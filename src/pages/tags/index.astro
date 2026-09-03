@@ -23,7 +23,7 @@ const tags = [...tagCount.entries()].sort((a, b) => b[1] - a[1]);
         tags.map(([tag, count]) => (
           <a
             href={`/tags/${tag}/`}
-            class="tag-pill flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[15px]"
+            class="tag-pill flex items-center gap-1.5 py-1 text-[15px]"
           >
             {tag}
             <span class="text-xs text-ink-faint">{count}</span>
