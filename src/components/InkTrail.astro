@@ -1,356 +1,268 @@
 ---
 /**
- * 鼠标墨迹：墨汁滴入水中的立体散落（参照「水母墨」意象）。
- * 每滴墨 = 一顶蓬松的帽状云 + 下垂的细丝 + 散落墨点：
- * - 帽云：上百条细墨丝从落点向外摊开、各自卷曲，叠成半透明蓬云；
- *   少数较深的丝构成云中的褶。
- * - 垂丝：几条细长墨丝从帽心下垂，越走越弯，像水母须。
- * - 墨点：周围散落的小碎点。
- * 细丝每帧沿路径盖一段极细的线，累积在离屏墨层上缓慢溶解。
- * 颜色跟随主题（取 --ink 变量）。
+ * 淡墨笔锋 + 雨滴涟漪：
+ * - 鼠标移动时留下短暂、随速度变化的淡墨笔触；
+ * - 点击时落下一滴雨，扩散成两圈轻微水纹；
+ * - 仅响应鼠标或触控板，不受系统“减少动态效果”设置影响。
  */
 ---
 
-<canvas id="ink-trail" class="pointer-events-none fixed inset-0 z-0" aria-hidden="true"></canvas>
+<canvas
+  id="ink-trail"
+  class="pointer-events-none fixed inset-0 z-[5] h-full w-full"
+  aria-hidden="true"
+></canvas>
 
 <script is:inline>
   (function () {
     var canvas = document.getElementById('ink-trail');
-    var ctx = canvas.getContext('2d');
-    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    if (!canvas) return;
 
-    // 墨迹累积层：细丝路径在此累积，整层随时间溶解。
-    // 尺寸只在初始化定一次，不跟窗口 resize——
-    // 否则视口变化（含截图机制的临时视口）会裁掉进行中的墨。
-    var ink = document.createElement('canvas');
-    var inkCtx = ink.getContext('2d');
-    ink.width = Math.floor(window.innerWidth * dpr);
-    ink.height = Math.floor(window.innerHeight * dpr);
+    var ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    var dpr = 1;
+    var rgb = [43, 42, 38];
+    var strokes = [];
+    var ripples = [];
+    var running = false;
+    var lastPoint = null;
+    var pendingPoint = null;
 
     function resize() {
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
       canvas.width = Math.floor(window.innerWidth * dpr);
       canvas.height = Math.floor(window.innerHeight * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
-    resize();
-    window.addEventListener('resize', resize);
 
-    var rgb = [43, 42, 38];
     function readInk() {
-      var v = getComputedStyle(document.documentElement).getPropertyValue('--ink').trim();
-      var m = /^#([0-9a-f]{6})$/i.exec(v);
-      if (!m) return;
-      var n = parseInt(m[1], 16);
-      rgb = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-    }
-    readInk();
-    function rgba(a) {
-      return 'rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',' + a + ')';
+      var value = getComputedStyle(document.documentElement).getPropertyValue('--ink').trim();
+      var match = /^#([0-9a-f]{6})$/i.exec(value);
+      if (!match) return;
+
+      var color = parseInt(match[1], 16);
+      rgb = [(color >> 16) & 255, (color >> 8) & 255, color & 255];
     }
 
-    // 软边墨点精灵：帽云雾底用
-    var sprite = document.createElement('canvas');
-    sprite.width = 64;
-    sprite.height = 64;
-    function makeSprite() {
-      var s = sprite.getContext('2d');
-      s.clearRect(0, 0, 64, 64);
-      var g = s.createRadialGradient(32, 32, 0, 32, 32, 32);
-      g.addColorStop(0, 'rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',1)');
-      g.addColorStop(0.4, 'rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',0.5)');
-      g.addColorStop(1, 'rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',0)');
-      s.fillStyle = g;
-      s.fillRect(0, 0, 64, 64);
-    }
-    makeSprite();
-
-    var drops = [];
-    var running = false;
-    var lastT = 0;
-
-    function spawn(x, y, big) {
-      var w = [];
-      var i;
-
-      // 帽云：大量细丝向外摊开、各自卷曲，叠成蓬松半透明的云
-      var Nc = big ? 160 : 70;
-      for (i = 0; i < Nc; i++) {
-        var ang = Math.random() * Math.PI * 2;
-        var sp = 0.3 + Math.random() * 1.1;
-        w.push({
-          kind: 0,
-          x: x + (Math.random() - 0.5) * 6,
-          y: y + (Math.random() - 0.5) * 6,
-          // 横向摊开为主（帽是扁宽的）
-          vx: Math.cos(ang) * sp * 1.8,
-          vy: Math.sin(ang) * sp * 0.5 - 0.12,
-          lw: 0.8 + Math.random() * 0.9,
-          a: 0.08 + Math.random() * 0.08,
-          life: 1300 + Math.random() * 1100,
-          curl: 0.6 + Math.random() * 0.9,
-          seed: Math.random() * 100,
-          age: 0,
-        });
-      }
-
-      // 帽中较深的褶：少数更浓的卷丝
-      var Nk = big ? 12 : 6;
-      for (i = 0; i < Nk; i++) {
-        var ang2 = Math.random() * Math.PI * 2;
-        var sp2 = 0.2 + Math.random() * 0.7;
-        w.push({
-          kind: 0,
-          x: x + (Math.random() - 0.5) * 5,
-          y: y + (Math.random() - 0.5) * 5,
-          vx: Math.cos(ang2) * sp2 * 1.3,
-          vy: Math.sin(ang2) * sp2 * 0.45 - 0.08,
-          lw: 1 + Math.random() * 0.8,
-          a: 0.15 + Math.random() * 0.12,
-          life: 700 + Math.random() * 700,
-          curl: 0.8 + Math.random(),
-          seed: Math.random() * 100,
-          age: 0,
-        });
-      }
-
-      // 垂丝：从帽心下垂的细长墨丝，越走越弯
-      var Nt = big ? 7 : 4;
-      for (i = 0; i < Nt; i++) {
-        w.push({
-          kind: 2,
-          x: x + (Math.random() - 0.5) * 12,
-          y: y + Math.random() * 6,
-          vx: (Math.random() - 0.5) * 0.3,
-          vy: 1.2 + Math.random() * 1.3,
-          lw: 0.6 + Math.random() * 0.5,
-          a: 0.3 + Math.random() * 0.2,
-          life: 2600 + Math.random() * 1000,
-          f: 0.7 + Math.random() * 0.8,
-          seed: Math.random() * 100,
-          age: 0,
-        });
-      }
-
-      // 散落的小墨点
-      var Ns = big ? 12 : 6;
-      for (i = 0; i < Ns; i++) {
-        w.push({
-          kind: 3,
-          x: x + (Math.random() - 0.5) * (big ? 140 : 90),
-          y: y + (Math.random() - 0.5) * (big ? 160 : 100),
-          vx: 0,
-          vy: 0.05 + Math.random() * 0.1,
-          lw: 0.6 + Math.random() * 0.9,
-          a: 0.25 + Math.random() * 0.2,
-          life: 1200 + Math.random() * 1200,
-          seed: 0,
-          curl: 0,
-          age: 0,
-        });
-      }
-
-      // 帽云雾底：少量大而软的淡墨点，垫出体积、减刮擦感
-      var Nh = big ? 12 : 6;
-      for (i = 0; i < Nh; i++) {
-        var ang3 = Math.random() * Math.PI * 2;
-        var sp3 = 0.2 + Math.random() * 0.6;
-        w.push({
-          kind: 4,
-          x: x + (Math.random() - 0.5) * 10,
-          y: y + (Math.random() - 0.5) * 8,
-          vx: Math.cos(ang3) * sp3 * 2,
-          vy: Math.sin(ang3) * sp3 * 0.5 - 0.05,
-          lw: 14 + Math.random() * 12,
-          a: 0.02 + Math.random() * 0.02,
-          life: 1500 + Math.random() * 1000,
-          seed: 0,
-          curl: 0,
-          age: 0,
-        });
-      }
-
-      drops.push({ x: x, y: y, born: performance.now(), walkers: w });
-      if (drops.length > 20) drops.shift();
-      wake();
+    function rgba(alpha) {
+      return 'rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',' + alpha + ')';
     }
 
-    function frame(now) {
-      var dt = Math.min(now - (lastT || now), 40);
-      lastT = now;
-      var step = dt / 16.7;
+    function isMousePointer(event) {
+      // 部分旧浏览器的鼠标 PointerEvent 不提供 pointerType。
+      return !event.pointerType || event.pointerType === 'mouse';
+    }
 
-      // 溶解：旧墨慢慢化进水里
-      inkCtx.save();
-      inkCtx.setTransform(1, 0, 0, 1, 0, 0);
-      inkCtx.globalCompositeOperation = 'destination-out';
-      inkCtx.fillStyle = 'rgba(0, 0, 0, ' + 0.008 * step + ')';
-      inkCtx.fillRect(0, 0, ink.width, ink.height);
-      inkCtx.restore();
+    function clearCanvas() {
+      ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+    }
 
-      inkCtx.save();
-      inkCtx.scale(dpr, dpr);
-      inkCtx.lineCap = 'round';
-
-      var alive = false;
-      for (var di = drops.length - 1; di >= 0; di--) {
-        var d = drops[di];
-        var age = now - d.born;
-
-        // 入水第一下：帽心一颗小浓结
-        if (age < 400) {
-          alive = true;
-          inkCtx.globalAlpha = 1;
-          inkCtx.fillStyle = rgba(0.22 * (1 - age / 400));
-          inkCtx.beginPath();
-          inkCtx.arc(d.x, d.y, 4 + age * 0.02, 0, Math.PI * 2);
-          inkCtx.fill();
-        }
-
-        var live = 0;
-        for (var i = d.walkers.length - 1; i >= 0; i--) {
-          var p = d.walkers[i];
-          p.age += dt;
-          if (p.age >= p.life) {
-            d.walkers.splice(i, 1);
-            continue;
-          }
-          live++;
-          var env = Math.min(p.age / 120, 1) * (1 - p.age / p.life);
-          var px = p.x;
-          var py = p.y;
-          var ageS = p.age / 1000;
-
-          if (p.kind === 0) {
-            // 卷曲：速度方向做平滑随机旋转，走出小涡卷
-            var ra =
-              (Math.sin(p.seed * 7.3 + ageS * 1.3 * p.curl) +
-                Math.sin(p.seed * 3.1 + ageS * 2.3 * p.curl)) *
-              0.18 *
-              p.curl *
-              step;
-            var ca = Math.cos(ra);
-            var sa = Math.sin(ra);
-            var nvx = p.vx * ca - p.vy * sa;
-            var nvy = p.vx * sa + p.vy * ca;
-            p.vx = nvx;
-            p.vy = nvy;
-            p.vx *= Math.pow(0.99, step);
-            p.vy *= Math.pow(0.99, step);
-            p.vy -= 0.004 * step; // 轻上飘，帽顶蓬起
-          } else if (p.kind === 2) {
-            // 垂丝：横向游走随时间变大，尾端打弯
-            p.vx += Math.sin(ageS * 1.3 * p.f + p.seed) * 0.04 * step * Math.min(ageS, 1.5);
-            p.vx *= Math.pow(0.99, step);
-            p.vy *= Math.pow(0.995, step);
-          } else if (p.kind === 4) {
-            // 雾底：慢速摊开、较快停住
-            p.vx *= Math.pow(0.985, step);
-            p.vy *= Math.pow(0.985, step);
-          }
-
-          p.x += p.vx * step;
-          p.y += p.vy * step;
-
-          if (p.kind === 3) {
-            // 墨点：只盖一次，圆点散落，随层溶解淡出
-            if (p.age < 60) {
-              inkCtx.fillStyle = rgba(p.a * env);
-              inkCtx.beginPath();
-              inkCtx.arc(p.x, p.y, p.lw, 0, Math.PI * 2);
-              inkCtx.fill();
-            }
-          } else if (p.kind === 4) {
-            // 雾底：软墨点垫体积
-            inkCtx.globalAlpha = p.a * env;
-            var pr = p.lw * (1 + ageS * 0.3);
-            inkCtx.drawImage(sprite, p.x - pr, p.y - pr, pr * 2, pr * 2);
-            inkCtx.globalAlpha = 1;
-          } else {
-            // 细丝：沿路径盖一段极细的线
-            inkCtx.strokeStyle = rgba(p.a * env);
-            inkCtx.lineWidth = p.lw;
-            inkCtx.beginPath();
-            inkCtx.moveTo(px, py);
-            inkCtx.lineTo(p.x, p.y);
-            inkCtx.stroke();
-          }
-        }
-
-        if (live > 0 || age < 400) {
-          alive = true;
-        } else if (age > 2500) {
-          drops.splice(di, 1); // 残余溶解期后移除
-        } else {
-          alive = true;
-        }
-      }
-      inkCtx.restore();
-
-      // 合成到显示层
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(ink, 0, 0);
-
-      if (alive) {
-        requestAnimationFrame(frame);
-      } else {
-        running = false;
-        lastT = 0;
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        inkCtx.clearRect(0, 0, ink.width, ink.height);
-      }
+    function clearEffects() {
+      strokes = [];
+      ripples = [];
+      lastPoint = null;
+      pendingPoint = null;
+      clearCanvas();
     }
 
     function wake() {
-      if (!running) {
-        running = true;
+      if (running) return;
+      running = true;
+      requestAnimationFrame(frame);
+    }
+
+    function addStroke(from, to, now) {
+      var dx = to.x - from.x;
+      var dy = to.y - from.y;
+      var distance = Math.sqrt(dx * dx + dy * dy);
+      if (distance < 2) return false;
+
+      var elapsed = Math.max(Math.min(to.time - from.time, 50), 1);
+      var speed = distance / elapsed;
+      var steps = Math.min(28, Math.max(1, Math.ceil(distance / 14)));
+      var normalX = -dy / distance;
+      var normalY = dx / distance;
+
+      // 将稀疏的高速指针事件补成固定长度的小段，避免快速滑动时断线。
+      for (var i = 0; i < steps; i++) {
+        var start = i / steps;
+        var end = (i + 1) / steps;
+        var x1 = from.x + dx * start;
+        var y1 = from.y + dy * start;
+        var x2 = from.x + dx * end;
+        var y2 = from.y + dy * end;
+        var segmentLength = distance / steps;
+        var bend = (Math.random() - 0.5) * Math.min(2, segmentLength * 0.12);
+
+        strokes.push({
+          x1: x1,
+          y1: y1,
+          x2: x2,
+          y2: y2,
+          cx: (x1 + x2) * 0.5 + normalX * bend,
+          cy: (y1 + y2) * 0.5 + normalY * bend,
+          nx: normalX,
+          ny: normalY,
+          width: Math.max(1.05, Math.min(2.8, 3 - speed * 0.7)),
+          alpha: Math.min(0.28, 0.17 + speed * 0.035),
+          seed: Math.random(),
+          born: now,
+          life: 640,
+        });
+      }
+
+      if (strokes.length > 100) strokes.splice(0, strokes.length - 100);
+      wake();
+      return true;
+    }
+
+    function addRipple(x, y, now) {
+      ripples.push({ x: x, y: y, born: now, seed: Math.random() });
+      if (ripples.length > 8) ripples.shift();
+      wake();
+    }
+
+    function drawStroke(stroke, now) {
+      var progress = (now - stroke.born) / stroke.life;
+      if (progress >= 1) return false;
+
+      var fade = Math.pow(1 - progress, 1.7);
+
+      // 淡淡的湿墨底，让笔触像在宣纸上轻微洇开。
+      ctx.strokeStyle = rgba(stroke.alpha * fade * 0.22);
+      ctx.lineWidth = stroke.width * (2.6 + progress * 0.8);
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(stroke.x1, stroke.y1);
+      ctx.quadraticCurveTo(stroke.cx, stroke.cy, stroke.x2, stroke.y2);
+      ctx.stroke();
+
+      // 主笔锋。
+      ctx.strokeStyle = rgba(stroke.alpha * fade);
+      ctx.lineWidth = stroke.width * (1 - progress * 0.2);
+      ctx.beginPath();
+      ctx.moveTo(stroke.x1, stroke.y1);
+      ctx.quadraticCurveTo(stroke.cx, stroke.cy, stroke.x2, stroke.y2);
+      ctx.stroke();
+
+      // 两根细墨丝合在一次描边中绘制，保留纤维感并减少 Canvas 调用。
+      ctx.strokeStyle = rgba(stroke.alpha * fade * 0.4);
+      ctx.lineWidth = Math.max(0.35, stroke.width * 0.24);
+      ctx.beginPath();
+      for (var i = 0; i < 2; i++) {
+        var side = i === 0 ? -1 : 1;
+        var offset = side * stroke.width * (0.55 + stroke.seed * 0.35);
+        ctx.moveTo(stroke.x1 + stroke.nx * offset, stroke.y1 + stroke.ny * offset);
+        ctx.quadraticCurveTo(
+          stroke.cx + stroke.nx * offset * 1.2,
+          stroke.cy + stroke.ny * offset * 1.2,
+          stroke.x2 + stroke.nx * offset * 0.6,
+          stroke.y2 + stroke.ny * offset * 0.6,
+        );
+      }
+      ctx.stroke();
+
+      return true;
+    }
+
+    function drawRing(ripple, age, delay, duration, startRadius, endRadius, alpha) {
+      var progress = (age - delay) / duration;
+      if (progress < 0 || progress >= 1) return;
+
+      var eased = 1 - Math.pow(1 - progress, 3);
+      var radius = startRadius + (endRadius - startRadius) * eased;
+      var wobble = (ripple.seed - 0.5) * 0.08;
+
+      ctx.strokeStyle = rgba(alpha * Math.pow(1 - progress, 1.5));
+      ctx.lineWidth = 0.9;
+      ctx.beginPath();
+      ctx.ellipse(
+        ripple.x,
+        ripple.y,
+        radius * (1 + wobble),
+        radius * (0.48 - wobble * 0.25),
+        0,
+        0,
+        Math.PI * 2,
+      );
+      ctx.stroke();
+    }
+
+    function drawRipple(ripple, now) {
+      var age = now - ripple.born;
+      if (age >= 980) return false;
+
+      if (age < 220) {
+        var dropFade = 1 - age / 220;
+        ctx.fillStyle = rgba(0.28 * dropFade);
+        ctx.beginPath();
+        ctx.arc(ripple.x, ripple.y, 1.5 + age * 0.008, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      drawRing(ripple, age, 0, 760, 3, 25, 0.22);
+      drawRing(ripple, age, 120, 860, 5, 34, 0.13);
+      return true;
+    }
+
+    function frame(now) {
+      // 指针事件可能远快于屏幕刷新率；每帧只处理最新位置。
+      if (pendingPoint) {
+        var point = pendingPoint;
+        pendingPoint = null;
+        if (lastPoint && addStroke(lastPoint, point, now)) lastPoint = point;
+      }
+
+      clearCanvas();
+
+      for (var i = strokes.length - 1; i >= 0; i--) {
+        if (!drawStroke(strokes[i], now)) strokes.splice(i, 1);
+      }
+
+      for (var j = ripples.length - 1; j >= 0; j--) {
+        if (!drawRipple(ripples[j], now)) ripples.splice(j, 1);
+      }
+
+      if (pendingPoint || strokes.length || ripples.length) {
         requestAnimationFrame(frame);
+      } else {
+        running = false;
       }
     }
 
-    // 鼠标划过：滴小墨
-    var lastX = -1;
-    var lastY = -1;
-    document.addEventListener('pointermove', function (e) {
-      if (e.pointerType !== 'mouse') return;
-      if (lastX < 0) {
-        lastX = e.clientX;
-        lastY = e.clientY;
+    document.addEventListener('pointermove', function (event) {
+      if (!isMousePointer(event)) return;
+
+      var point = { x: event.clientX, y: event.clientY, time: performance.now() };
+      if (!lastPoint) {
+        lastPoint = point;
         return;
       }
-      var dx = e.clientX - lastX;
-      var dy = e.clientY - lastY;
-      if (dx * dx + dy * dy > 1600) {
-        lastX = e.clientX;
-        lastY = e.clientY;
-        spawn(e.clientX, e.clientY, false);
-      }
+
+      pendingPoint = point;
+      wake();
     });
 
-    // 点击：滴一大滴
-    document.addEventListener('pointerdown', function (e) {
-      if (e.pointerType !== 'mouse') return;
-      spawn(e.clientX, e.clientY, true);
+    document.addEventListener('pointerdown', function (event) {
+      if (!isMousePointer(event)) return;
+      addRipple(event.clientX, event.clientY, performance.now());
     });
 
-    // 开场一滴墨
-    try {
-      if (!sessionStorage.getItem('ink-intro')) {
-        sessionStorage.setItem('ink-intro', '1');
-        setTimeout(function () {
-          spawn(window.innerWidth * 0.5, window.innerHeight * 0.38, true);
-        }, 700);
-      }
-    } catch (e) {
-      /* 隐私模式不可用 */
-    }
-
-    // 切主题：换墨色、清旧墨
-    window.addEventListener('theme-changed', function () {
-      readInk();
-      makeSprite();
-      drops = [];
-      inkCtx.clearRect(0, 0, ink.width, ink.height);
+    document.documentElement.addEventListener('pointerleave', function () {
+      lastPoint = null;
+      pendingPoint = null;
     });
 
-    console.info('[听雨·墨] 效果已启用');
+    window.addEventListener('blur', function () {
+      lastPoint = null;
+      pendingPoint = null;
+    });
+
+    window.addEventListener('resize', resize);
+    window.addEventListener('theme-changed', readInk);
+
+    resize();
+    readInk();
   })();
 </script>
