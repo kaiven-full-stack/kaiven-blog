@@ -59,7 +59,8 @@ const currentPath = Astro.url.pathname;
       </filter>
     </svg>
 
-    <header class="sticky top-0 z-10 border-b border-line bg-paper">
+    <!-- z-20 需高于 main/footer 的 z-10，否则滚动后吸顶头部被内容盖住、按钮点不到 -->
+    <header class="sticky top-0 z-20 border-b border-line bg-paper">
       <div class="mx-auto flex max-w-[60rem] items-center justify-between gap-4 px-5 py-3.5">
         <a href="/" class="flex items-center gap-2.5" aria-label="返回首页">
           <Seal chars="听雨" size="md" />
