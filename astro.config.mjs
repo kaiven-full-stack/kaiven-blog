@@ -16,5 +16,10 @@ export default defineConfig({
   },
   vite: {
     plugins: [tailwindcss()],
+    server: {
+      // CORS 交给 src/middleware.ts：giscus 的主题 CSS 需要带
+      // Access-Control-Allow-Private-Network，Vite 内置 CORS 加不了这个头
+      cors: false,
+    },
   },
 });

@@ -1,0 +1,117 @@
+/*! 宣纸 · 亮色
+ * 变量表与 giscus 官方主题对齐（变量名 MIT License, (c) GitHub Inc., primer/primitives），
+ * 取值换成站点的墨色 / 纸色 / 朱砂。
+ */
+
+main {
+  /* 评论内代码 token：赭 / 苔 / 朱砂，贴近站点代码块的观感 */
+  --color-prettylights-syntax-comment: #a29d90;
+  --color-prettylights-syntax-constant: #8f5a2b;
+  --color-prettylights-syntax-entity: #8f5a2b;
+  --color-prettylights-syntax-storage-modifier-import: #2b2a26;
+  --color-prettylights-syntax-entity-tag: #58682f;
+  --color-prettylights-syntax-keyword: #b03a2e;
+  --color-prettylights-syntax-string: #58682f;
+  --color-prettylights-syntax-variable: #8f5a2b;
+  --color-prettylights-syntax-brackethighlighter-unmatched: #a1261b;
+  --color-prettylights-syntax-invalid-illegal-text: #f6f3ec;
+  --color-prettylights-syntax-invalid-illegal-bg: #a1261b;
+  --color-prettylights-syntax-carriage-return-text: #f6f3ec;
+  --color-prettylights-syntax-carriage-return-bg: #b03a2e;
+  --color-prettylights-syntax-string-regexp: #58682f;
+  --color-prettylights-syntax-markup-list: #8f5a2b;
+  --color-prettylights-syntax-markup-heading: #b03a2e;
+  --color-prettylights-syntax-markup-italic: #2b2a26;
+  --color-prettylights-syntax-markup-bold: #2b2a26;
+  --color-prettylights-syntax-markup-deleted-text: #a1261b;
+  --color-prettylights-syntax-markup-deleted-bg: #f0dcd7;
+  --color-prettylights-syntax-markup-inserted-text: #58682f;
+  --color-prettylights-syntax-markup-inserted-bg: #e7ead8;
+  --color-prettylights-syntax-markup-changed-text: #8f5a2b;
+  --color-prettylights-syntax-markup-changed-bg: #efe3cd;
+  --color-prettylights-syntax-markup-ignored-text: #f6f3ec;
+  --color-prettylights-syntax-markup-ignored-bg: #8f5a2b;
+  --color-prettylights-syntax-meta-diff-range: #8f5a2b;
+  --color-prettylights-syntax-brackethighlighter-angle: #6b675e;
+  --color-prettylights-syntax-sublimelinter-gutter-mark: #a29d90;
+  --color-prettylights-syntax-constant-other-reference-link: #58682f;
+
+  --color-btn-text: #2b2a26;
+  --color-btn-bg: #f0eadc;
+  --color-btn-border: rgb(43 42 38 / 15%);
+  --color-btn-shadow: 0 1px 0 rgb(43 42 38 / 4%);
+  --color-btn-inset-shadow: inset 0 1px 0 rgb(255 255 255 / 25%);
+  --color-btn-hover-bg: #eae3d2;
+  --color-btn-hover-border: rgb(43 42 38 / 15%);
+  --color-btn-active-bg: #e5ddca;
+  --color-btn-active-border: rgb(43 42 38 / 15%);
+  --color-btn-selected-bg: #e5ddca;
+  --color-btn-primary-text: #f6f3ec;
+  --color-btn-primary-bg: #b03a2e;
+  --color-btn-primary-border: rgb(43 42 38 / 15%);
+  --color-btn-primary-shadow: 0 1px 0 rgb(43 42 38 / 10%);
+  --color-btn-primary-inset-shadow: inset 0 1px 0 rgb(255 255 255 / 3%);
+  --color-btn-primary-hover-bg: #9a3227;
+  --color-btn-primary-hover-border: rgb(43 42 38 / 15%);
+  --color-btn-primary-selected-bg: #8f2e24;
+  --color-btn-primary-selected-shadow: inset 0 1px 0 rgb(0 0 0 / 20%);
+  --color-btn-primary-disabled-text: rgb(246 243 236 / 80%);
+  --color-btn-primary-disabled-bg: #d8a49c;
+  --color-btn-primary-disabled-border: rgb(43 42 38 / 15%);
+  --color-action-list-item-default-hover-bg: rgb(221 213 196 / 32%);
+  --color-segmented-control-bg: #efe9db;
+  --color-segmented-control-button-bg: #f6f3ec;
+  --color-segmented-control-button-selected-border: #a29d90;
+  --color-fg-default: #2b2a26;
+  --color-fg-muted: #6b675e;
+  --color-fg-subtle: #a29d90;
+  --color-canvas-default: #f6f3ec;
+  --color-canvas-overlay: #f6f3ec;
+  --color-canvas-inset: #efe9db;
+  --color-canvas-subtle: #efe9db;
+  --color-border-default: #ddd5c4;
+  --color-border-muted: #e6e0d1;
+  --color-neutral-muted: rgb(162 157 144 / 20%);
+  --color-accent-fg: #b03a2e;
+  --color-accent-emphasis: #b03a2e;
+  --color-accent-muted: rgb(176 58 46 / 40%);
+  --color-accent-subtle: #f2e3de;
+  --color-success-fg: #58682f;
+  --color-attention-fg: #8f5a2b;
+  --color-attention-muted: rgb(201 154 91 / 40%);
+  --color-attention-subtle: #f0e4d0;
+  --color-danger-fg: #a1261b;
+  --color-danger-muted: rgb(176 58 46 / 40%);
+  --color-danger-subtle: #f0dcd7;
+  --color-primer-shadow-inset: inset 0 1px 0 rgb(221 213 196 / 20%);
+  --color-scale-gray-1: #e6e0d1;
+  --color-scale-blue-1: #ecd9d4;
+
+  /*! Extensions from @primer/css/alerts/flash.scss */
+  --color-social-reaction-bg-hover: var(--color-scale-gray-1);
+  --color-social-reaction-bg-reacted-hover: var(--color-scale-blue-1);
+
+  /* 与站点正文同款衬线；表单控件默认不继承字体，单独补 */
+  font-family: 'Noto Serif SC', 'Songti SC', 'STSong', 'SimSun', serif;
+}
+
+main button,
+main textarea,
+main input {
+  font-family: inherit !important;
+}
+
+/* 加载动画：GitHub 的 mona 换成墨色转环 */
+main .gsc-loading-image {
+  background-image: none;
+  border: 2px solid var(--color-border-default);
+  border-top-color: var(--color-accent-fg);
+  border-radius: 50%;
+  animation: gsc-ink-spin 0.8s linear infinite;
+}
+
+@keyframes gsc-ink-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}

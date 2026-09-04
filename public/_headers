@@ -1,0 +1,5 @@
+# giscus 自定义主题由 giscus.app 的 iframe 以 crossorigin 方式加载，需开放 CORS
+/giscus-light.css
+  Access-Control-Allow-Origin: *
+/giscus-dark.css
+  Access-Control-Allow-Origin: *

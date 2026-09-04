@@ -6,16 +6,26 @@
  * 1. 把本仓库推到 GitHub 并设为 public，在仓库 Settings → General → Features 勾选 Discussions
  * 2. 安装 giscus App: https://github.com/apps/giscus
  * 3. 到 https://giscus.app/zh-CN 生成配置，把下面四个常量替换成你的值
+ *
+ * 主题用站点自配的「宣纸」样式（public/giscus-*.css）：
+ * giscus 的 data-theme 接受 CSS 文件的绝对 URL 作为自定义主题。
+ * 该 CSS 由 giscus.app 的 iframe 以 crossorigin 方式加载：
+ * 生产环境靠 public/_headers 开放 CORS，dev 环境靠 src/middleware.ts
+ * （localhost 还会触发私有网络访问限制，需带 Allow-Private-Network 头）。
  */
 const REPO = 'kaiven-full-stack/kaiven-blog';
 const REPO_ID = 'R_kgDOUMtVJQ';
 const CATEGORY = 'Announcements';
 const CATEGORY_ID = 'DIC_kwDOUMtVJc4DE2Ew';
+
+const origin = Astro.site?.origin ?? Astro.url.origin;
+const lightTheme = `${origin}/giscus-light.css`;
+const darkTheme = `${origin}/giscus-dark.css`;
 ---
 
 {
   REPO_ID && CATEGORY_ID ? (
-    <section class="mt-14">
+    <section class="mt-14" data-giscus-light={lightTheme} data-giscus-dark={darkTheme}>
       <script
         is:inline
         src="https://giscus.app/client.js"
@@ -28,23 +38,32 @@ const CATEGORY_ID = 'DIC_kwDOUMtVJc4DE2Ew';
         data-reactions-enabled="1"
         data-emit-metadata="0"
         data-input-position="top"
-        data-theme="light"
+        data-theme={lightTheme}
         data-lang="zh-CN"
         data-loading="lazy"
         crossorigin="anonymous"
         async
       />
       <script is:inline>
-        // 跟随站点明暗切换评论区主题
-        function syncGiscusTheme() {
-          const dark = document.documentElement.classList.contains('dark');
-          const iframe = document.querySelector('iframe.giscus-frame');
-          iframe?.contentWindow?.postMessage(
-            { giscus: { setConfig: { theme: dark ? 'dark' : 'light' } } },
-            'https://giscus.app',
-          );
-        }
-        window.addEventListener('theme-changed', syncGiscusTheme);
+        // 跟随站点明暗切换评论区主题；iframe 就绪时再同步一次，暗色首屏不闪亮色
+        (function () {
+          const host = document.currentScript.closest('section');
+          const light = host?.dataset.giscusLight;
+          const dark = host?.dataset.giscusDark;
+          function syncGiscusTheme() {
+            const theme = document.documentElement.classList.contains('dark') ? dark : light;
+            const iframe = document.querySelector('iframe.giscus-frame');
+            iframe?.contentWindow?.postMessage({ giscus: { setConfig: { theme } } }, 'https://giscus.app');
+          }
+          window.addEventListener('theme-changed', syncGiscusTheme);
+          new MutationObserver((_, observer) => {
+            const iframe = document.querySelector('iframe.giscus-frame');
+            if (!iframe) return;
+            observer.disconnect();
+            iframe.addEventListener('load', syncGiscusTheme);
+            syncGiscusTheme();
+          }).observe(document.documentElement, { childList: true, subtree: true });
+        })();
       </script>
     </section>
   ) : (
