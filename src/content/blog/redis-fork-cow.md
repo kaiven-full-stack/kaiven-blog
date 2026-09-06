@@ -2,6 +2,7 @@
 title: 快照在后台，停顿发生在前台：Redis 的 fork 与写时复制
 description: BGSAVE 的文件由子进程写，快门却由主线程亲手按下。本文沿一次快照的时间线，拆开 fork 停顿、页表复制、写时复制、内存记账、AOF 重写与全量同步，辨清“后台保存”和“内存翻倍”的真实边界。文中实验在 Redis 7.4.11 上复核。
 pubDate: 2026-09-05
+category: redis
 tags: [Redis, 数据库]
 ---
 

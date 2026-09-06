@@ -2,6 +2,7 @@
 title: 字节之间，自有章法：Zig 如何安排内存布局
 description: 字段写在纸上的次序，未必是它们落进内存的模样。普通 struct、extern struct 与 packed struct，各自向编译器、C ABI 和每一位数据作出不同承诺。文中代码在 0.16.0 上逐一验证。
 pubDate: 2026-09-04
+category: zig
 tags: [Zig, 编程语言]
 ---
 

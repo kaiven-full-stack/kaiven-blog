@@ -1,17 +1,16 @@
 ---
-import { getCollection } from 'astro:content';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import PostCard from '../../components/PostCard.astro';
+import { getPublishedPosts } from '../../utils/posts';
 
 export async function getStaticPaths() {
-  const posts = await getCollection('blog', ({ data }) => !data.draft);
+  const posts = await getPublishedPosts();
   const tags = [...new Set(posts.flatMap((post) => post.data.tags))];
   return tags.map((tag) => ({
     params: { tag },
     props: {
-      posts: posts
-        .filter((post) => post.data.tags.includes(tag))
-        .sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf()),
+      // getPublishedPosts 已按日期倒序排列，filter 保持该顺序
+      posts: posts.filter((post) => post.data.tags.includes(tag)),
     },
   }));
 }

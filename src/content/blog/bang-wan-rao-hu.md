@@ -2,6 +2,7 @@
 title: 傍晚绕湖走了半圈
 description: 下班后没坐地铁，沿着湖边走。风把水面吹皱的时候，忽然觉得这一天也还不错。
 pubDate: 2026-09-01
+category: life
 tags: [散步, 生活]
 ---
 

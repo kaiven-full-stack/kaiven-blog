@@ -66,6 +66,31 @@ body {
   color: var(--paper);
 }
 
+.skip-link {
+  position: fixed;
+  top: 0.75rem;
+  left: 0.75rem;
+  z-index: 50;
+  transform: translateY(-180%);
+  border: 1px solid var(--cinnabar);
+  border-radius: 3px;
+  background: var(--paper);
+  color: var(--cinnabar);
+  padding: 0.55rem 0.85rem;
+  font-size: 0.875rem;
+  transition: transform 0.15s ease;
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+:where(a, button, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--cinnabar);
+  outline-offset: 4px;
+  border-radius: 2px;
+}
+
 /* ---------- 印章 ---------- */
 .seal {
   display: inline-grid;
@@ -110,6 +135,13 @@ body {
   margin-top: 2.2em;
   margin-bottom: 0.6em;
   color: var(--ink);
+}
+
+.post--technical .prose-ink h2 {
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 1.45rem;
+  letter-spacing: -0.015em;
 }
 
 .prose-ink h3 {
@@ -227,8 +259,8 @@ body {
   border-bottom: 2px solid color-mix(in srgb, var(--ink) 30%, transparent);
 }
 
-/* 首字下沉 */
-.prose-ink > p:first-of-type::first-letter {
+/* 只让生活随笔保留首字下沉；技术文章常以代码现场开篇，不在中段补装饰 */
+.post--life .prose-ink > p:first-of-type::first-letter {
   font-family: var(--font-brush);
   font-size: 2.6em;
   float: left;
@@ -265,4 +297,21 @@ body {
 
 .tag-pill:hover {
   color: var(--cinnabar);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  body,
+  .skip-link,
+  .tag-pill,
+  .toc-link,
+  .toc-chevron,
+  .back-to-top,
+  .code-copy,
+  .h-anchor {
+    transition: none !important;
+  }
 }

@@ -1,0 +1,188 @@
+---
+export interface TocHeading {
+  depth: number;
+  slug: string;
+  text: string;
+}
+
+interface Props {
+  headings: TocHeading[];
+}
+
+const { headings } = Astro.props;
+const items = headings.filter((h) => h.depth === 2 || h.depth === 3);
+---
+
+{
+  items.length > 0 && (
+    <>
+      {/* 桌面侧栏：绝对定位于文章容器，内部 sticky（父容器即文章高度） */}
+      <aside class="toc-desktop" data-pagefind-ignore>
+        <nav class="toc-sticky" aria-label="目录">
+          <p class="toc-title" aria-hidden="true">
+            目录
+          </p>
+          <ol class="toc-list">
+            {items.map((h) => (
+              <li class:list={['toc-item', { 'toc-item--sub': h.depth >= 3 }]}>
+                <a class="toc-link" href={`#${h.slug}`}>
+                  {h.text}
+                </a>
+              </li>
+            ))}
+          </ol>
+        </nav>
+      </aside>
+
+      {/* 移动端：折叠面板，与正文同宽 */}
+      <details class="toc-mobile" data-pagefind-ignore>
+        <summary class="toc-summary">
+          <span class="toc-summary-text">目录</span>
+          <svg
+            class="toc-chevron"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="m6 9 6 6 6-6"></path>
+          </svg>
+        </summary>
+        <nav class="toc-mobile-nav" aria-label="目录">
+          <ol class="toc-list">
+            {items.map((h) => (
+              <li class:list={['toc-item', { 'toc-item--sub': h.depth >= 3 }]}>
+                <a class="toc-link" href={`#${h.slug}`}>
+                  {h.text}
+                </a>
+              </li>
+            ))}
+          </ol>
+        </nav>
+      </details>
+    </>
+  )
+}
+
+<style>
+  /* ---------- 共用列表 ---------- */
+  .toc-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .toc-item--sub {
+    padding-left: 1.15em;
+  }
+
+  .toc-link {
+    display: block;
+    padding: 0.22em 0;
+    font-size: 13px;
+    line-height: 1.65;
+    color: var(--ink-faint);
+    text-decoration: none;
+    transition: color 0.2s ease;
+    overflow-wrap: anywhere;
+  }
+
+  .toc-link:hover,
+  .toc-link.is-active {
+    color: var(--cinnabar);
+  }
+
+  /* ---------- 桌面侧栏 ---------- */
+  /* 默认隐藏，宽屏才出现；定位相对文章容器（[slug].astro 中 article.relative）。
+     --toc-left / --toc-width 留给全局 CSS 覆盖（如主样式放宽 technical 正文宽度时）。 */
+  .toc-desktop {
+    display: none;
+  }
+
+  @media (min-width: 72rem) {
+    .toc-desktop {
+      display: block;
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      /* 正文为 34em × 1.0625rem ≈ 18rem 半宽，留少量间隙 */
+      left: calc(50% + var(--toc-left, 19rem));
+      width: var(--toc-width, 13rem);
+      pointer-events: none; /* 高容器不挡正文交互 */
+    }
+
+    .toc-sticky {
+      position: sticky;
+      top: 5.25rem;
+      max-height: calc(100vh - 7rem);
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      pointer-events: auto;
+      padding: 0.5rem 0.25rem 1rem;
+    }
+
+    .toc-title {
+      margin: 0 0 0.6rem;
+      font-family: var(--font-brush);
+      font-size: 1.05rem;
+      color: var(--ink-soft);
+    }
+
+    .toc-mobile {
+      display: none;
+    }
+  }
+
+  /* ---------- 移动端折叠面板 ---------- */
+  .toc-mobile {
+    max-width: 34em; /* 与 .prose-ink 同宽（字号一致时 em 才对得上） */
+    margin: 2.25rem auto 0;
+    font-size: 1.0625rem;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background-color: color-mix(in srgb, var(--ink) 3%, var(--paper));
+  }
+
+  .toc-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75em;
+    padding: 0.55em 1em;
+    font-size: 0.82em;
+    letter-spacing: 0.15em;
+    color: var(--ink-soft);
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+  }
+
+  /* Safari / Chromium 去掉默认三角 */
+  .toc-summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .toc-chevron {
+    width: 1em;
+    height: 1em;
+    flex-shrink: 0;
+    transition: transform 0.2s ease;
+  }
+
+  .toc-mobile[open] .toc-chevron {
+    transform: rotate(180deg);
+  }
+
+  .toc-mobile-nav {
+    padding: 0.35em 1em 0.85em;
+    border-top: 1px solid var(--line);
+  }
+
+  .toc-mobile-nav .toc-link {
+    font-size: 0.82em;
+    color: var(--ink-soft);
+  }
+</style>

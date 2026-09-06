@@ -2,6 +2,7 @@
 title: comptime：Zig 用一招，替了三门手艺
 description: 宏、模板、反射——别的语言用三套系统各自解决的问题，Zig 用一个「编译期执行」全部接住。文中代码在 0.16.0 上逐一验证。
 pubDate: 2026-09-04
+category: zig
 tags: [Zig, 编程语言]
 ---
 

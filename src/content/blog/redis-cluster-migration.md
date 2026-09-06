@@ -2,6 +2,7 @@
 title: 槽还没搬完，客户端已经换了门：Redis Cluster 的重定向与迁移
 description: 同一个槽迁移期间，旧键仍在源节点，新键却能经 ASK 先落到目标节点。本文以一张搬家清单为线索，拆开 16384 个槽、MOVED、ASKING、MIGRATE、TRYAGAIN 与 configEpoch。文中实验在 Redis 7.4.11 上复核。
 pubDate: 2026-09-05
+category: redis
 tags: [Redis, 数据库]
 ---
 

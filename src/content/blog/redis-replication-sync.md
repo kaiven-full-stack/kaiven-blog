@@ -2,6 +2,7 @@
 title: 断线以后，不一定从头再来：Redis 的主从复制与增量同步
 description: 两次不到一秒的断线，一次只补一万字节，一次却重新同步整个数据集。本文以 replication ID、offset 与 backlog 三份对账凭据为线索，拆开 PSYNC、全量同步、故障转移与 WAIT 的保证边界。文中实验在 Redis 7.4.11 上复核。
 pubDate: 2026-09-05
+category: redis
 tags: [Redis, 数据库]
 ---
 

@@ -2,6 +2,7 @@
 title: 深夜便利店
 description: 加班回家的路上，我走进一家快打烊的便利店，买走了货架上最后一个饭团。
 pubDate: 2026-09-05
+category: life
 tags: [生活, 随笔]
 ---
 

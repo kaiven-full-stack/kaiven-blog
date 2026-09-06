@@ -1,0 +1,33 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PostCard from '../../components/PostCard.astro';
+import SeriesHero from '../../components/SeriesHero.astro';
+import { SERIES_ORDER, groupPostsBySeries } from '../../utils/posts';
+
+export async function getStaticPaths() {
+  const groups = await groupPostsBySeries();
+  return SERIES_ORDER.map((series) => ({
+    params: { category: series.id },
+    props: {
+      series,
+      posts: groups.find((group) => group.series.id === series.id)?.posts ?? [],
+    },
+  }));
+}
+
+const { series, posts } = Astro.props;
+---
+
+<BaseLayout title={`系列：${series.title}`} description={series.description}>
+  <SeriesHero title={series.title} description={series.description} count={posts.length} />
+
+  <section aria-label="系列文章" class="mt-10">
+    <div class="flex flex-col gap-7">
+      {posts.map((post) => <PostCard post={post} />)}
+    </div>
+  </section>
+
+  <nav class="mt-10 text-sm">
+    <a href="/" class="text-ink-soft transition-colors hover:text-cinnabar">← 返回首页</a>
+  </nav>
+</BaseLayout>

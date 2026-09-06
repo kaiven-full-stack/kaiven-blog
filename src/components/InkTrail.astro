@@ -3,7 +3,7 @@
  * 淡墨笔锋 + 雨滴涟漪：
  * - 鼠标移动时留下短暂、随速度变化的淡墨笔触；
  * - 点击时落下一滴雨，扩散成两圈轻微水纹；
- * - 仅响应鼠标或触控板，不受系统“减少动态效果”设置影响。
+ * - 仅响应鼠标或触控板；系统要求减少动态效果时不启动。
  */
 ---
 
@@ -15,6 +15,8 @@
 
 <script is:inline>
   (function () {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
     var canvas = document.getElementById('ink-trail');
     if (!canvas) return;
 

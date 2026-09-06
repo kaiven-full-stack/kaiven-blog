@@ -2,6 +2,7 @@
 title: 两国共用一座桥：Zig 与 C 的互操作边界
 description: 一份数据从 Zig 过境到 C，切片要拆成指针与长度，error 要译成返回码，回调还得带着无类型的 context 原路回来。本文以一份最小 C 库为全程案例，讲清 ABI、字符串、opaque handle、内存释放与 translate-c 的责任边界。文中代码在 0.16.0 上逐一验证。
 pubDate: 2026-09-05
+category: zig
 tags: [Zig, 编程语言]
 ---
 

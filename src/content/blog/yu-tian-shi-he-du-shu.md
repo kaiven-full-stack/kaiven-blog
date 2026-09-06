@@ -2,6 +2,7 @@
 title: 雨天适合读书
 description: 一场雨从早下到晚，我把搁置了很久的书翻出来，读完了最后一章。
 pubDate: 2026-08-24
+category: life
 tags: [读书, 随笔]
 ---
 

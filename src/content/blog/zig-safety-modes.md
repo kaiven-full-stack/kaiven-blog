@@ -2,6 +2,7 @@
 title: 法条只有一部，法庭有四座：Zig 的 Illegal Behavior
 description: 同一段非法代码交给 Debug、ReleaseSafe、ReleaseFast 与 ReleaseSmall，会得到四份不同证词；不同的却是执法与优化，不是语言法条。本文从整数溢出、越界、unreachable 与局部安全开关出发，辨清 panic、沉默和优化器推理各自意味着什么。文中代码在 0.16.0 上逐一验证。
 pubDate: 2026-09-05
+category: zig
 tags: [Zig, 编程语言]
 ---
 

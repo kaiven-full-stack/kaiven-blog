@@ -2,51 +2,135 @@
 import type { CollectionEntry } from 'astro:content';
 import { cnDate } from '../utils/date';
 import BrushRule from './BrushRule.astro';
+import Seal from './Seal.astro';
 
 interface Props {
   post: CollectionEntry<'blog'>;
+  variant?: 'featured' | 'stream' | 'compact';
 }
 
-const { post } = Astro.props;
-const { title, description, pubDate, tags } = post.data;
+const { post, variant = 'stream' } = Astro.props;
+const { title, description, pubDate, tags, category } = post.data;
+const isTechnical = category !== 'life';
+const href = `/posts/${post.id}/`;
+const dateStr = pubDate.toISOString().slice(0, 10);
 ---
 
-<article class="group">
-  <a href={`/posts/${post.id}/`} class="block">
-    <div class="flex items-baseline justify-between gap-4">
-      <h2
-        class="font-brush text-[1.55rem] leading-snug text-ink transition-colors group-hover:text-cinnabar"
-      >
-        {title}
-      </h2>
-      <time
-        datetime={pubDate.toISOString().slice(0, 10)}
-        class="shrink-0 text-[13px] text-ink-faint"
-      >
-        {cnDate(pubDate)}
-      </time>
-    </div>
-
-    {
-      description && (
-        <p class="mt-2 line-clamp-2 text-[15px] leading-relaxed text-ink-soft">
-          {description}
-        </p>
-      )
-    }
-
-    {
-      tags.length > 0 && (
-        <div class="mt-3 flex flex-wrap gap-2">
-          {tags.map((tag) => (
-            <span class="tag-pill text-xs">{tag}</span>
-          ))}
+{
+  variant === 'featured' && (
+    <article class="group">
+      <a href={href} class="block">
+        <div class="flex items-center justify-between gap-4 sm:hidden">
+          <Seal chars="卷首" size="md" />
+          <time datetime={dateStr} class="text-[13px] text-ink-faint">
+            {cnDate(pubDate)}
+          </time>
         </div>
-      )
-    }
-  </a>
 
-  <div class="mt-5 opacity-70 transition-opacity group-hover:opacity-100">
-    <BrushRule />
-  </div>
-</article>
+        <div class="mt-4 flex items-start gap-5 sm:mt-0">
+          <span class="mt-1.5 hidden shrink-0 sm:inline-block">
+            <Seal chars="卷首" size="lg" />
+          </span>
+
+          <div class="min-w-0 flex-1">
+            <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+              <h2 class:list={[
+                'text-2xl leading-snug text-ink transition-colors group-hover:text-cinnabar sm:text-4xl',
+                isTechnical ? 'font-body font-bold' : 'font-brush',
+              ]}>
+                {title}
+              </h2>
+              <time datetime={dateStr} class="hidden shrink-0 text-[13px] text-ink-faint sm:block">
+                {cnDate(pubDate)}
+              </time>
+            </div>
+
+            {
+              description && (
+                <p class="mt-3 line-clamp-2 text-[15px] leading-relaxed text-ink-soft">
+                  {description}
+                </p>
+              )
+            }
+
+            <div class="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2">
+              {
+                tags.length > 0 && (
+                  <div class="flex flex-wrap gap-2">
+                    {tags.map((tag) => (
+                      <span class="tag-pill text-xs">{tag}</span>
+                    ))}
+                  </div>
+                )
+              }
+              <span class="text-sm text-cinnabar opacity-80 transition-opacity group-hover:opacity-100">
+                阅读全文 →
+              </span>
+            </div>
+          </div>
+        </div>
+      </a>
+
+      <div class="mt-6 opacity-70 transition-opacity group-hover:opacity-100">
+        <BrushRule />
+      </div>
+    </article>
+  )
+}
+
+{
+  variant === 'stream' && (
+    <article class="group">
+      <a href={href} class="block">
+        <div class="flex items-baseline justify-between gap-4">
+          <h2 class:list={[
+            'min-w-0 flex-1 text-[1.55rem] leading-snug text-ink transition-colors group-hover:text-cinnabar',
+            isTechnical ? 'font-body font-bold' : 'font-brush',
+          ]}>
+            {title}
+          </h2>
+          <time datetime={dateStr} class="shrink-0 text-[13px] text-ink-faint">
+            {cnDate(pubDate)}
+          </time>
+        </div>
+
+        {
+          description && (
+            <p class="mt-2 line-clamp-2 text-[15px] leading-relaxed text-ink-soft">
+              {description}
+            </p>
+          )
+        }
+
+        {
+          tags.length > 0 && (
+            <div class="mt-3 flex flex-wrap gap-2">
+              {tags.map((tag) => (
+                <span class="tag-pill text-xs">{tag}</span>
+              ))}
+            </div>
+          )
+        }
+      </a>
+
+      <div class="mt-5 opacity-70 transition-opacity group-hover:opacity-100">
+        <BrushRule />
+      </div>
+    </article>
+  )
+}
+
+{
+  variant === 'compact' && (
+    <article class="group">
+      <a href={href} class="flex items-baseline justify-between gap-4">
+        <h3 class="min-w-0 truncate text-[15px] leading-relaxed text-ink transition-colors group-hover:text-cinnabar">
+          {title}
+        </h3>
+        <time datetime={dateStr} class="shrink-0 text-[13px] text-ink-faint">
+          {cnDate(pubDate)}
+        </time>
+      </a>
+    </article>
+  )
+}

@@ -2,6 +2,7 @@
 title: 错误是值，清理是另一件事：Zig 的 errdefer
 description: 异常机制想一次解决「错误怎么传播」和「资源怎么清理」两件事，Zig 把它拆回两件。文中代码在 0.16.0 上逐一验证。
 pubDate: 2026-09-04
+category: zig
 tags: [Zig, 编程语言]
 ---
 

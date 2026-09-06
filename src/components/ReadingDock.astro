@@ -1,0 +1,378 @@
+---
+/**
+ * 阅读行为集中组件（仅文章页使用，依赖页面中 [data-reading] 根元素）：
+ * - 顶部阅读进度条（--reading-progress 写在 <html> 上，供全局样式复用）；
+ * - 返回顶部按钮（滚动超过一屏左右后出现）；
+ * - TOC 高亮：为 .toc-link 切换 .is-active（Toc 组件的桌面/移动两个列表同步）；
+ * - 标题锚点：为正文 h2/h3 追加 .h-anchor 链接，并按吸顶头部高度设置 scroll-margin-top；
+ * - 代码块工具栏：.code-block 包裹 pre，工具栏（语言标签 + 复制）是 pre 的兄弟节点，
+ *   复制只取 pre.textContent，绝不会混入工具栏文字；text/plain 等无意义语言不显示标签；
+ * - 表格包装：.table-wrap 提供横向滚动（表格内容仍参与 pagefind 索引）。
+ *
+ * 所有辅助 UI 均带 data-pagefind-ignore（表格包装除外——它是内容容器）。
+ * 滚动统一走 rAF 节流；clipboard 失败有「复制失败」反馈并回退 execCommand。
+ */
+---
+
+<div class="reading-progress" data-pagefind-ignore aria-hidden="true">
+  <div class="reading-progress__bar"></div>
+</div>
+
+<button class="back-to-top" type="button" data-pagefind-ignore aria-label="返回顶部" title="返回顶部">
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M12 19V5m0 0-6 6m6-6 6 6"></path>
+  </svg>
+</button>
+
+<script>
+  const root = document.querySelector<HTMLElement>('[data-reading]');
+  if (!root) {
+    // 非文章页：组件不应产生任何副作用
+  } else {
+    const prose = root.querySelector<HTMLElement>('.prose-ink');
+    const progressBar = document.querySelector<HTMLElement>('.reading-progress__bar');
+    const backToTop = document.querySelector<HTMLButtonElement>('.back-to-top');
+    const siteHeader = document.querySelector('header');
+
+    /** 吸顶头部以下的可用顶部偏移（锚点跳转、scroll-margin、TOC 高亮基准线都用它） */
+    function topOffset(): number {
+      return (siteHeader ? siteHeader.offsetHeight : 0) + 16;
+    }
+
+    /* ---------- 标题锚点 ---------- */
+    const headingEls: HTMLHeadingElement[] = [];
+    if (prose) {
+      for (const h of prose.querySelectorAll<HTMLHeadingElement>('h2[id], h3[id]')) {
+        headingEls.push(h);
+        const anchor = document.createElement('a');
+        anchor.className = 'h-anchor';
+        anchor.href = `#${h.id}`;
+        anchor.setAttribute('aria-label', '锚点：链接到本节');
+        anchor.textContent = '#';
+        anchor.setAttribute('data-pagefind-ignore', '');
+        h.appendChild(anchor);
+      }
+    }
+
+    function applyScrollMargins(): void {
+      const margin = `${topOffset()}px`;
+      for (const h of headingEls) h.style.scrollMarginTop = margin;
+    }
+
+    /* ---------- 表格包装（内容保留索引，不加 pagefind-ignore） ---------- */
+    if (prose) {
+      for (const table of Array.from(prose.querySelectorAll('table'))) {
+        if (table.parentElement && table.parentElement.classList.contains('table-wrap')) continue;
+        const wrap = document.createElement('div');
+        wrap.className = 'table-wrap';
+        wrap.tabIndex = 0;
+        wrap.setAttribute('role', 'region');
+        wrap.setAttribute('aria-label', '可横向滚动的表格');
+        table.parentNode!.insertBefore(wrap, table);
+        wrap.appendChild(table);
+      }
+    }
+
+    /* ---------- 代码块工具栏 + 复制 ---------- */
+    const PLAIN_LANGS = new Set(['text', 'txt', 'plain', 'plaintext', 'ansi']);
+    const resetTimers = new WeakMap<HTMLButtonElement, number>();
+
+    function flashButton(btn: HTMLButtonElement, ok: boolean): void {
+      const state = ok ? 'is-copied' : 'is-error';
+      btn.textContent = ok ? '已复制' : '复制失败';
+      btn.classList.add(state);
+      const timer = resetTimers.get(btn);
+      if (timer !== undefined) window.clearTimeout(timer);
+      resetTimers.set(
+        btn,
+        window.setTimeout(() => {
+          btn.textContent = '复制';
+          btn.classList.remove(state);
+        }, 1600),
+      );
+    }
+
+    async function copyCode(pre: HTMLPreElement, btn: HTMLButtonElement): Promise<void> {
+      // 只取 pre 本身的文本；工具栏在 pre 外面，不可能混入
+      const text = pre.textContent ?? '';
+      let ok = false;
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(text);
+          ok = true;
+        }
+      } catch {
+        ok = false;
+      }
+      if (!ok) {
+        // 非安全上下文 / 权限被拒：退回 execCommand
+        try {
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          ta.setAttribute('readonly', '');
+          ta.style.position = 'fixed';
+          ta.style.opacity = '0';
+          document.body.appendChild(ta);
+          ta.select();
+          ok = document.execCommand('copy');
+          ta.remove();
+        } catch {
+          ok = false;
+        }
+      }
+      flashButton(btn, ok);
+    }
+
+    if (prose) {
+      for (const pre of Array.from(prose.querySelectorAll('pre'))) {
+        const code = pre.querySelector('code');
+        const dataLang = (pre.dataset.language ?? '').toLowerCase();
+        const langMatch =
+          /(?:^|\s)language-([\w+-]+)/.exec(pre.className) ??
+          (code ? /(?:^|\s)language-([\w+-]+)/.exec(code.className) : null);
+        const lang = dataLang || (langMatch ? langMatch[1].toLowerCase() : '');
+        const showLang = lang !== '' && !PLAIN_LANGS.has(lang);
+
+        const block = document.createElement('div');
+        block.className = 'code-block';
+        pre.parentNode!.insertBefore(block, pre);
+        block.appendChild(pre);
+
+        const toolbar = document.createElement('div');
+        toolbar.className = 'code-toolbar';
+        toolbar.setAttribute('data-pagefind-ignore', '');
+        if (showLang) {
+          const langEl = document.createElement('span');
+          langEl.className = 'code-lang';
+          langEl.textContent = lang;
+          toolbar.appendChild(langEl);
+        }
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'code-copy';
+        btn.textContent = '复制';
+        btn.addEventListener('click', () => void copyCode(pre, btn));
+        toolbar.appendChild(btn);
+        block.appendChild(toolbar);
+      }
+    }
+
+    /* ---------- 移动端 TOC：点条目后收起面板 ---------- */
+    for (const link of document.querySelectorAll<HTMLAnchorElement>('.toc-mobile .toc-link')) {
+      link.addEventListener('click', () => {
+        link.closest('details')?.removeAttribute('open');
+      });
+    }
+
+    /* ---------- rAF 节流的滚动更新 ---------- */
+    let activeId: string | null = null;
+    let ticking = false;
+
+    function update(): void {
+      ticking = false;
+      const scrollY = window.scrollY;
+      const viewportH = window.innerHeight;
+
+      // 阅读进度：文章顶部越过视口顶 → 文章底部到达视口底，区间 [0, 1]
+      if (progressBar) {
+        const rect = root.getBoundingClientRect();
+        const total = root.offsetHeight - viewportH;
+        const progress = total > 0 ? Math.min(1, Math.max(0, -rect.top / total)) : 1;
+        document.documentElement.style.setProperty('--reading-progress', progress.toFixed(4));
+      }
+
+      // 返回顶部
+      if (backToTop) backToTop.classList.toggle('is-visible', scrollY > viewportH * 0.6);
+
+      // TOC 高亮：最后一条顶边越过基准线的标题为当前节
+      if (headingEls.length > 0) {
+        const line = topOffset() + 32;
+        let current: HTMLHeadingElement | null = null;
+        for (const h of headingEls) {
+          if (h.getBoundingClientRect().top <= line) current = h;
+        }
+        // 滚到底时锁定最后一节
+        if (
+          !current &&
+          scrollY + viewportH >= document.documentElement.scrollHeight - 4
+        ) {
+          current = headingEls[headingEls.length - 1];
+        }
+        const id = current ? current.id : null;
+        if (id !== activeId) {
+          activeId = id;
+          for (const link of document.querySelectorAll<HTMLAnchorElement>('.toc-link')) {
+            link.classList.toggle('is-active', id !== null && link.getAttribute('href') === `#${id}`);
+          }
+        }
+      }
+    }
+
+    function requestUpdate(): void {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(update);
+    }
+
+    applyScrollMargins();
+    window.addEventListener('scroll', requestUpdate, { passive: true });
+    window.addEventListener('resize', () => {
+      applyScrollMargins();
+      requestUpdate();
+    });
+    update();
+
+    /* ---------- 返回顶部 ---------- */
+    backToTop?.addEventListener('click', () => {
+      const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      window.scrollTo({ top: 0, behavior: reduceMotion ? 'auto' : 'smooth' });
+    });
+  }
+</script>
+
+<style>
+  /* ---------- 阅读进度条 ---------- */
+  .reading-progress {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    z-index: 40; /* 需在吸顶头部（z-20）之上 */
+    pointer-events: none;
+  }
+
+  .reading-progress__bar {
+    height: 100%;
+    background-color: var(--cinnabar);
+    transform-origin: 0 50%;
+    transform: scaleX(var(--reading-progress, 0));
+    will-change: transform;
+  }
+
+  /* ---------- 返回顶部 ---------- */
+  .back-to-top {
+    position: fixed;
+    right: 1.25rem;
+    bottom: 1.5rem;
+    z-index: 30;
+    display: grid;
+    place-items: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    background-color: color-mix(in srgb, var(--paper) 88%, transparent);
+    color: var(--ink-soft);
+    cursor: pointer;
+    opacity: 0;
+    transform: translateY(0.5rem);
+    pointer-events: none;
+    transition:
+      opacity 0.25s ease,
+      transform 0.25s ease,
+      color 0.2s ease,
+      border-color 0.2s ease;
+  }
+
+  .back-to-top svg {
+    width: 1.05rem;
+    height: 1.05rem;
+  }
+
+  .back-to-top:hover {
+    color: var(--cinnabar);
+    border-color: var(--cinnabar);
+  }
+
+  .back-to-top.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+  }
+</style>
+
+<style is:global>
+  /*
+   * 以下选择器服务于 ReadingDock 运行时注入的辅助 UI。
+   * 只做布局与轻量外观，视觉细节交给全局样式覆盖。
+   */
+
+  /* 代码块容器：工具栏的定位上下文 */
+  .prose-ink .code-block {
+    position: relative;
+  }
+
+  /* 代码工具栏：pre 的兄弟节点，不参与复制文本 */
+  .prose-ink .code-toolbar {
+    position: absolute;
+    top: 0.35rem;
+    right: 0.35rem;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.15rem 0.4rem;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background-color: color-mix(in srgb, var(--paper) 85%, transparent);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  .prose-ink .code-lang {
+    color: var(--ink-faint);
+    letter-spacing: 0.04em;
+    user-select: none;
+  }
+
+  .prose-ink .code-copy {
+    border: none;
+    padding: 0;
+    background: none;
+    font: inherit;
+    color: var(--ink-soft);
+    cursor: pointer;
+    transition: color 0.2s ease;
+  }
+
+  .prose-ink .code-copy:hover,
+  .prose-ink .code-copy.is-copied {
+    color: var(--cinnabar);
+  }
+
+  .prose-ink .code-copy.is-error {
+    color: #a03024;
+  }
+
+  /* 表格横向滚动包装 */
+  .prose-ink .table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* 标题锚点：默认低调，悬停/高亮时醒目 */
+  .prose-ink a.h-anchor {
+    margin-left: 0.3em;
+    font-size: 0.72em;
+    color: var(--ink-faint);
+    text-decoration: none;
+    opacity: 0.55;
+    transition:
+      color 0.2s ease,
+      opacity 0.2s ease;
+  }
+
+  .prose-ink a.h-anchor:hover {
+    color: var(--cinnabar);
+    opacity: 1;
+  }
+</style>

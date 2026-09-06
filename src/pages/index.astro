@@ -1,28 +1,32 @@
 ---
-import { getCollection } from 'astro:content';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import PostCard from '../components/PostCard.astro';
+import SeriesSection from '../components/SeriesSection.astro';
 import Mountains from '../components/Mountains.astro';
 import Seal from '../components/Seal.astro';
+import { getPublishedPosts } from '../utils/posts';
 
-const posts = (await getCollection('blog', ({ data }) => !data.draft)).sort(
-  (a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf(),
-);
+const posts = await getPublishedPosts();
+const featured = posts[0];
+const recent = featured ? posts.slice(1, 7) : posts.slice(0, 6);
 ---
 
 <BaseLayout>
-  <!-- 介绍区：画式构图——右侧竖排词句+印章如题跋落款，左侧介绍文字，底部淡墨远山 -->
+  <!--
+    首屏：保留远山与印章，但压缩高度（山矮一档、留白收一档），
+    让卷首重点和系列区尽快进入视野。构图不变：左介绍文字，右竖排词句+印章题跋。
+  -->
   <section class="full-bleed relative overflow-hidden">
-    <Mountains class="pointer-events-none absolute inset-x-0 bottom-0 h-32 w-full text-ink" />
+    <Mountains class="pointer-events-none absolute inset-x-0 bottom-0 h-20 w-full text-ink sm:h-24" />
 
     <div
-      class="relative mx-auto flex max-w-[60rem] flex-col-reverse items-start gap-10 px-5 pb-40 pt-12 sm:flex-row sm:items-end sm:justify-between sm:pt-16"
+      class="relative mx-auto flex max-w-[60rem] flex-col-reverse items-start gap-6 px-5 pb-24 pt-8 sm:flex-row sm:items-end sm:justify-between sm:gap-10 sm:pb-28 sm:pt-10"
     >
       <p class="max-w-sm text-[15px] leading-relaxed text-ink-soft">
         记录日子里细碎的好时光——散步、读书、雨声，和一些没什么用处但想通了很开心的事。
       </p>
 
-      <div class="flex items-center gap-4 sm:flex-col">
+      <div class="flex items-center gap-4 sm:flex-col sm:gap-3">
         <div class="order-2 sm:order-1">
           <p class="vertical-text font-brush text-lg text-ink-soft">少年听雨歌楼上</p>
         </div>
@@ -34,10 +38,38 @@ const posts = (await getCollection('blog', ({ data }) => !data.draft)).sort(
     </div>
   </section>
 
-  <!-- 文章流 -->
-  <section aria-label="文章列表">
-    <div class="flex flex-col gap-7">
-      {posts.map((post) => <PostCard post={post} />)}
-    </div>
-  </section>
+  <!-- 卷首：最新一篇作重点呈现 -->
+  {
+    featured && (
+      <section aria-label="卷首">
+        <PostCard post={featured} variant="featured" />
+      </section>
+    )
+  }
+
+  <!-- 系列栏目：redis / zig / life -->
+  <SeriesSection excludePostId={featured?.id} />
+
+  <!-- 近作：卷首之外按时间倒序 -->
+  {
+    recent.length > 0 && (
+      <section aria-label="最近文章" class="mt-16">
+        <div class="flex items-baseline justify-between gap-4">
+          <h2 class="font-brush text-2xl text-ink">近作</h2>
+          <a
+            href="/archives/"
+            class="text-[13px] text-ink-faint transition-colors hover:text-cinnabar"
+          >
+            全部归档 →
+          </a>
+        </div>
+
+        <div class="mt-8 flex flex-col gap-7">
+          {recent.map((post) => (
+            <PostCard post={post} />
+          ))}
+        </div>
+      </section>
+    )
+  }
 </BaseLayout>

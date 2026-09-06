@@ -2,6 +2,7 @@
 title: 所有哨兵都看见了，不等于已经选出新主库：Redis Sentinel 的故障转移
 description: 一只 Sentinel 已经写下 ODOWN，故障转移却仍因拿不到多数票而中止。本文沿 SDOWN、quorum、leader 表决与状态机逐层拆解 Sentinel，并追到副本排序、脑裂写入和客户端服务发现。文中实验在 Redis 7.4.11 上复核。
 pubDate: 2026-09-05
+category: redis
 tags: [Redis, 数据库]
 ---
 

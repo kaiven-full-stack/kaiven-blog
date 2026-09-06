@@ -2,6 +2,7 @@
 title: 分配是调用方的事：Zig 的 Allocator
 description: GC 把分配藏进运行时，RAII 把清理绑在对象生命周期上，Zig 的答案是：分配不是语言特性，是一个参数。文中代码在 0.16.0 上逐一验证。
 pubDate: 2026-09-04
+category: zig
 tags: [Zig, 编程语言]
 ---
 

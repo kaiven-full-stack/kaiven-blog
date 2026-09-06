@@ -2,6 +2,7 @@
 title: 纸上已有归处：Zig 的 Result Location Semantics
 description: 墨迹并非先成于别纸，再誊入正卷；在 Zig 里，外层上下文可以先给表达式一份类型，也可以先为结果留下一处地址。本文从匿名字面量、聚合赋值与 return 出发，辨清语言语义、复制、优化器和 ABI 各自管到哪里。文中代码在 0.16.0 上逐一验证。
 pubDate: 2026-09-05
+category: zig
 tags: [Zig, 编程语言]
 ---
 

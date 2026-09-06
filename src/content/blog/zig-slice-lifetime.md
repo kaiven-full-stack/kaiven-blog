@@ -2,6 +2,7 @@
 title: 借来的一段地址：Zig 切片为何不替你保管内存
 description: 切片记得一段内存从哪里开始、可以走多远，却不记得谁拥有它，也不保证它还能活多久。本文从栈上数组、ArrayList、allocator、arena 与字符串字面量出发，辨清借用、失效与所有权转移。文中代码在 0.16.0 上逐一验证。
 pubDate: 2026-09-05
+category: zig
 tags: [Zig, 编程语言]
 ---
 

@@ -2,6 +2,7 @@
 title: undefined 不是零，0xAA 也不是垃圾
 description: 零初始化递给每个变量一杯温水，C 的未初始化是一场静默的赌博，Zig 的答案是登记簿上的一笔签字。文中代码在 0.16.0 上逐一验证。
 pubDate: 2026-09-04
+category: zig
 tags: [Zig, 编程语言]
 ---
 

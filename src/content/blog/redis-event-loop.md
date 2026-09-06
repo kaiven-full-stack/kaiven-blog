@@ -2,6 +2,7 @@
 title: 一个命令没走完，所有人都在门外：Redis 的线程与事件循环
 description: 一条慢 Lua 脚本占住主线程，五条微秒级 GET 却各自等了几秒。本文把隔离实验当作现场，从事件循环、I/O 线程与后台任务一路调查到 SLOWLOG、BGSAVE 和 lazyfree，辨清 Redis“单线程”究竟指什么。文中实验在 Redis 7.4.11 上复核。
 pubDate: 2026-09-05
+category: redis
 tags: [Redis, 数据库]
 ---
 

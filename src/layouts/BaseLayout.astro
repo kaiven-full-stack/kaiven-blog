@@ -51,6 +51,7 @@ const currentPath = Astro.url.pathname;
   </head>
 
   <body class="min-h-screen antialiased">
+    <a class="skip-link" href="#main-content">跳到正文</a>
     <!-- 印章毛边滤镜：.seal 通过 filter: url(#seal-rough) 引用，边缘和印文带刀刻的毛刺 -->
     <svg aria-hidden="true" class="absolute h-0 w-0">
       <filter id="seal-rough">
@@ -61,19 +62,20 @@ const currentPath = Astro.url.pathname;
 
     <!-- z-20 需高于 main/footer 的 z-10，否则滚动后吸顶头部被内容盖住、按钮点不到 -->
     <header class="sticky top-0 z-20 border-b border-line bg-paper">
-      <div class="mx-auto flex max-w-[60rem] items-center justify-between gap-4 px-5 py-3.5">
+      <div class="mx-auto flex max-w-[60rem] items-center justify-between gap-2 px-3 py-3.5 sm:gap-4 sm:px-5">
         <a href="/" class="flex items-center gap-2.5" aria-label="返回首页">
           <Seal chars="听雨" size="md" />
           <span class="hidden font-brush text-xl tracking-wide text-ink sm:block">听雨</span>
         </a>
 
-        <nav class="flex items-center gap-1 sm:gap-4">
+        <nav class="flex items-center gap-0 sm:gap-4">
           {
             navItems.map((item) => (
               <a
                 href={item.href}
+                aria-current={currentPath === item.href ? 'page' : undefined}
                 class:list={[
-                  'px-1.5 py-1 text-[15px] transition-colors hover:text-cinnabar',
+                  'whitespace-nowrap px-1 py-1 text-[13px] transition-colors hover:text-cinnabar sm:px-1.5 sm:text-[15px]',
                   currentPath === item.href ? 'text-cinnabar' : 'text-ink-soft',
                 ]}
               >
@@ -101,7 +103,7 @@ const currentPath = Astro.url.pathname;
       </div>
     </header>
 
-    <main class="relative z-10 mx-auto max-w-[60rem] px-5">
+    <main id="main-content" tabindex="-1" class="relative z-10 mx-auto max-w-[60rem] px-5">
       <slot />
     </main>
 

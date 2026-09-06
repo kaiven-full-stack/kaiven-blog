@@ -1,0 +1,30 @@
+---
+import BrushRule from './BrushRule.astro';
+
+interface Props {
+  title: string;
+  description?: string;
+  count: number;
+}
+
+const { title, description, count } = Astro.props;
+---
+
+<header class="pt-10 sm:pt-14">
+  <p class="text-[13px] tracking-[0.35em] text-ink-faint">系列 · 卷</p>
+
+  <div class="mt-3 flex flex-wrap items-baseline gap-3">
+    <h1 class="font-brush text-4xl text-ink">{title}</h1>
+    <span class="text-sm text-ink-faint">{count} 篇</span>
+  </div>
+
+  {
+    description && (
+      <p class="mt-4 max-w-xl text-[15px] leading-relaxed text-ink-soft">{description}</p>
+    )
+  }
+
+  <div class="mt-6 opacity-70">
+    <BrushRule />
+  </div>
+</header>

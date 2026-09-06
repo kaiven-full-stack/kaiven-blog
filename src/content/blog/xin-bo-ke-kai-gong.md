@@ -2,6 +2,7 @@
 title: 新博客开工
 description: 「听雨」的第一篇文章：为什么忽然想写博客，以及想把它写成什么样子。
 pubDate: 2026-09-02
+category: life
 tags: [随笔]
 ---
 

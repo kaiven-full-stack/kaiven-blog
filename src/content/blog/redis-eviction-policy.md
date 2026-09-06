@@ -2,6 +2,7 @@
 title: 内存满了，先忘掉谁：Redis 的淘汰策略与近似 LRU/LFU
 description: 同一批键，LRU 更在意谁最近沉默，LFU 更在意谁曾频繁出现。本文从 maxmemory 水位线出发，拆开候选集合、随机采样、候选池、24 位时钟和淘汰后的删除路径。文中实验在 Redis 7.4.11 上复核。
 pubDate: 2026-09-05
+category: redis
 tags: [Redis, 数据库]
 ---
 
