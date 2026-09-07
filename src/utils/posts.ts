@@ -11,12 +11,13 @@ import { getCollection, type CollectionEntry } from 'astro:content';
 export type BlogPost = CollectionEntry<'blog'>;
 
 /** 文章分类，与 content.config.ts 中 frontmatter 的 category 枚举一一对应 */
-export type Category = 'zig' | 'redis' | 'life';
+export type Category = 'zig' | 'redis' | 'cpython' | 'life';
 
 /** 分类展示名 */
 export const CATEGORY_LABELS: Record<Category, string> = {
   zig: 'Zig',
   redis: 'Redis',
+  cpython: 'CPython',
   life: '生活',
 };
 
@@ -49,6 +50,12 @@ export const SERIES_ORDER: readonly SeriesMeta[] = [
     title: 'Zig 系列',
     description: '从分配器、指针家族到 comptime 与 C 互操作，逐篇拆开 Zig 的设计取舍。',
     category: 'zig',
+  },
+  {
+    id: 'cpython',
+    title: 'CPython 系列',
+    description: '从对象生命、内存布局到字节码特化与自由线程，沿着 Python 表象走进 CPython 的实现现场。',
+    category: 'cpython',
   },
   {
     id: 'life',
