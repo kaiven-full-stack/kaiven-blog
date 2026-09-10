@@ -113,6 +113,18 @@ export const concepts: ConceptMeta[] = [
     posts: ['kernel-primer', 'kernel-page-tables', 'kernel-copy-on-write', 'redis-fork-cow'],
   },
   {
+    id: 'ordered-index',
+    label: '有序结构',
+    description: 'B+ 树、跳表与开放寻址的取舍',
+    posts: ['redis-skiplist-zset', 'mysql-innodb-pages-btree'],
+  },
+  {
+    id: 'page-unit',
+    label: '页式管理',
+    description: '固定大小页作为分配与 I/O 的最小单位',
+    posts: ['kernel-page-tables', 'kernel-buddy-allocator', 'kernel-page-cache-writeback', 'mysql-innodb-pages-btree'],
+  },
+  {
     id: 'strings',
     label: '字符串与编码',
     description: '字节切片加约定，编码显式认领',
@@ -317,6 +329,26 @@ export const concepts: ConceptMeta[] = [
     posts: ['cpython-type-slots-dispatch'],
   },
 
+  // ---- MySQL 系列 ----
+  {
+    id: 'innodb-space',
+    label: 'InnoDB 空间管理',
+    description: '页/区/段三层账本与碎片区到整区的成长',
+    posts: ['mysql-innodb-pages-btree'],
+  },
+  {
+    id: 'btree',
+    label: 'B+ 树',
+    description: '矮胖多叉，叶子链表，索引即数据',
+    posts: ['mysql-innodb-pages-btree'],
+  },
+  {
+    id: 'clustered-index',
+    label: '聚簇与二级索引',
+    description: '数据住在主键树上，二级索引存主键回表',
+    posts: ['mysql-innodb-pages-btree'],
+  },
+
   // ---- Linux 内核系列 ----
   {
     id: 'buddy-system',
@@ -351,4 +383,5 @@ export const relatedLinks: RelatedLink[] = [
   { from: 'zig-transition-guide', to: 'cpython-reference-counting', note: '对照 PyObject 对象头' },
   { from: 'zig-transition-guide', to: 'cpython-object-layout', note: '值语义对照对象头开销' },
   { from: 'zig-transition-guide', to: 'cpython-str-internals', note: '对照 Python 码点计长' },
+  { from: 'redis-skiplist-zset', to: 'mysql-innodb-pages-btree', note: '跳表对望 B+ 树：内存盘上各得其所' },
 ];
