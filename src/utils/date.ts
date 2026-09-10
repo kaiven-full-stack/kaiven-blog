@@ -8,7 +8,7 @@ function yearToCn(year: number): string {
 }
 
 function numToCn(n: number): string {
-  if (n <= 10) return DIGITS[n];
+  if (n < 10) return DIGITS[n];
   if (n < 20) return '十' + (n % 10 ? DIGITS[n % 10] : '');
   return DIGITS[Math.floor(n / 10)] + '十' + (n % 10 ? DIGITS[n % 10] : '');
 }
