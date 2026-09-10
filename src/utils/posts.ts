@@ -11,13 +11,14 @@ import { getCollection, type CollectionEntry } from 'astro:content';
 export type BlogPost = CollectionEntry<'blog'>;
 
 /** 文章分类，与 content.config.ts 中 frontmatter 的 category 枚举一一对应 */
-export type Category = 'zig' | 'redis' | 'cpython' | 'life';
+export type Category = 'zig' | 'redis' | 'cpython' | 'kernel' | 'life';
 
 /** 分类展示名 */
 export const CATEGORY_LABELS: Record<Category, string> = {
   zig: 'Zig',
   redis: 'Redis',
   cpython: 'CPython',
+  kernel: 'Linux 内核',
   life: '生活',
 };
 
@@ -56,6 +57,12 @@ export const SERIES_ORDER: readonly SeriesMeta[] = [
     title: 'CPython 系列',
     description: '从对象生命、内存布局到字节码特化与自由线程，沿着 Python 表象走进 CPython 的实现现场。',
     category: 'cpython',
+  },
+  {
+    id: 'kernel',
+    title: 'Linux 内核系列',
+    description: '从页表、写时复制到伙伴系统与 OOM，沿着一次访存沉进 Linux 内核的内存现场。',
+    category: 'kernel',
   },
   {
     id: 'life',
