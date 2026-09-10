@@ -22,6 +22,12 @@
   --ink-faint: #a29d90; /* 清墨 */
   --cinnabar: #b03a2e; /* 朱砂 */
   --line: #ddd5c4; /* 分割线 */
+  /* 知识图谱系列配色：国画颜料（Canvas 组件按 --graph-<系列> 读取） */
+  --graph-redis: #b03a2e; /* 朱砂 */
+  --graph-zig: #a06a2c; /* 赭石 */
+  --graph-cpython: #3d5f8e; /* 花青 */
+  --graph-kernel: #4d7c59; /* 石绿 */
+  --graph-life: #a3821f; /* 藤黄 */
   /* 宣纸纤维纹：细纤维噪点 + 大块云斑两层，铺在纸色上，背景才不像网页底色 */
   --paper-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='260'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.33 0 0 0 0 0.30 0 0 0 0 0.24 0 0 0 0.06 0'/%3E%3C/filter%3E%3Cfilter id='m'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.06' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.33 0 0 0 0 0.30 0 0 0 0 0.24 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='260' height='260' filter='url(%23f)'/%3E%3Crect width='260' height='260' filter='url(%23m)'/%3E%3C/svg%3E");
 }
@@ -33,6 +39,12 @@
   --ink-faint: #5d5a52; /* 清墨 */
   --cinnabar: #c9503f; /* 朱砂微亮，夜里不闷 */
   --line: #34363c;
+  /* 图谱系列色夜里整体提亮，避免糊在夜墨上 */
+  --graph-redis: #cf6a56;
+  --graph-zig: #d1a05e;
+  --graph-cpython: #82a5d1;
+  --graph-kernel: #85b98d;
+  --graph-life: #c9ad4e;
   --paper-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='260'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.85 0 0 0 0 0.83 0 0 0 0 0.78 0 0 0 0.05 0'/%3E%3C/filter%3E%3Cfilter id='m'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.06' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.85 0 0 0 0 0.83 0 0 0 0 0.78 0 0 0 0.04 0'/%3E%3C/filter%3E%3Crect width='260' height='260' filter='url(%23f)'/%3E%3Crect width='260' height='260' filter='url(%23m)'/%3E%3C/svg%3E");
 }
 

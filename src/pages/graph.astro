@@ -1,0 +1,71 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import GraphView from '../components/GraphView.astro';
+import BrushRule from '../components/BrushRule.astro';
+import { getConceptIndex, getGraphData } from '../utils/graph';
+import { SERIES_ORDER } from '../utils/posts';
+
+/**
+ * 知识图谱页：交互式 Canvas 视图（GraphView）+ 无 JS 可用的文字版知识点索引。
+ * 本页没有 data-pagefind-body，不会进入 Pagefind 索引（搜索只面向文章）。
+ */
+const graph = await getGraphData();
+const concepts = await getConceptIndex();
+const series = SERIES_ORDER.map((s) => ({
+  id: s.id as string,
+  label: s.title,
+  count: graph.seriesCounts[s.id] ?? 0,
+}));
+---
+
+<BaseLayout title="知识图谱" description="听雨的知识图谱：文章、标签与知识点织成的关联网络。">
+  <header class="pt-12 text-center sm:pt-16">
+    <h1 class="font-brush text-4xl text-ink">知识图谱</h1>
+    <p class="mx-auto mt-4 max-w-[36em] text-sm leading-7 text-ink-soft">
+      每篇文章是一滴墨，知识点是把它们牵起来的线。实心墨点按系列着色，空心圆是知识点——
+      点开墨点读文章，点开空心点看它牵着谁；不同系列的墨点被同一枚空心点牵住时，就是知识的呼应。
+    </p>
+    <p class="mt-3 text-[13px] text-ink-faint">
+      {graph.stats.posts} 篇文章 · {graph.stats.concepts} 个知识点 · {graph.stats.tags} 个标签 · {graph.stats.edges} 条关联
+    </p>
+  </header>
+
+  <div class="mt-8">
+    <GraphView data={graph} series={series} />
+  </div>
+
+  <section class="mx-auto mt-14 max-w-[34em] pb-4" data-pagefind-ignore>
+    <BrushRule />
+    <details class="graph-index">
+      <summary class="mt-6 cursor-pointer text-sm text-ink-soft transition-colors hover:text-cinnabar">
+        文字版知识点索引（共 {concepts.length} 个）
+      </summary>
+      <ul class="mt-5 space-y-4">
+        {
+          concepts.map((concept) => (
+            <li class="text-sm leading-7">
+              <span class="font-medium text-ink">{concept.label}</span>
+              <span class="text-ink-faint">（{concept.posts.length} 篇）</span>
+              {concept.description && <span class="text-ink-faint"> · {concept.description}</span>}
+              <br />
+              {concept.posts.map((post, i) => (
+                <span>
+                  {i > 0 && '、'}
+                  <a href={post.url} class="text-ink-soft transition-colors hover:text-cinnabar">
+                    {post.title}
+                  </a>
+                </span>
+              ))}
+            </li>
+          ))
+        }
+      </ul>
+    </details>
+  </section>
+</BaseLayout>
+
+<style>
+  .graph-index summary::marker {
+    color: var(--ink-faint);
+  }
+</style>

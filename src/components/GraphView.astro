@@ -1,0 +1,926 @@
+---
+/**
+ * 知识图谱交互视图：力导向布局 + Canvas 渲染，无第三方依赖。
+ *
+ * - 数据由构建期 getGraphData() 生成，经 <script type="application/json"> 内联进页面；
+ * - 力导向（斥力 + 弹簧 + 系列锚点 + 向心）在浏览器本地跑，初始位置按系列圆周锚定（确定性）；
+ * - 悬停高亮邻居、点击文章跳转、点击知识点钉住、拖拽 / 滚轮缩放 / 触屏捏合；
+ * - prefers-reduced-motion 时跳过动画直接落位；theme-changed 时重读配色。
+ */
+import type { GraphData } from '../utils/graph';
+
+interface Props {
+  data: GraphData;
+  series: { id: string; label: string; count: number }[];
+}
+
+const { data, series } = Astro.props;
+// < 转义，防止标题里出现 < 时截断 <script>
+const payload = JSON.stringify(data).replace(/</g, '\\u003c');
+---
+
+<div class="graph-view" id="graph-root">
+  <script is:inline type="application/json" id="graph-data" set:html={payload} />
+
+  <div class="mb-3 flex flex-wrap items-center gap-2" role="group" aria-label="按系列筛选图谱">
+    <button type="button" class="graph-chip" data-series="all">全部</button>
+    {
+      series.map((item) => (
+        <button
+          type="button"
+          class="graph-chip"
+          data-series={item.id}
+          style={`--chip-color: var(--graph-${item.id})`}
+          aria-pressed="true"
+        >
+          <span class="graph-chip-dot" aria-hidden="true" />
+          {item.label}
+          <span class="graph-chip-count">{item.count}</span>
+        </button>
+      ))
+    }
+    <button type="button" class="graph-chip graph-chip-action" id="graph-reset" title="复位缩放与视点">复位视图</button>
+  </div>
+  <p class="graph-legend">
+    实心墨点 = 文章（颜色按系列，大小按篇幅） · 空心圆 = 知识点 · 虚线圈 = 标签 · 朱砂线 = 文内互链与精选关联
+  </p>
+
+  <div class="graph-canvas-wrap full-bleed" id="graph-canvas-wrap">
+    <canvas id="graph-canvas" aria-label="知识图谱交互视图：拖动节点、滚轮缩放，点击墨点打开文章"></canvas>
+    <div id="graph-tooltip" class="graph-tooltip" hidden></div>
+    <p class="graph-hint">拖动节点可牵动关联 · 滚轮缩放 · 点击墨点读文章 · 点击空心点看它牵着谁</p>
+  </div>
+</div>
+
+<style>
+  .graph-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--ink-soft);
+    padding: 0.22rem 0.75rem;
+    font-size: 13px;
+    line-height: 1.5;
+    cursor: pointer;
+    transition: border-color 0.15s ease, color 0.15s ease;
+  }
+  .graph-chip:hover {
+    border-color: var(--ink-faint);
+    color: var(--ink);
+  }
+  .graph-chip-dot {
+    width: 0.55rem;
+    height: 0.55rem;
+    border-radius: 999px;
+    background: var(--chip-color, var(--ink-faint));
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--chip-color, var(--ink-faint)) 60%, transparent);
+  }
+  .graph-chip-count {
+    font-size: 11px;
+    color: var(--ink-faint);
+  }
+  .graph-chip.is-off {
+    color: var(--ink-faint);
+  }
+  .graph-chip.is-off .graph-chip-dot {
+    background: transparent;
+    box-shadow: inset 0 0 0 1.5px var(--ink-faint);
+  }
+  .graph-chip-action {
+    margin-left: auto;
+  }
+  .graph-legend {
+    margin: 0 0 0.65rem;
+    font-size: 12px;
+    color: var(--ink-faint);
+  }
+  .graph-canvas-wrap {
+    position: relative;
+    height: clamp(26rem, 72vh, 46rem);
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    touch-action: none;
+    cursor: grab;
+    overflow: hidden;
+  }
+  .graph-canvas-wrap canvas {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  .graph-tooltip {
+    position: absolute;
+    z-index: 30;
+    max-width: 17rem;
+    border: 1px solid var(--line);
+    background: var(--paper);
+    padding: 0.55rem 0.8rem;
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--ink);
+    box-shadow: 0 4px 16px rgb(43 42 38 / 0.14);
+    pointer-events: none;
+  }
+  .graph-hint {
+    position: absolute;
+    right: 0.9rem;
+    bottom: 0.55rem;
+    margin: 0;
+    font-size: 12px;
+    color: var(--ink-faint);
+    pointer-events: none;
+  }
+</style>
+
+<!-- tooltip 内容由脚本动态构建，拿不到 scoped class，这里用全局样式 -->
+<style is:global>
+  .graph-tooltip strong {
+    display: block;
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .graph-tooltip .graph-tooltip-meta {
+    color: var(--ink-soft);
+    font-size: 12px;
+  }
+</style>
+
+<script>
+  // 包一层 IIFE：Astro 把这个 <script> 编译成 ES module，顶层 return 不合法
+  (function () {
+  interface GNode {
+    id: string;
+    kind: 'post' | 'tag' | 'concept';
+    label: string;
+    description?: string;
+    series?: string;
+    seriesLabel?: string;
+    url?: string;
+    minutes?: number;
+    dateLabel?: string;
+  }
+  interface GEdge {
+    source: string;
+    target: string;
+    kind: 'tag' | 'concept' | 'link' | 'related';
+    note?: string;
+  }
+  interface Payload {
+    nodes: GNode[];
+    edges: GEdge[];
+    seriesOrder?: string[];
+  }
+
+  const root = document.getElementById('graph-root');
+  const dataEl = document.getElementById('graph-data');
+  const canvas = document.getElementById('graph-canvas') as HTMLCanvasElement | null;
+  const tooltipEl = document.getElementById('graph-tooltip');
+  const wrap = document.getElementById('graph-canvas-wrap');
+  if (!root || !dataEl || !canvas || !tooltipEl || !wrap) return;
+
+  let payload: Payload;
+  try {
+    payload = JSON.parse(dataEl.textContent || '{}') as Payload;
+  } catch {
+    return;
+  }
+  if (!payload.nodes?.length) return;
+
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  // ---------- 运行时节点 / 邻接 ----------
+  interface Sim extends GNode {
+    x: number;
+    y: number;
+    vx: number;
+    vy: number;
+    r: number;
+    visible: boolean;
+  }
+
+  const nodes: Sim[] = payload.nodes.map((n) => ({ ...n, x: 0, y: 0, vx: 0, vy: 0, r: 4, visible: true }));
+  const index = new Map(nodes.map((n, i) => [n.id, i]));
+  const edges = payload.edges
+    .filter((e) => index.has(e.source) && index.has(e.target) && e.source !== e.target)
+    .map((e) => ({ s: index.get(e.source)!, t: index.get(e.target)!, kind: e.kind }));
+
+  const adj: { to: number }[][] = nodes.map(() => []);
+  for (const e of edges) {
+    adj[e.s].push({ to: e.t });
+    adj[e.t].push({ to: e.s });
+  }
+
+  const visiblePostMembers = (i: number): number =>
+    adj[i].filter((a) => nodes[a.to].kind === 'post' && nodes[a.to].visible).length;
+
+  // ---------- 尺寸 / 半径 ----------
+  nodes.forEach((n, i) => {
+    if (n.kind === 'post') {
+      n.r = 4 + (Math.min(n.minutes ?? 6, 30) / 30) * 4.5;
+    } else if (n.kind === 'concept') {
+      n.r = 4.5 + Math.min(adj[i].length, 6) * 0.45;
+    } else {
+      n.r = 3.2 + Math.min(adj[i].length, 8) * 0.35;
+    }
+  });
+
+  // ---------- 初始布局：系列圆周锚定（确定性随机） ----------
+  function mulberry32(seed: number): () => number {
+    let s = seed;
+    return () => {
+      s |= 0;
+      s = (s + 0x6d2b79f5) | 0;
+      let t = Math.imul(s ^ (s >>> 15), 1 | s);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  const rand = mulberry32(20260910);
+
+  const VW = 1200;
+  const VH = 800;
+  const seriesOrder = payload.seriesOrder?.length ? payload.seriesOrder : [];
+  const anchors = new Map<string, { x: number; y: number }>();
+  seriesOrder.forEach((s, i) => {
+    const angle = -Math.PI / 2 + (i * 2 * Math.PI) / seriesOrder.length;
+    anchors.set(s, { x: VW / 2 + Math.cos(angle) * VW * 0.3, y: VH / 2 + Math.sin(angle) * VH * 0.33 });
+  });
+  const fallbackAnchor = { x: VW / 2, y: VH / 2 };
+
+  // 先放文章（锚点附近抖动），再放知识点/标签到成员质心
+  const order = [...nodes.keys()].sort((a, b) => (nodes[a].kind === 'post' ? 0 : 1) - (nodes[b].kind === 'post' ? 0 : 1));
+  for (const i of order) {
+    const n = nodes[i];
+    if (n.kind === 'post') {
+      const a = anchors.get(n.series ?? '') ?? fallbackAnchor;
+      n.x = a.x + (rand() - 0.5) * 140;
+      n.y = a.y + (rand() - 0.5) * 140;
+    } else {
+      let sx = 0;
+      let sy = 0;
+      let c = 0;
+      for (const { to } of adj[i]) {
+        sx += nodes[to].x;
+        sy += nodes[to].y;
+        c++;
+      }
+      if (c === 0) {
+        n.x = VW / 2 + (rand() - 0.5) * 200;
+        n.y = VH / 2 + (rand() - 0.5) * 200;
+      } else {
+        n.x = sx / c + (rand() - 0.5) * 44;
+        n.y = sy / c + (rand() - 0.5) * 44;
+      }
+    }
+  }
+
+  // ---------- 配色（跟随明暗主题） ----------
+  const colorKeys = ['ink', 'inkSoft', 'inkFaint', 'line', 'paper', 'cinnabar'];
+  const colors: Record<string, string> = {};
+  function readColors(): void {
+    const cs = getComputedStyle(document.documentElement);
+    const get = (name: string): string => cs.getPropertyValue(name).trim() || '#888';
+    for (const s of seriesOrder) colors[s] = get(`--graph-${s}`);
+    for (const k of colorKeys) colors[k] = get(`--${k === 'inkSoft' ? 'ink-soft' : k === 'inkFaint' ? 'ink-faint' : k}`);
+  }
+
+  // ---------- 画布 / 相机 ----------
+  let dpr = 1;
+  let cw = 10;
+  let ch = 10;
+  const cam = { x: VW / 2, y: VH / 2, scale: 1 };
+  let userMovedCamera = false;
+  let needsDraw = true;
+
+  function resize(): void {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const rect = canvas!.getBoundingClientRect();
+    cw = Math.max(rect.width, 10);
+    ch = Math.max(rect.height, 10);
+    canvas!.width = Math.round(cw * dpr);
+    canvas!.height = Math.round(ch * dpr);
+    needsDraw = true;
+    wake();
+  }
+
+  function toVirtual(sx: number, sy: number): { x: number; y: number } {
+    return { x: (sx - cw / 2) / cam.scale + cam.x, y: (sy - ch / 2) / cam.scale + cam.y };
+  }
+  function nodeScreen(i: number): { x: number; y: number } {
+    return {
+      x: (nodes[i].x - cam.x) * cam.scale + cw / 2,
+      y: (nodes[i].y - cam.y) * cam.scale + ch / 2,
+    };
+  }
+  function zoomAt(mx: number, my: number, factor: number): void {
+    const next = Math.min(3, Math.max(0.3, cam.scale * factor));
+    const v = toVirtual(mx, my);
+    cam.scale = next;
+    cam.x = v.x - (mx - cw / 2) / cam.scale;
+    cam.y = v.y - (my - ch / 2) / cam.scale;
+  }
+  function panBy(dx: number, dy: number): void {
+    cam.x -= dx / cam.scale;
+    cam.y -= dy / cam.scale;
+  }
+
+  let camTween: { from: { x: number; y: number; scale: number }; to: { x: number; y: number; scale: number }; start: number; dur: number } | null =
+    null;
+  function fitCamera(animate: boolean): void {
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    let any = false;
+    for (const n of nodes) {
+      if (!n.visible) continue;
+      any = true;
+      minX = Math.min(minX, n.x - n.r);
+      minY = Math.min(minY, n.y - n.r);
+      maxX = Math.max(maxX, n.x + n.r);
+      maxY = Math.max(maxY, n.y + n.r);
+    }
+    if (!any) return;
+    const pad = 80;
+    const bw = maxX - minX + pad * 2;
+    const bh = maxY - minY + pad * 2;
+    const target = {
+      x: (minX + maxX) / 2,
+      y: (minY + maxY) / 2,
+      scale: Math.max(0.3, Math.min(cw / bw, ch / bh, 1.5)),
+    };
+    if (!animate || reduceMotion) {
+      Object.assign(cam, target);
+      camTween = null;
+      needsDraw = true;
+      wake();
+      return;
+    }
+    camTween = { from: { ...cam }, to: target, start: performance.now(), dur: 420 };
+    wake();
+  }
+  function stepTween(): void {
+    if (!camTween) return;
+    const t = Math.min(1, (performance.now() - camTween.start) / camTween.dur);
+    const eased = 1 - Math.pow(1 - t, 3);
+    cam.x = camTween.from.x + (camTween.to.x - camTween.from.x) * eased;
+    cam.y = camTween.from.y + (camTween.to.y - camTween.from.y) * eased;
+    cam.scale = camTween.from.scale + (camTween.to.scale - camTween.from.scale) * eased;
+    if (t >= 1) camTween = null;
+  }
+
+  // ---------- 力导向模拟 ----------
+  let alpha = 1;
+  let dragIdx = -1;
+  const REPULSION = 5200;
+  const SPRING: Record<string, { len: number; k: number }> = {
+    tag: { len: 135, k: 0.02 },
+    concept: { len: 88, k: 0.055 },
+    link: { len: 170, k: 0.03 },
+    related: { len: 170, k: 0.03 },
+  };
+
+  function tick(): void {
+    const a = alpha;
+    for (let i = 0; i < nodes.length; i++) {
+      const ni = nodes[i];
+      if (!ni.visible) continue;
+      for (let j = i + 1; j < nodes.length; j++) {
+        const nj = nodes[j];
+        if (!nj.visible) continue;
+        let dx = nj.x - ni.x;
+        let dy = nj.y - ni.y;
+        let d2 = dx * dx + dy * dy;
+        if (d2 > 90000) continue; // 300px 截断
+        if (d2 < 0.01) {
+          // 完全重叠时给一个确定性的微位移方向
+          dx = ((i % 5) - 2) * 0.12 + 0.05;
+          dy = ((j % 5) - 2) * 0.12 - 0.05;
+          d2 = dx * dx + dy * dy;
+        }
+        const d = Math.sqrt(d2);
+        const f = (REPULSION * a) / d2;
+        const fx = (dx / d) * f;
+        const fy = (dy / d) * f;
+        ni.vx -= fx;
+        ni.vy -= fy;
+        nj.vx += fx;
+        nj.vy += fy;
+      }
+    }
+    for (const e of edges) {
+      const ns = nodes[e.s];
+      const nt = nodes[e.t];
+      if (!ns.visible || !nt.visible) continue;
+      const sp = SPRING[e.kind] ?? SPRING.tag;
+      const dx = nt.x - ns.x;
+      const dy = nt.y - ns.y;
+      const d = Math.sqrt(dx * dx + dy * dy) || 0.01;
+      const f = ((d - sp.len) / d) * sp.k * a;
+      const fx = dx * f;
+      const fy = dy * f;
+      ns.vx += fx;
+      ns.vy += fy;
+      nt.vx -= fx;
+      nt.vy -= fy;
+    }
+    for (let i = 0; i < nodes.length; i++) {
+      const n = nodes[i];
+      if (!n.visible || i === dragIdx) continue;
+      n.vx += (VW / 2 - n.x) * 0.006 * a;
+      n.vy += (VH / 2 - n.y) * 0.006 * a;
+      if (n.kind === 'post') {
+        const anchor = anchors.get(n.series ?? '') ?? fallbackAnchor;
+        n.vx += (anchor.x - n.x) * 0.018 * a;
+        n.vy += (anchor.y - n.y) * 0.018 * a;
+      }
+      n.vx *= 0.82;
+      n.vy *= 0.82;
+      n.x += Math.max(-28, Math.min(28, n.vx));
+      n.y += Math.max(-28, Math.min(28, n.vy));
+    }
+    alpha = Math.max(0, alpha - 0.0042);
+  }
+
+  // ---------- 状态：悬停 / 钉住 / 筛选 ----------
+  let hoverIdx = -1;
+  let pinnedIdx = -1;
+  const seriesOn = new Map<string, boolean>(seriesOrder.map((s) => [s, true]));
+
+  function neighborsOf(i: number): Set<number> {
+    const set = new Set<number>();
+    for (const { to } of adj[i]) {
+      if (nodes[to].visible) set.add(to);
+    }
+    return set;
+  }
+
+  function applyFilter(): void {
+    for (const n of nodes) {
+      if (n.kind === 'post') n.visible = seriesOn.get(n.series ?? '') ?? true;
+    }
+    for (let i = 0; i < nodes.length; i++) {
+      const n = nodes[i];
+      if (n.kind === 'post') continue;
+      n.visible = visiblePostMembers(i) > 0;
+    }
+    if (hoverIdx >= 0 && !nodes[hoverIdx].visible) hoverIdx = -1;
+    if (pinnedIdx >= 0 && !nodes[pinnedIdx].visible) pinnedIdx = -1;
+    if (!reduceMotion) alpha = Math.max(alpha, 0.3);
+    needsDraw = true;
+    wake();
+  }
+
+  // ---------- tooltip ----------
+  function buildTooltipContent(idx: number): void {
+    const n = nodes[idx];
+    tooltipEl!.replaceChildren();
+    const title = document.createElement('strong');
+    title.textContent = n.label;
+    tooltipEl!.append(title);
+
+    const meta = document.createElement('span');
+    meta.className = 'graph-tooltip-meta';
+    if (n.kind === 'post') {
+      meta.textContent = `${n.seriesLabel ?? ''} · ${n.dateLabel ?? ''} · 约 ${n.minutes ?? '?'} 分钟`;
+      tooltipEl!.append(document.createElement('br'), meta);
+    } else {
+      if (n.description) {
+        const desc = document.createElement('span');
+        desc.className = 'graph-tooltip-meta';
+        desc.textContent = n.description;
+        tooltipEl!.append(document.createElement('br'), desc);
+      }
+      const members = adj[idx].map((x) => nodes[x.to]).filter((m) => m.kind === 'post' && m.visible);
+      meta.textContent = members.length
+        ? members.slice(0, 4).map((m) => m.label).join('、') + (members.length > 4 ? ` 等 ${members.length} 篇` : '')
+        : '暂无可见文章';
+      tooltipEl!.append(document.createElement('br'), meta);
+    }
+  }
+
+  function positionTooltip(p: { x: number; y: number }): void {
+    const pad = 14;
+    const tw = tooltipEl!.offsetWidth;
+    const th = tooltipEl!.offsetHeight;
+    let x = p.x + pad;
+    let y = p.y + pad;
+    if (x + tw > cw - 8) x = p.x - tw - pad;
+    if (y + th > ch - 8) y = p.y - th - pad;
+    tooltipEl!.style.left = `${Math.max(8, x)}px`;
+    tooltipEl!.style.top = `${Math.max(8, y)}px`;
+  }
+
+  function showTooltipFor(idx: number, at?: { x: number; y: number }): void {
+    buildTooltipContent(idx);
+    tooltipEl!.hidden = false;
+    if (at) positionTooltip(at);
+  }
+  function hideTooltip(): void {
+    tooltipEl!.hidden = true;
+  }
+
+  // ---------- 指针交互 ----------
+  const pointers = new Map<number, { x: number; y: number }>();
+  let dragGrab = { x: 0, y: 0 };
+  let panLast: { x: number; y: number } | null = null;
+  let pinchLast: { d: number; mx: number; my: number } | null = null;
+  let downInfo: { x: number; y: number; idx: number; moved: boolean } | null = null;
+
+  function eventPos(e: PointerEvent): { x: number; y: number } {
+    const rect = canvas!.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  }
+  function pinchInfo(): { d: number; mx: number; my: number } {
+    const [a, b] = [...pointers.values()];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    return { d: Math.sqrt(dx * dx + dy * dy) || 1, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
+  }
+  function hitTest(sx: number, sy: number): number {
+    const v = toVirtual(sx, sy);
+    const slack = Math.max(6, 9 / cam.scale);
+    let best = -1;
+    let bestD = Infinity;
+    for (let i = 0; i < nodes.length; i++) {
+      const n = nodes[i];
+      if (!n.visible) continue;
+      const dx = n.x - v.x;
+      const dy = n.y - v.y;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      if (d <= n.r + slack && d < bestD) {
+        best = i;
+        bestD = d;
+      }
+    }
+    return best;
+  }
+  function updateCursor(): void {
+    canvas!.style.cursor = dragIdx >= 0 || panLast ? 'grabbing' : hoverIdx >= 0 ? 'pointer' : 'grab';
+  }
+
+  canvas.addEventListener('pointerdown', (e) => {
+    canvas.setPointerCapture(e.pointerId);
+    const p = eventPos(e);
+    pointers.set(e.pointerId, p);
+    if (pointers.size === 2) {
+      dragIdx = -1;
+      panLast = null;
+      downInfo = null;
+      pinchLast = pinchInfo();
+      updateCursor();
+      return;
+    }
+    const idx = hitTest(p.x, p.y);
+    downInfo = { x: p.x, y: p.y, idx, moved: false };
+    if (idx >= 0) {
+      dragIdx = idx;
+      const v = toVirtual(p.x, p.y);
+      dragGrab = { x: nodes[idx].x - v.x, y: nodes[idx].y - v.y };
+      if (!reduceMotion) alpha = Math.max(alpha, 0.4);
+    } else {
+      panLast = p;
+    }
+    updateCursor();
+    wake();
+  });
+
+  canvas.addEventListener('pointermove', (e) => {
+    const p = eventPos(e);
+    if (pointers.has(e.pointerId)) pointers.set(e.pointerId, p);
+
+    if (pinchLast && pointers.size >= 2) {
+      const cur = pinchInfo();
+      zoomAt(cur.mx, cur.my, cur.d / pinchLast.d);
+      panBy(cur.mx - pinchLast.mx, cur.my - pinchLast.my);
+      pinchLast = cur;
+      userMovedCamera = true;
+      needsDraw = true;
+      wake();
+      return;
+    }
+
+    if (dragIdx >= 0) {
+      if (downInfo && Math.hypot(p.x - downInfo.x, p.y - downInfo.y) > 4) downInfo.moved = true;
+      const v = toVirtual(p.x, p.y);
+      const n = nodes[dragIdx];
+      n.x = v.x + dragGrab.x;
+      n.y = v.y + dragGrab.y;
+      n.vx = 0;
+      n.vy = 0;
+      if (!reduceMotion) alpha = Math.max(alpha, 0.22);
+      needsDraw = true;
+      wake();
+      return;
+    }
+
+    if (panLast) {
+      if (downInfo && Math.hypot(p.x - downInfo.x, p.y - downInfo.y) > 4) downInfo.moved = true;
+      panBy(p.x - panLast.x, p.y - panLast.y);
+      panLast = p;
+      userMovedCamera = true;
+      needsDraw = true;
+      wake();
+      return;
+    }
+
+    const idx = hitTest(p.x, p.y);
+    if (idx !== hoverIdx) {
+      hoverIdx = idx;
+      if (pinnedIdx < 0) {
+        if (idx >= 0) showTooltipFor(idx, p);
+        else hideTooltip();
+      }
+      updateCursor();
+      needsDraw = true;
+      wake();
+    } else if (idx >= 0 && pinnedIdx < 0) {
+      positionTooltip(p);
+    }
+  });
+
+  function endPointer(e: PointerEvent): void {
+    pointers.delete(e.pointerId);
+    if (pointers.size < 2) pinchLast = null;
+    if (pointers.size > 0) return;
+
+    if (downInfo && !downInfo.moved) {
+      const idx = downInfo.idx;
+      if (idx >= 0 && nodes[idx].visible) {
+        const n = nodes[idx];
+        if (n.kind === 'post' && n.url) {
+          window.location.assign(n.url);
+          return;
+        }
+        pinnedIdx = pinnedIdx === idx ? -1 : idx;
+      } else {
+        pinnedIdx = -1;
+      }
+      if (pinnedIdx >= 0) {
+        showTooltipFor(pinnedIdx);
+        positionTooltip(nodeScreen(pinnedIdx));
+      } else {
+        hideTooltip();
+      }
+      needsDraw = true;
+    }
+    dragIdx = -1;
+    panLast = null;
+    downInfo = null;
+    updateCursor();
+    wake();
+  }
+  canvas.addEventListener('pointerup', endPointer);
+  canvas.addEventListener('pointercancel', endPointer);
+  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const p = eventPos(e as unknown as PointerEvent);
+    zoomAt(p.x, p.y, Math.exp(-e.deltaY * 0.0016));
+    userMovedCamera = true;
+    needsDraw = true;
+    wake();
+  }, { passive: false });
+
+  canvas.addEventListener('dblclick', (e) => {
+    const p = eventPos(e as unknown as PointerEvent);
+    if (hitTest(p.x, p.y) < 0) {
+      pinnedIdx = -1;
+      hideTooltip();
+      fitCamera(true);
+    }
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && pinnedIdx >= 0) {
+      pinnedIdx = -1;
+      hideTooltip();
+      needsDraw = true;
+      wake();
+    }
+  });
+
+  // ---------- 筛选按钮 ----------
+  const chips = [...root.querySelectorAll<HTMLButtonElement>('.graph-chip[data-series]')];
+  function refreshChips(): void {
+    for (const chip of chips) {
+      const key = chip.dataset.series!;
+      if (key === 'all') {
+        chip.classList.toggle('is-off', ![...seriesOn.values()].every(Boolean));
+        continue;
+      }
+      const on = seriesOn.get(key) ?? true;
+      chip.classList.toggle('is-off', !on);
+      chip.setAttribute('aria-pressed', String(on));
+    }
+  }
+  for (const chip of chips) {
+    chip.addEventListener('click', () => {
+      const key = chip.dataset.series!;
+      if (key === 'all') {
+        for (const s of seriesOrder) seriesOn.set(s, true);
+      } else {
+        seriesOn.set(key, !(seriesOn.get(key) ?? true));
+      }
+      refreshChips();
+      applyFilter();
+    });
+  }
+  document.getElementById('graph-reset')?.addEventListener('click', () => {
+    pinnedIdx = -1;
+    hideTooltip();
+    fitCamera(true);
+  });
+
+  // ---------- 渲染 ----------
+  const FONT_BODY = '"Noto Serif SC","Songti SC","STSong","SimSun",serif';
+  const FONT_BRUSH = '"Ma Shan Zheng","Kaiti SC","STKaiti","KaiTi",serif';
+
+  function haloText(text: string, x: number, y: number, fill: string): void {
+    // 纸色描边当光晕，压住穿过的连线
+    ctx!.lineJoin = 'round';
+    ctx!.lineWidth = 3.5 / cam.scale;
+    ctx!.strokeStyle = colors.paper;
+    ctx!.strokeText(text, x, y);
+    ctx!.fillStyle = fill;
+    ctx!.fillText(text, x, y);
+  }
+
+  function draw(): void {
+    ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx!.clearRect(0, 0, cw, ch);
+    const s = cam.scale;
+    ctx!.setTransform(dpr * s, 0, 0, dpr * s, dpr * (cw / 2 - cam.x * s), dpr * (ch / 2 - cam.y * s));
+
+    const focus = pinnedIdx >= 0 ? pinnedIdx : hoverIdx;
+    const neighborSet = focus >= 0 ? neighborsOf(focus) : null;
+
+    // 连线
+    for (const e of edges) {
+      const a = nodes[e.s];
+      const b = nodes[e.t];
+      if (!a.visible || !b.visible) continue;
+      const highlighted = focus >= 0 && (e.s === focus || e.t === focus);
+      let color: string;
+      let alphaV: number;
+      let w: number;
+      if (highlighted) {
+        color = colors.cinnabar;
+        alphaV = 0.85;
+        w = 1.8;
+      } else if (neighborSet) {
+        color = colors.line;
+        alphaV = 0.05;
+        w = 0.8;
+      } else if (e.kind === 'tag') {
+        color = colors.line;
+        alphaV = 0.5;
+        w = 0.8;
+      } else if (e.kind === 'concept') {
+        color = colors.inkSoft;
+        alphaV = 0.3;
+        w = 0.9;
+      } else {
+        color = colors.cinnabar;
+        alphaV = 0.42;
+        w = 1.1;
+      }
+      ctx!.globalAlpha = alphaV;
+      ctx!.strokeStyle = color;
+      ctx!.lineWidth = Math.max(0.5, w / s);
+      ctx!.beginPath();
+      ctx!.moveTo(a.x, a.y);
+      ctx!.lineTo(b.x, b.y);
+      ctx!.stroke();
+    }
+
+    // 节点：先空心（标签/知识点），后实心（文章）
+    for (const pass of ['hollow', 'post'] as const) {
+      for (let i = 0; i < nodes.length; i++) {
+        const n = nodes[i];
+        if (!n.visible) continue;
+        if (pass === 'post' ? n.kind !== 'post' : n.kind === 'post') continue;
+        const inFocus = focus === i;
+        const dimmed = neighborSet !== null && !inFocus && !neighborSet.has(i);
+        ctx!.globalAlpha = dimmed ? 0.15 : 1;
+
+        if (n.kind === 'post') {
+          ctx!.fillStyle = colors[n.series ?? ''] ?? colors.ink;
+          ctx!.beginPath();
+          ctx!.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+          ctx!.fill();
+          if (inFocus) {
+            ctx!.strokeStyle = colors.cinnabar;
+            ctx!.lineWidth = 2 / s;
+            ctx!.beginPath();
+            ctx!.arc(n.x, n.y, n.r + 3.5 / s, 0, Math.PI * 2);
+            ctx!.stroke();
+          }
+        } else if (n.kind === 'concept') {
+          ctx!.setLineDash([]);
+          ctx!.strokeStyle = inFocus ? colors.cinnabar : colors.inkSoft;
+          ctx!.lineWidth = 1.3 / s;
+          ctx!.beginPath();
+          ctx!.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+          ctx!.stroke();
+          // 中心一枚淡墨点，方便在连线丛中认出知识点
+          ctx!.fillStyle = inFocus ? colors.cinnabar : colors.inkFaint;
+          ctx!.beginPath();
+          ctx!.arc(n.x, n.y, Math.max(1, n.r * 0.22), 0, Math.PI * 2);
+          ctx!.fill();
+        } else {
+          ctx!.setLineDash([4, 3]);
+          ctx!.strokeStyle = inFocus ? colors.cinnabar : colors.inkFaint;
+          ctx!.lineWidth = 1.1 / s;
+          ctx!.beginPath();
+          ctx!.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+          ctx!.stroke();
+          ctx!.setLineDash([]);
+        }
+      }
+    }
+
+    // 文字：知识点常显（多成员），标签毛笔字，文章悬停/钉住/放大时显示
+    ctx!.textBaseline = 'alphabetic';
+    const showLabels = s >= 0.55;
+    for (let i = 0; i < nodes.length; i++) {
+      const n = nodes[i];
+      if (!n.visible) continue;
+      const inFocus = focus === i;
+      const isNeighbor = neighborSet?.has(i) ?? false;
+      const dimmed = neighborSet !== null && !inFocus && !isNeighbor;
+      if (dimmed) continue;
+
+      if (n.kind === 'post') {
+        if (!(inFocus || isNeighbor || (showLabels && s >= 1.5))) continue;
+        ctx!.font = `600 13.5px ${FONT_BODY}`;
+        ctx!.textAlign = 'center';
+        haloText(n.label, n.x, n.y + n.r + 15, colors.ink);
+      } else {
+        const members = visiblePostMembers(i);
+        if (!(showLabels && (members >= 2 || inFocus || isNeighbor))) continue;
+        if (n.kind === 'concept') {
+          ctx!.font = '14px ' + FONT_BODY;
+          ctx!.textAlign = 'left';
+          haloText(n.label, n.x + n.r + 5, n.y + 4.5, colors.inkSoft);
+        } else {
+          ctx!.font = '16px ' + FONT_BRUSH;
+          ctx!.textAlign = 'center';
+          haloText(n.label, n.x, n.y - n.r - 6, colors.inkFaint);
+        }
+      }
+    }
+    ctx!.globalAlpha = 1;
+  }
+
+  // ---------- 帧循环：有事才跑，静止即停 ----------
+  let rafId = 0;
+  let didAutoFit = false;
+  function frame(): void {
+    rafId = 0;
+    const simulating = alpha > 0.011;
+    if (simulating) tick();
+    if (camTween) stepTween();
+    draw();
+    if (pinnedIdx >= 0) positionTooltip(nodeScreen(pinnedIdx));
+    let more = simulating || !!camTween || needsDraw;
+    needsDraw = false;
+    if (!didAutoFit && !simulating && !camTween) {
+      didAutoFit = true;
+      if (!userMovedCamera) {
+        fitCamera(true);
+        more = true;
+      }
+    }
+    if (more) wake();
+  }
+  function wake(): void {
+    if (!rafId) rafId = requestAnimationFrame(frame);
+  }
+
+  // ---------- 启动 ----------
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  readColors();
+  resize();
+  cam.scale = Math.max(0.3, Math.min(cw / VW, ch / VH, 1.2));
+  if (reduceMotion) {
+    for (let i = 0; i < 500; i++) tick();
+    alpha = 0;
+  }
+  new ResizeObserver(resize).observe(wrap);
+  window.addEventListener('theme-changed', () => {
+    readColors();
+    needsDraw = true;
+    wake();
+  });
+  refreshChips();
+  wake();
+  })();
+</script>

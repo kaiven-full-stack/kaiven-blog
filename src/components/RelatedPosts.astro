@@ -1,0 +1,31 @@
+---
+/**
+ * 文章页底部「相关文章」推荐：数据来自 utils/graph.ts 的 getRelatedPosts()
+ * （共同知识点 / 文内互链 / 精选关联），没有实质关联时不渲染。
+ */
+import type { RelatedPost } from '../utils/graph';
+
+interface Props {
+  related: RelatedPost[];
+}
+
+const { related } = Astro.props;
+---
+
+{
+  related.length > 0 && (
+    <nav class="mx-auto mt-10 max-w-[34em]" aria-label="相关文章" data-pagefind-ignore>
+      <p class="text-[13px] tracking-wide text-ink-faint">相关文章</p>
+      <ul class="mt-2 divide-y divide-line">
+        {related.map(({ post, reasons }) => (
+          <li class="py-2.5">
+            <a href={`/posts/${post.id}/`} class="block truncate text-sm text-ink-soft transition-colors hover:text-cinnabar">
+              {post.data.title}
+            </a>
+            <p class="mt-0.5 truncate text-xs text-ink-faint">{reasons.join(' · ')}</p>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  )
+}
