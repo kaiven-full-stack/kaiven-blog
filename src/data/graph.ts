@@ -334,7 +334,7 @@ export const concepts: ConceptMeta[] = [
     id: 'innodb-space',
     label: 'InnoDB 空间管理',
     description: '页/区/段三层账本与碎片区到整区的成长',
-    posts: ['mysql-innodb-pages-btree'],
+    posts: ['mysql-innodb-pages-btree', 'mysql-innodb-mvcc'],
   },
   {
     id: 'btree',
@@ -347,6 +347,18 @@ export const concepts: ConceptMeta[] = [
     label: '聚簇与二级索引',
     description: '数据住在主键树上，二级索引存主键回表',
     posts: ['mysql-innodb-pages-btree'],
+  },
+  {
+    id: 'undo-log',
+    label: 'undo 日志与版本链',
+    description: '旧值按事务进 undo 表空间，ROLL_PTR 串成链',
+    posts: ['mysql-innodb-mvcc'],
+  },
+  {
+    id: 'mvcc',
+    label: 'MVCC 与快照可见性',
+    description: 'ReadView 三判例定隔离级别，purge 收版本链',
+    posts: ['mysql-innodb-mvcc'],
   },
 
   // ---- Linux 内核系列 ----
@@ -384,4 +396,5 @@ export const relatedLinks: RelatedLink[] = [
   { from: 'zig-transition-guide', to: 'cpython-object-layout', note: '值语义对照对象头开销' },
   { from: 'zig-transition-guide', to: 'cpython-str-internals', note: '对照 Python 码点计长' },
   { from: 'redis-skiplist-zset', to: 'mysql-innodb-pages-btree', note: '跳表对望 B+ 树：内存盘上各得其所' },
+  { from: 'kernel-copy-on-write', to: 'mysql-innodb-mvcc', note: '读不加锁的两条路：复制页 vs 多版本' },
 ];
