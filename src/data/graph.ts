@@ -477,6 +477,24 @@ export const concepts: ConceptMeta[] = [
     description: '峰值搬进队列摊平成下游消化得起的平均速率',
     posts: ['mq-basics-decouple-async-peak'],
   },
+  {
+    id: 'delivery-semantics',
+    label: '投递语义',
+    description: 'at-most / at-least / exactly-once 三档与各自的账单',
+    posts: ['mq-basics-delivery-semantics'],
+  },
+  {
+    id: 'dead-letter',
+    label: '死信',
+    description: '处理不了的消息带着 x-death 档案去该去的地方',
+    posts: ['mq-basics-delivery-semantics'],
+  },
+  {
+    id: 'idempotency',
+    label: '幂等消费',
+    description: '重复投递的解药：去重表、版本与天然幂等',
+    posts: ['mq-basics-delivery-semantics'],
+  },
 ];
 
 export const relatedLinks: RelatedLink[] = [
@@ -502,4 +520,6 @@ export const relatedLinks: RelatedLink[] = [
   { from: 'redis-aof-append-fsync', to: 'mysql-binlog-redo-2pc', note: 'everysec 对望双 1：落盘纪律同题' },
   { from: 'kernel-page-cache-writeback', to: 'mysql-binlog-redo-2pc', note: 'OS 缓存兜底与主机断电的分界' },
   { from: 'mq-basics-decouple-async-peak', to: 'mysql-binlog-redo-2pc', note: '下游传染与提交传染：链上最弱一环' },
+  { from: 'mq-basics-delivery-semantics', to: 'mysql-binlog-redo-2pc', note: '半途的工作谁说了算：重投对望裁决' },
+  { from: 'mq-basics-delivery-semantics', to: 'mysql-replication-gtid', note: 'GTID 去重对望消费幂等' },
 ];
