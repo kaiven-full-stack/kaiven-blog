@@ -352,7 +352,7 @@ export const concepts: ConceptMeta[] = [
     id: 'undo-log',
     label: 'undo 日志与版本链',
     description: '旧值按事务进 undo 表空间，ROLL_PTR 串成链',
-    posts: ['mysql-innodb-mvcc'],
+    posts: ['mysql-innodb-mvcc', 'mysql-innodb-redo-recovery'],
   },
   {
     id: 'mvcc',
@@ -371,6 +371,12 @@ export const concepts: ConceptMeta[] = [
     label: '死锁',
     description: '等待环、牺牲品挑选与检测/超时双层兜底',
     posts: ['mysql-innodb-locks'],
+  },
+  {
+    id: 'wal',
+    label: 'WAL 与崩溃恢复',
+    description: '先记日志再改页面，redo 重放 undo 回滚',
+    posts: ['mysql-innodb-redo-recovery'],
   },
 
   // ---- Linux 内核系列 ----
