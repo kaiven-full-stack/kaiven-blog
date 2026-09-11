@@ -400,7 +400,7 @@ export const concepts: ConceptMeta[] = [
     id: 'wal',
     label: 'WAL 与崩溃恢复',
     description: '先记日志再改页面，redo 重放 undo 回滚',
-    posts: ['mysql-innodb-redo-recovery', 'mysql-binlog-redo-2pc'],
+    posts: ['mysql-innodb-redo-recovery', 'mysql-binlog-redo-2pc', 'kafka-log-segments'],
   },
   {
     id: '2pc',
@@ -513,6 +513,24 @@ export const concepts: ConceptMeta[] = [
     description: '读者落后作者的距离：日志末端减提交位移',
     posts: ['kafka-message-journey'],
   },
+  {
+    id: 'log-segment',
+    label: '日志段',
+    description: '文件名即 baseOffset，写满滚动，删除的单位',
+    posts: ['kafka-log-segments'],
+  },
+  {
+    id: 'sparse-index',
+    label: '稀疏索引',
+    description: 'offset↔position 路标，二分加短扫',
+    posts: ['kafka-log-segments'],
+  },
+  {
+    id: 'retention',
+    label: '保留策略',
+    description: '按时间/大小截断整段，清理线程周期巡逻',
+    posts: ['kafka-log-segments'],
+  },
 ];
 
 export const relatedLinks: RelatedLink[] = [
@@ -541,4 +559,5 @@ export const relatedLinks: RelatedLink[] = [
   { from: 'mq-basics-delivery-semantics', to: 'mysql-binlog-redo-2pc', note: '半途的工作谁说了算：重投对望裁决' },
   { from: 'mq-basics-delivery-semantics', to: 'mysql-replication-gtid', note: 'GTID 去重对望消费幂等' },
   { from: 'kafka-message-journey', to: 'mysql-replication-gtid', note: '位点对望位移：拉日志的两种读者' },
+  { from: 'kafka-log-segments', to: 'mysql-innodb-pages-btree', note: '顺序追加对望随机 I/O：两种命运' },
 ];
