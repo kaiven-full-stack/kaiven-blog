@@ -495,6 +495,24 @@ export const concepts: ConceptMeta[] = [
     description: '重复投递的解药：去重表、版本与天然幂等',
     posts: ['mq-basics-delivery-semantics'],
   },
+  {
+    id: 'partition',
+    label: '分区',
+    description: '哈希定落点：顺序性与并行度的交换单位',
+    posts: ['kafka-message-journey'],
+  },
+  {
+    id: 'consumer-offset',
+    label: '位移',
+    description: '消费者的书签：提交到 __consumer_offsets',
+    posts: ['kafka-message-journey'],
+  },
+  {
+    id: 'lag',
+    label: 'lag',
+    description: '读者落后作者的距离：日志末端减提交位移',
+    posts: ['kafka-message-journey'],
+  },
 ];
 
 export const relatedLinks: RelatedLink[] = [
@@ -522,4 +540,5 @@ export const relatedLinks: RelatedLink[] = [
   { from: 'mq-basics-decouple-async-peak', to: 'mysql-binlog-redo-2pc', note: '下游传染与提交传染：链上最弱一环' },
   { from: 'mq-basics-delivery-semantics', to: 'mysql-binlog-redo-2pc', note: '半途的工作谁说了算：重投对望裁决' },
   { from: 'mq-basics-delivery-semantics', to: 'mysql-replication-gtid', note: 'GTID 去重对望消费幂等' },
+  { from: 'kafka-message-journey', to: 'mysql-replication-gtid', note: '位点对望位移：拉日志的两种读者' },
 ];
