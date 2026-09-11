@@ -334,7 +334,7 @@ export const concepts: ConceptMeta[] = [
     id: 'innodb-space',
     label: 'InnoDB 空间管理',
     description: '页/区/段三层账本与碎片区到整区的成长',
-    posts: ['mysql-innodb-pages-btree', 'mysql-innodb-mvcc'],
+    posts: ['mysql-innodb-pages-btree', 'mysql-innodb-mvcc', 'mysql-innodb-locks'],
   },
   {
     id: 'btree',
@@ -358,7 +358,19 @@ export const concepts: ConceptMeta[] = [
     id: 'mvcc',
     label: 'MVCC 与快照可见性',
     description: 'ReadView 三判例定隔离级别，purge 收版本链',
-    posts: ['mysql-innodb-mvcc'],
+    posts: ['mysql-innodb-mvcc', 'mysql-innodb-locks'],
+  },
+  {
+    id: 'row-lock',
+    label: '行锁与间隙锁',
+    description: '记录/间隙/next-key 三种对象与退化规则',
+    posts: ['mysql-innodb-locks'],
+  },
+  {
+    id: 'deadlock',
+    label: '死锁',
+    description: '等待环、牺牲品挑选与检测/超时双层兜底',
+    posts: ['mysql-innodb-locks'],
   },
 
   // ---- Linux 内核系列 ----
@@ -397,4 +409,5 @@ export const relatedLinks: RelatedLink[] = [
   { from: 'zig-transition-guide', to: 'cpython-str-internals', note: '对照 Python 码点计长' },
   { from: 'redis-skiplist-zset', to: 'mysql-innodb-pages-btree', note: '跳表对望 B+ 树：内存盘上各得其所' },
   { from: 'kernel-copy-on-write', to: 'mysql-innodb-mvcc', note: '读不加锁的两条路：复制页 vs 多版本' },
+  { from: 'redis-multi-exec-watch', to: 'mysql-innodb-locks', note: 'WATCH 对望行锁：乐观赌与悲观等' },
 ];
