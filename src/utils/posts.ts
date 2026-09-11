@@ -11,7 +11,7 @@ import { getCollection, type CollectionEntry } from 'astro:content';
 export type BlogPost = CollectionEntry<'blog'>;
 
 /** 文章分类，与 content.config.ts 中 frontmatter 的 category 枚举一一对应 */
-export type Category = 'zig' | 'redis' | 'cpython' | 'kernel' | 'mysql' | 'life';
+export type Category = 'zig' | 'redis' | 'cpython' | 'kernel' | 'mysql' | 'mq' | 'life';
 
 /** 分类展示名 */
 export const CATEGORY_LABELS: Record<Category, string> = {
@@ -20,6 +20,7 @@ export const CATEGORY_LABELS: Record<Category, string> = {
   cpython: 'CPython',
   kernel: 'Linux 内核',
   mysql: 'MySQL',
+  mq: '消息队列',
   life: '生活',
 };
 
@@ -70,6 +71,12 @@ export const SERIES_ORDER: readonly SeriesMeta[] = [
     title: 'MySQL 系列',
     description: '从 B+ 树、MVCC、锁、恢复、优化器、复制、缓冲池、两阶段提交、连接算法、online DDL、分区表到事件仪器，沿着一条 SQL 落进 InnoDB 的存储现场。',
     category: 'mysql',
+  },
+  {
+    id: 'mq',
+    title: '消息队列系列',
+    description: '从解耦、异步、削峰、投递语义到 Kafka 的日志段、副本与消费者组，沿着一条消息的旅程走进消息队列的现场。',
+    category: 'mq',
   },
   {
     id: 'life',

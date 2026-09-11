@@ -452,6 +452,31 @@ export const concepts: ConceptMeta[] = [
     description: '地址空间按 VMA 记账与合并',
     posts: ['kernel-vma-malloc'],
   },
+  // ---- 消息队列系列 ----
+  {
+    id: 'mq-decouple',
+    label: '解耦与异步',
+    description: 'RT 与下游脱钩，下游生死不再传染上游',
+    posts: ['mq-basics-decouple-async-peak'],
+  },
+  {
+    id: 'mq-pubsub',
+    label: '发布订阅',
+    description: '一份事实多家消费 vs 一堆活多家分摊',
+    posts: ['mq-basics-decouple-async-peak'],
+  },
+  {
+    id: 'exchange',
+    label: '交换机与路由',
+    description: 'exchange 绑定队列，fanout 不看内容一律转发',
+    posts: ['mq-basics-decouple-async-peak'],
+  },
+  {
+    id: 'peak-shaving',
+    label: '削峰',
+    description: '峰值搬进队列摊平成下游消化得起的平均速率',
+    posts: ['mq-basics-decouple-async-peak'],
+  },
 ];
 
 export const relatedLinks: RelatedLink[] = [
@@ -476,4 +501,5 @@ export const relatedLinks: RelatedLink[] = [
   { from: 'redis-aof-append-fsync', to: 'mysql-innodb-buffer-pool-lru', note: '写缓冲推迟落账的三种姿势' },
   { from: 'redis-aof-append-fsync', to: 'mysql-binlog-redo-2pc', note: 'everysec 对望双 1：落盘纪律同题' },
   { from: 'kernel-page-cache-writeback', to: 'mysql-binlog-redo-2pc', note: 'OS 缓存兜底与主机断电的分界' },
+  { from: 'mq-basics-decouple-async-peak', to: 'mysql-binlog-redo-2pc', note: '下游传染与提交传染：链上最弱一环' },
 ];
