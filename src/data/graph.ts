@@ -384,6 +384,12 @@ export const concepts: ConceptMeta[] = [
     description: 'cost 按行计价；磁盘页、页访问次数与行数三种账本',
     posts: ['mysql-innodb-query-optimizer'],
   },
+  {
+    id: 'mysql-replication',
+    label: '主从复制与 GTID',
+    description: 'binlog 前后像重演、GTID 断点续传与半同步窗口',
+    posts: ['mysql-replication-gtid'],
+  },
 
   // ---- Linux 内核系列 ----
   {
@@ -422,4 +428,5 @@ export const relatedLinks: RelatedLink[] = [
   { from: 'redis-skiplist-zset', to: 'mysql-innodb-pages-btree', note: '跳表对望 B+ 树：内存盘上各得其所' },
   { from: 'kernel-copy-on-write', to: 'mysql-innodb-mvcc', note: '读不加锁的两条路：复制页 vs 多版本' },
   { from: 'redis-multi-exec-watch', to: 'mysql-innodb-locks', note: 'WATCH 对望行锁：乐观赌与悲观等' },
+  { from: 'redis-replication-sync', to: 'mysql-replication-gtid', note: '两个世界的主从：全量 RDB vs 增量 binlog' },
 ];
