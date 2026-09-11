@@ -340,13 +340,13 @@ export const concepts: ConceptMeta[] = [
     id: 'btree',
     label: 'B+ 树',
     description: '矮胖多叉，叶子链表，索引即数据',
-    posts: ['mysql-innodb-pages-btree'],
+    posts: ['mysql-innodb-pages-btree', 'mysql-innodb-query-optimizer'],
   },
   {
     id: 'clustered-index',
     label: '聚簇与二级索引',
     description: '数据住在主键树上，二级索引存主键回表',
-    posts: ['mysql-innodb-pages-btree'],
+    posts: ['mysql-innodb-pages-btree', 'mysql-innodb-query-optimizer'],
   },
   {
     id: 'undo-log',
@@ -377,6 +377,12 @@ export const concepts: ConceptMeta[] = [
     label: 'WAL 与崩溃恢复',
     description: '先记日志再改页面，redo 重放 undo 回滚',
     posts: ['mysql-innodb-redo-recovery'],
+  },
+  {
+    id: 'cost-model',
+    label: '代价模型与口径',
+    description: 'cost 按行计价；磁盘页、页访问次数与行数三种账本',
+    posts: ['mysql-innodb-query-optimizer'],
   },
 
   // ---- Linux 内核系列 ----

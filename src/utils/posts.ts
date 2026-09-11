@@ -68,7 +68,7 @@ export const SERIES_ORDER: readonly SeriesMeta[] = [
   {
     id: 'mysql',
     title: 'MySQL 系列',
-    description: '从 B+ 树、MVCC 版本链、锁体系到崩溃恢复，沿着一条 SQL 落进 InnoDB 的存储现场。',
+    description: '从 B+ 树、MVCC、锁、崩溃恢复到优化器，沿着一条 SQL 落进 InnoDB 的存储现场。',
     category: 'mysql',
   },
   {
