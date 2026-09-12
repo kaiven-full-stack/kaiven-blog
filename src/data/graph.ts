@@ -89,7 +89,7 @@ export const concepts: ConceptMeta[] = [
   {
     id: 'huge-page',
     label: '透明大页',
-    description: '2MiB 巨页省 TLB 路费与碎片代价',
+    description: '2MiB 巨页换 TLB 命中率，代价是碎片与拆分',
     posts: ['kernel-page-tables', 'kernel-buddy-allocator', 'kernel-copy-on-write', 'redis-fork-cow'],
   },
   {
@@ -535,7 +535,7 @@ export const concepts: ConceptMeta[] = [
 
 export const relatedLinks: RelatedLink[] = [
   { from: 'kernel-page-cache-writeback', to: 'redis-aof-append-fsync', note: 'AOF 三档落内核回写时间线' },
-  { from: 'kernel-page-tables', to: 'redis-fork-cow', note: 'fork 页表账单在此落地' },
+  { from: 'kernel-page-tables', to: 'redis-fork-cow', note: 'fork 页表成本在此落地' },
   { from: 'kernel-copy-on-write', to: 'redis-fork-cow', note: 'THP 放大 COW 说法复核' },
   { from: 'kernel-oom-killer', to: 'redis-fork-cow', note: 'overcommit 建议出处' },
   { from: 'redis-incremental-rehash', to: 'kernel-copy-on-write', note: 'rehash 为写时复制让路' },
