@@ -522,8 +522,20 @@ export const concepts: ConceptMeta[] = [
   {
     id: 'total-order',
     label: '顺序性边界',
-    description: '分区内全序、跨分区无序，范围由分区数钉死',
-    posts: ['kafka-message-journey', 'kafka-partitions-keys'],
+    description: '落日志的顺序铁定，写入顺序在重试、多实例、跨分区处漏',
+    posts: ['kafka-message-journey', 'kafka-partitions-keys', 'kafka-ordering-boundaries'],
+  },
+  {
+    id: 'inflight-reorder',
+    label: '在途翻序',
+    description: '多批未确认同时在途，重试与延迟都翻序，幂等可挡',
+    posts: ['kafka-ordering-boundaries'],
+  },
+  {
+    id: 'idempotent-producer',
+    label: '幂等生产者',
+    description: 'kafkajs 每 broker 互斥锁串行化，Java 靠 PID+序列号 broker 卡门',
+    posts: ['kafka-ordering-boundaries'],
   },
   {
     id: 'consumer-offset',
@@ -587,4 +599,5 @@ export const relatedLinks: RelatedLink[] = [
   { from: 'kafka-partitions-keys', to: 'redis-cluster-migration', note: '扩容两法：搬数据与改规则' },
   { from: 'kafka-partitions-keys', to: 'mysql-partitioning', note: '加分区：MySQL 搬数据，Kafka 劈历史' },
   { from: 'kafka-partitions-keys', to: 'cpython-float-ieee754', note: '2^53 悬崖咬到 murmur2 浮点实现' },
+  { from: 'kafka-ordering-boundaries', to: 'mysql-replication-gtid', note: '串行流并行重演也提不了速：同一堵墙' },
 ];
