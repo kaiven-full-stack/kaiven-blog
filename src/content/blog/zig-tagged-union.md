@@ -1,12 +1,12 @@
 ---
 title: 状态只许记一遍：Zig 的 tagged union
-description: 一条连接同时报告在线与重试，两行日志都没有说谎。本文从一份最小事故报告出发，把分开保管的状态标签与负载并回同一个值，看清穷尽 switch、字段捕获、运行时检查、布局与外部输入各自担保到哪里。文中代码在 0.16.0 上逐一验证。
+description: 一条连接同时报告在线与重试，两行日志都没有说谎：状态被记了两遍。这篇从一份最小事故复现出发，把分开保管的状态标签与数据并回同一个值，看清穷尽 switch、字段捕获、运行时检查、布局与外部输入各自管到哪里。事故复现与示例基于 Zig 0.16.0。
 pubDate: 2026-09-05
 category: zig
 tags: [Zig, 编程语言]
 ---
 
-凌晨三点十四分，同一个连接交出了两份说法。
+凌晨三点十四分，同一个连接交出了两份说法：
 
 ```text
 03:14:07.212 [monitor] conn#41 phase=online
@@ -14,17 +14,15 @@ tags: [Zig, 编程语言]
 03:14:09.881 [router]  conn#41 session route failed
 ```
 
-相隔两毫秒，同一台机器，同一条连接。监控说它已经在线，重试定时器说它还在等待第四次尝试。两秒以后，路由代码相信了第一行日志，转身去取会话信息，进程倒在了那里。
+相隔两毫秒，同一台机器，同一条连接。监控说它已经在线，重试定时器说它还在等第四次尝试。两秒以后，路由代码相信了第一行日志，转身去取会话信息，进程挂在了那里。
 
-两行日志都没有说谎。
+两行日志都没有说谎。把事故缩成最小复现之后才看清矛盾在哪：它们读的从来不是同一个字段。连接状态被记了两遍，一遍是 `phase`，一遍是旁边 union 里实际存放的 payload。两份记录各自合法，合在一起讲不通。
 
-后来把事故缩成最小复现，才看见真正的矛盾：它们读的从来不是同一个字段。连接状态被记了两遍，一遍是 `phase`，一遍是旁边 union 里当前存放的 payload。两份记录各自合法，合在一起却讲不通。
+Zig 对这类问题有一个专门的数据模型：tagged union。它不保证状态机永不出错，但先撤掉最荒唐的那种可能——一个值同时声称自己处于两种状态。
 
-Zig 对这类问题有一种专门的数据模型：tagged union。它不负责让状态机永不出错，只先撤掉那种最荒唐的可能——让一个值同时声称自己处于两种状态。
+前几篇讲过值在哪里写成、切片能活多久；这一篇从日志出发，沿着代码、测试和编译器诊断把事故反过来查一遍。示例和报错都在 Zig 0.16.0 上验证过。
 
-前几篇谈过值在哪里写成、切片能活到几时；这一次换一种走法，从日志开始，沿代码、测试与编译器诊断逆向追查。文内示例和报错均在 Zig 0.16.0 上复核。
-
-## 起案：一个通过的错误测试
+## 先看出事的类型
 
 事故版本的类型并不复杂：
 
@@ -57,7 +55,7 @@ const Connection = struct {
 
 `phase` 供监控和路由判断；`detail` 保存当前阶段需要的数据。在线时需要 session，退避时需要 attempt 与 next_ms。乍看职责分明。
 
-现在构造案发时的值：
+现在构造事故时刻的值：
 
 ```zig
 test "contradictory state is representable" {
@@ -85,15 +83,11 @@ Zig 0.16.0 的结果：
 All 1 tests passed.
 ```
 
-测试通过，程序仍是错的。
+测试通过，程序仍是错的。第一个断言证明监控没有说谎，第二个断言证明重试定时器也没有说谎；真正缺席的是第三条规则——类型里没有任何东西要求 `.online` 必须和 `.session` 同时出现。一个状态被记了两遍，就有了不一致的机会。
 
-第一个断言证明监控没有说谎，第二个断言证明重试定时器也没有说谎。真正缺席的是第三条规则：类型里没有任何东西要求 `.online` 必须和 `.session` 同时出现。
+## bare union 没有可查询的 tag
 
-一个状态被记了两遍，便有了不一致的机会。
-
-## 裸 union 没有随身携带的标签
-
-`Detail` 是 bare union，也就是没有附带 tag enum 的 union。它规定一组可能的字段，并让它们复用存储；同一时刻只有一个字段处于 active 状态。Zig 会为错误字段访问实施安全检查，却没有给业务代码一枚可以取出、比较或拿来 `switch` 的 attached enum。
+`Detail` 是 bare union，也就是没有附带 tag enum 的 union。它规定一组可能的字段，让它们复用存储，同一时刻只有一个字段处于 active 状态。Zig 会为错误字段访问实施安全检查，但没有给业务代码一枚可以取出来、比较或拿来 `switch` 的 enum：
 
 ```zig
 var detail: Detail = .{
@@ -104,7 +98,7 @@ var detail: Detail = .{
 };
 ```
 
-此刻 active field 是 `backoff`。然而 bare union 的值中没有一枚可供查询和 `switch` 的 tag。下面的代码会被拒绝：
+此刻 active field 是 `backoff`，然而 bare union 的值里没有一枚可供查询的 tag。下面的代码会被拒绝：
 
 ```zig
 switch (detail) {
@@ -118,7 +112,7 @@ error: switch on union with no attached enum
 note: consider 'union(enum)' here
 ```
 
-于是事故版本另设一个 `phase`。一个字段说“当前是什么状态”，另一个字段保存“该状态的数据”，一致性全靠每条写入路径自觉维持。
+于是事故版本另设了一个 `phase`。一个字段说「当前是什么状态」，另一个字段保存「该状态的数据」，一致性全靠每条写入路径自觉维持。
 
 正常路径会改两处：
 
@@ -146,11 +140,9 @@ fn onLinkUp(conn: *Connection) void {
 }
 ```
 
-某次重试之后，`detail` 仍是 `.backoff`，`phase` 却已经变成 `.online`。没有一行代码看起来惊天动地，甚至每一行都类型正确。
+某次重试之后，`detail` 仍是 `.backoff`，`phase` 却已经变成 `.online`。没有一行代码看起来有问题，每一行都类型正确。漏写第二句只是触发点，根本问题是这个模型允许一句话只说一半。
 
-问题不只在于有人漏写了第二句。更深的根因是：这个模型允许一句话只说一半。
-
-## 并案：让 tag 与 payload 成为同一个值
+## 修复：把 tag 和 payload 合成一个值
 
 修复后的类型只保留一份状态：
 
@@ -173,7 +165,7 @@ const Connection = union(enum) {
 };
 ```
 
-`union(enum)` 会为这些字段生成 tag enum。一个 `Connection` 同时保存 active tag 与对应 payload：
+`union(enum)` 会为这些字段生成 tag enum。一个 `Connection` 同时保存 active tag 与对应的 payload：
 
 ```zig
 var conn: Connection = .{
@@ -191,7 +183,7 @@ conn = .{
 };
 ```
 
-改变状态时，要给整个 union 赋一个新值。tag 变成 `.online`，`online` 所需的 payload 也在同一个初始化器里出现。
+改变状态时，要给整个 union 赋一个新值：tag 变成 `.online`，`online` 所需的 payload 也在同一个初始化器里出现。
 
 若只写：
 
@@ -206,13 +198,11 @@ error: coercion from enum to union 'Connection'
 must initialize payload field 'online'
 ```
 
-`.closed` 若带 reason，也同样不能只改 tag；`.online` 若带 session，也不能留下空白。只有 payload 尺寸为零（如 `void`、`u0` 或空结构体）的状态，才可以直接用枚举字面量赋值。
+`.closed` 带 reason，同样不能只改 tag；`.online` 带 session，也不能留下空白。只有 payload 尺寸为零（`void`、`u0` 或空结构体）的状态，才可以直接用枚举字面量赋值。
 
-Zig 没有提供一条“先偷偷改 tag，稍后再补 payload”的路径。要更换 active field，就整体赋值。
+Zig 没有提供一条「先偷偷改 tag、稍后再补 payload」的路径，要更换 active field 就整体赋值。事故里的两份记录从此不需要同步，因为只剩一份记录。
 
-事故里的两份记录到这里不再需要同步，因为只剩一份记录。
-
-## `switch` 开始逐一核对
+## `switch` 逐一核对，不许漏
 
 有了 tag，`switch` 才能看见当前状态：
 
@@ -227,16 +217,14 @@ fn describe(conn: Connection) []const u8 {
 }
 ```
 
-这里没有 `else`。四种状态必须逐一处理。
-
-删掉 `.closed` 分支，Zig 0.16.0 给出的诊断是：
+这里没有 `else`，四种状态必须逐一处理。删掉 `.closed` 分支，Zig 0.16.0 给出的诊断是：
 
 ```text
 error: switch must handle all possibilities
 note: unhandled enumeration value: 'closed'
 ```
 
-这条错误不只是提醒“漏了一个 enum 值”。每个分支还可以取得该状态独有的 payload：
+这条错误提醒的不只是「漏了一个 enum 值」。每个分支还可以取得该状态独有的 payload：
 
 ```zig
 fn report(conn: Connection) void {
@@ -257,7 +245,7 @@ fn report(conn: Connection) void {
 }
 ```
 
-`|session|` 是值捕获。若要原地修改 active payload，可使用指针捕获：
+`|session|` 是值捕获。要原地修改 active payload，可以用指针捕获：
 
 ```zig
 fn recordRetry(conn: *Connection) void {
@@ -282,9 +270,9 @@ try std.testing.expectEqual(@as(u32, 4), conn.backoff.attempt);
 All 1 tests passed.
 ```
 
-tagged union 不只把“状态名”和“状态数据”绑在一起，也让控制流按同一份事实分岔。
+tagged union 把状态名和状态数据绑在一起，控制流也从同一份事实分岔。
 
-## 读错字段时，两种 union 都会报警
+## 读错字段时，两种 union 都会 panic
 
 事故版本里，路由先读 `phase`，再相信它去取 `detail.session`。两者不一致时，bare union 在安全构建中也能因错误字段访问而 panic；但它没有 attached enum 可供正常控制流查询，业务判断仍依赖旁边那份可能失真的 `phase`。
 
@@ -308,17 +296,13 @@ Debug 构建当场停止：
 panic: access of union field 'online' while field 'backoff' is active
 ```
 
-这段 panic 并不是 tagged union 独有的能力。bare union 在 Debug 与 ReleaseSafe 下同样会追踪 active field，并对错误字段访问给出同类诊断；`extern union` 与 `packed union` 才没有这项安全检查。
+这个 panic 并非 tagged union 独有的能力。bare union 在 Debug 与 ReleaseSafe 下同样会追踪 active field，对错误字段访问给出同类诊断；`extern union` 与 `packed union` 才没有这项检查。
 
-真正的差别发生在访问之前。bare union 的 active field 不能作为 attached enum 取出、比较或交给 `switch`，事故模型才不得不另设 `phase`；tagged union 则把这份状态变成业务代码可见的类型事实，并让 tag 与 payload 无法分开构造。
+真正的差别发生在访问之前。bare union 的 active field 不能作为 attached enum 取出、比较或交给 `switch`，事故模型才不得不另设 `phase`；tagged union 把这份状态变成业务代码可见的类型事实，并让 tag 与 payload 无法分开构造。
 
-错误字段访问属于 safety-checked Illegal Behavior。若 active field 在编译期已经确定，错误可能直接发生在编译期；若到运行时才知道，Debug 与 ReleaseSafe 会保留检查。
+错误字段访问属于 safety-checked Illegal Behavior。active field 在编译期已确定的话，错误可能直接发生在编译期；到运行时才知道的话，Debug 与 ReleaseSafe 会保留检查，ReleaseFast 与 ReleaseSmall 默认没有——程序可能把 `backoff` 的字节当成 `online` 解释，后果不受语言约束。所以不能把 panic 当业务分支，也不能靠它验证来自网络的 tag。
 
-ReleaseFast 与 ReleaseSmall 默认不提供这道护栏。程序可能把 `backoff` 的字节当成 `online` 解释，后果不受语言约束。不能把 panic 当作业务分支，也不能靠它验证来自网络的 tag。
-
-安全检查可以指出访问违反了当前 active field；tagged union 更早一步，让正常控制流不必依靠旁边另一份可能失真的状态记录。
-
-## `else`：最安静的遗漏
+## `else` 分支会安静地吞掉新状态
 
 穷尽 `switch` 有一项很实际的收益：状态集合改变以后，旧代码会拒绝继续编译。
 
@@ -345,15 +329,13 @@ const retryable = switch (conn) {
 };
 ```
 
-新增 `.draining` 后，它仍会安静地编译，并自动落进 `else`。这可能正是想要的语义，也可能把尚待斟酌的新状态悄悄归为 `false`。
+新增 `.draining` 后，它仍会安静地编译，新状态自动落进 `else`。这可能正是想要的语义，也可能把尚待斟酌的新状态悄悄归为 `false`。
 
-`else` 没有错。它只是明确放弃了逐项复核未来状态的机会。
+`else` 没有错，它只是明确放弃了逐项复核未来状态的机会。如果各个未列出的状态在业务上确实同义，`else` 能减少重复；如果新增状态理应触发设计审查，就把分支写全。编译器的检查范围，到你写下 `else` 的地方为止。
 
-如果各个未列出的状态在业务上确实同义，`else` 能减少重复；如果新增状态理应触发设计审查，就应把分支写全。编译器能检查的范围，到你写下 `else` 的地方为止。
+## 状态迁移：把合法路径集中到一处
 
-## 状态迁移：把合法路径集中起来
-
-tagged union 消除了“tag 与 payload 不一致”，却没有自动限制任意状态之间的跳转。`.closed` 仍可以直接变成 `.online`，只要给出合法 payload。
+tagged union 消除了 tag 与 payload 的不一致，但没有限制任意状态之间的跳转。`.closed` 仍可以直接变成 `.online`，只要给出合法 payload。
 
 若状态迁移本身也有规则，可以把事件建成另一个 tagged union：
 
@@ -406,7 +388,7 @@ fn step(conn: Connection, event: Event) Connection {
 
 状态与事件各自只有一个 active variant，二维 `switch` 把允许的转移集中在一处。这里的 `else => conn` 表示忽略某些事件，是一项明确的产品决定；若每个非法事件都应报错，可以让 `step` 返回 error union。
 
-类型解决的是表示问题，转移函数解决的是过程问题。不要因为非法组合已经消失，就误以为非法迁移也一并消失。
+类型解决表示问题，转移函数解决过程问题。非法组合消失了，非法迁移没有。
 
 ## 拷贝带走 tag，也带走 payload 的值
 
@@ -433,19 +415,17 @@ try std.testing.expect(snapshot == .online);
 try std.testing.expect(conn == .closed);
 ```
 
-但 `peer` 是切片。拷贝 payload 只复制它的指针与长度，不会复制底层字节：
+但 `peer` 是切片，拷贝 payload 只复制它的指针与长度，不复制底层字节：
 
 ```zig
 try std.testing.expect(snapshot.online.peer.ptr == &peer);
 ```
 
-统一状态事实，并不等于获得深拷贝。上一篇切片生命周期里那些期限与所有权问题，在 union payload 中照常成立。
+统一状态事实，不等于获得深拷贝。上一篇切片生命周期里的期限与所有权问题，在 union payload 中照常成立：一个状态快照保得住 `.online` 这个 tag，未必保得住 `online.peer` 指向的内存。
 
-一个状态快照可以保住 `.online` 这个 tag，却未必保得住 `online.peer` 指向的内存。值复制到哪里，借用就跟到哪里；底层存储并不会因此续期。
+## 量出来的尺寸，不等于布局保证
 
-## 尺寸是观察，布局不是承诺
-
-把独立 `phase` 合并进 tagged union，总要付出存储 tag 的成本。不过具体成本不能只靠“最大 payload 加一个字节”心算。
+把独立 `phase` 合并进 tagged union，总要付出存储 tag 的成本，而具体成本不能靠「最大 payload 加一个字节」心算。
 
 对本文的两种 union，在这台 x86_64 机器和 Zig 0.16.0 上，构建模式还会改变观察结果：
 
@@ -472,11 +452,9 @@ ReleaseFast 构建则是：
 bare=24 tagged=32 align=8
 ```
 
-Debug 下 bare union 也需要保存足以实施 active-field 安全检查的信息，因此本例中与 tagged union 同为 32 字节；ReleaseFast 关闭这道检查后，bare union 缩到 24 字节，而 tagged union 的业务 tag 仍是值语义的一部分，尺寸保持 32 字节。
+Debug 下 bare union 也要保存足以实施 active-field 安全检查的信息，因此本例中与 tagged union 同为 32 字节；ReleaseFast 关闭这道检查后，bare union 缩到 24 字节，而 tagged union 的业务 tag 是值语义的一部分，尺寸保持 32 字节。
 
-这些数字都是当前实现的观察，不是可供文件格式依赖的规则。它们反而说明，union 的实际表示不能只靠“最大 payload 加一个字节”心算。
-
-普通 bare union 和 tagged union 都没有稳定的内存布局。下面的代码会被拒绝：
+这些数字都是当前实现的观察，不能当作文件格式可以依赖的规则。普通 bare union 和 tagged union 也都没有稳定的内存布局，下面的代码会被拒绝：
 
 ```zig
 const raw: [@sizeOf(Connection)]u8 = @bitCast(conn);
@@ -487,15 +465,11 @@ error: cannot @bitCast from 'Connection';
 union does not have a guaranteed in-memory layout
 ```
 
-所以 tagged union 适合表达程序内部状态，不等于它天然就是网络包、磁盘记录或 C union。
+所以 tagged union 适合表达程序内部状态，要过 C ABI 或 wire format 时得另行安排：`extern union` 承诺匹配目标 C ABI，但不携带 Zig 的 active tag，也没有错误字段访问检查；`packed union` 面向位级重解释，同样不提供这份安全。跨边界时应按协议显式编码 tag 与 payload，或按 C ABI 分开声明 discriminant 和 `extern union`。
 
-`extern union` 承诺匹配目标 C ABI，却不携带 Zig 的 active tag，也没有错误字段访问检查；`packed union` 面向位级重解释，同样不提供这份安全。跨边界时，应按协议显式编码 tag 与 payload，或按 C ABI 分开声明 discriminant 和 `extern union`。
+## 外部来的 tag，先验证再构造
 
-能在本机量出尺寸，只说明这次构建的值占了多少空间；不能替它补上一份语言从未作出的布局保证。
-
-## 外部 tag：先验明，再构造
-
-网络字节 `1` 不会因为我们希望它代表 `.data`，就自动成为合法枚举值。
+网络字节 `1` 不会因为我们希望它代表 `.data`，就自动成为合法枚举值：
 
 ```zig
 const WireTag = enum(u8) {
@@ -509,7 +483,7 @@ const WireMessage = union(WireTag) {
 };
 ```
 
-若把任意整数直接交给 `@enumFromInt`，而对应 enum 中没有这个值，就会触发 safety-checked Illegal Behavior。Debug 或 ReleaseSafe 的 panic 不是解析器应有的错误处理；ReleaseFast 更不会替协议拒绝坏包。
+把任意整数直接交给 `@enumFromInt`，而对应 enum 中没有这个值，就触发 safety-checked Illegal Behavior。Debug 或 ReleaseSafe 的 panic 不能当解析器的错误处理用；ReleaseFast 更不会替协议拒绝坏包。
 
 应当先做业务校验，再构造 tagged union：
 
@@ -538,24 +512,20 @@ try std.testing.expectError(error.BadTag, decode(200, 0));
 All 1 tests passed.
 ```
 
-也可以先使用带 `_` 的非穷尽 enum 承接任意 `u8`，再在 `switch` 的 `_` 分支返回协议错误。但非穷尽 enum 能容纳未知整数，不代表 union 能凭空为未知 tag 造出一个不存在的字段。
+也可以先用带 `_` 的非穷尽 enum 承接任意 `u8`，再在 `switch` 的 `_` 分支返回协议错误。但非穷尽 enum 能容纳未知整数，不代表 union 能凭空为未知 tag 造出一个不存在的字段。
 
-类型系统会核对 active field 与访问是否一致；数据从外部进门时是否可信，仍要由解析代码审问。
+类型系统核对 active field 与访问是否一致；外部数据可不可信，要由解析代码负责。
 
-## 新状态到来时，哪些地方会说话
+## 新增状态时，哪些地方会报错
 
-现在正式加入 `.draining`，重走一次维护流程。
-
-没有 `else` 的 `describe`、`report` 和其他 `switch` 会停止编译，并逐处报告：
+现在正式加入 `.draining`，重走一次维护流程。没有 `else` 的 `describe`、`report` 和其他 `switch` 会停止编译，并逐处报告：
 
 ```text
 error: switch must handle all possibilities
 note: unhandled enumeration value: 'draining'
 ```
 
-这些报错不是维护负担，而是影响范围。新增一种状态之后，所有必须理解它的代码都来到了眼前。
-
-可清单上少了一处：
+这些报错不是负担，而是影响范围的清单：新增一种状态之后，所有必须理解它的代码都来到了眼前。可清单上少了一处：
 
 ```zig
 const retryable = switch (conn) {
@@ -564,30 +534,24 @@ const retryable = switch (conn) {
 };
 ```
 
-它在前面已经选择沉默，今天自然不会突然开口。
+它在前面已经选择了沉默——用了 `else` 的 switch 不会报错。每一处 `else` 都相当于提前替未来的新状态签了字：默认按旧逻辑处理。穷尽检查最值得珍惜的地方就在这里——它不能替人决定 `.draining` 应当怎样处理，但能指出哪些决策尚未发生。
 
-这正是穷尽检查最值得珍惜的地方：它不能替人决定 `.draining` 应当怎样处理，却能指出哪些决策尚未发生。每一个 `else` 则是一张预先签过的空白答卷——以后出现的新状态，都默认接受旧答案。
+## 它管不到的事
 
-## 结案之前
+tagged union 消除的是非法组合，不是所有业务错误。`.online` 不可能携带 `.backoff` 的 payload，但 session id 仍可能过期，peer 切片仍可能悬空，状态迁移也可能违反协议——这些都不在它的管辖范围里。
 
-**tagged union 消除的是非法组合，不是所有业务错误。** `.online` 不可能携带 `.backoff` 的 payload，但 session id 仍可能过期，peer 切片仍可能悬空，状态迁移仍可能违反协议。
+穷尽检查的效力取决于分支是否真的穷尽。`else`、`inline else` 和 `_` 各有正当用途，也都会缩小新增状态时的编译反馈，用它们时应知道自己放弃了哪一次复核。
 
-**穷尽检查取决于分支是否真的穷尽。** `else`、`inline else` 和 `_` 有各自正当用途，也都会缩小新增状态时的编译反馈。使用它们时，应知道自己放弃了哪一次复核。
+安全检查不是输入验证。读错 active field、构造非法 enum tag 都可能在安全构建中 panic，这不等于程序可以把不可信数据直接交给类型系统；协议错误应当成为普通 error，而不是 Illegal Behavior。
 
-**安全检查不是输入验证。** 读错 active field、构造非法 enum tag 都可能在安全构建中 panic；这不等于程序可以把不可信数据直接交给类型系统。协议错误应当成为普通 error，而不是 Illegal Behavior。
+tag 有空间成本，布局没有固定答案。具体大小应在目标平台上测量，普通 tagged union 不能直接序列化；要过 C ABI 或 wire format，必须另行表达边界。
 
-**tag 有空间成本，布局却没有固定答案。** 具体大小应在目标平台上测量；普通 tagged union 不能直接序列化。若要过 C ABI 或 wire format，必须另行表达边界。
-
-**payload 仍有自己的生命史。** 切片、指针、allocator 所有权和别名关系不会因为进入 tagged union 就消失。tag 证明当前是哪一种 payload，不证明 payload 里面的地址仍然有效。
+payload 仍有自己的生命周期。切片、指针、allocator 所有权和别名关系不会因为进了 tagged union 就消失；tag 证明当前是哪一种 payload，不证明 payload 里面的地址仍然有效。
 
 ---
 
-事故报告最后留下三件事。
+事故复盘到这里可以收了。监控和重试日志各自读的数据都是对的；路由代码确实访问了错误的 payload；而真正让事故成为可能的，是类型允许状态被分开记录。
 
-第一，监控和重试日志当时都准确读取了各自的数据。第二，路由代码确实访问了错误的 payload。第三，真正使事故成为可能的，不是那一处漏写，而是类型允许状态被分开记录。
+修复之后，连接不再同时拥有一个 `.online` 标签和一份 `.backoff` 数据：每次状态变化整体产生新的 union 值，每次分派从同一枚 tag 出发。那两行相隔两毫秒的矛盾日志，不再是「小概率时序问题」，而是构造不出来的状态。
 
-修复以后，连接不再同时拥有一个 `.online` 标签和一份 `.backoff` 数据。每次状态变化都整体产生新的 union 值，每次分派都从同一枚 tag 出发。那两行相隔两毫秒的矛盾日志，因此不再是“小概率时序问题”，而是无法构造的状态。
-
-tagged union 没有让程序无懈可击。它也没有发明那条错误字段访问的警报——bare union 在安全构建中早已有同样的护栏。真正修掉事故的，是连接的状态从此只记一遍：`.online` 与 `.backoff` 不再有机会分别成立。
-
-那夜的 panic 只能证明程序已经走进矛盾；新的类型则让那份矛盾在出发以前，就无处安放。
+下一篇讲安全模式与 Illegal Behavior。读错 union 字段、非法 enum tag 都属于 safety-checked 那一类，这篇里出现的几次 panic，正好到那边说清它们的边界。

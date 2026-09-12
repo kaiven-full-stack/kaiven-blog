@@ -197,19 +197,19 @@ export const concepts: ConceptMeta[] = [
   {
     id: 'c-interop',
     label: 'C 互操作',
-    description: 'ABI、翻译与所有权的过桥规则',
+    description: '跨 ABI 的翻译与所有权规则',
     posts: ['zig-c-interop', 'zig-cc-cross-compilation', 'zig-memory-layout'],
   },
   {
     id: 'comptime',
     label: '编译期求值',
-    description: '一招替宏、模板、反射三门手艺',
+    description: '宏、模板、反射都交给编译期执行',
     posts: ['zig-comptime', 'zig-error-handling', 'zig-build-system', 'zig-strings'],
   },
   {
     id: 'illegal-behavior',
     label: '非法行为',
-    description: '四座构建法庭与显式语义的边界',
+    description: '四种构建模式与显式语义的边界',
     posts: ['zig-safety-modes', 'zig-undefined', 'zig-integer-overflow', 'zig-testing'],
   },
   {
