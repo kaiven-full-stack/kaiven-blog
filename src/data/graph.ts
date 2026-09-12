@@ -339,7 +339,7 @@ export const concepts: ConceptMeta[] = [
   {
     id: 'innodb-space',
     label: 'InnoDB 空间管理',
-    description: '页/区/段三层账本与碎片区到整区的成长',
+    description: '页/区/段三层结构与碎片区到整区的成长',
     posts: ['mysql-innodb-pages-btree', 'mysql-innodb-mvcc', 'mysql-innodb-locks', 'mysql-innodb-buffer-pool-lru', 'mysql-online-ddl', 'mysql-partitioning'],
   },
   {
@@ -381,7 +381,7 @@ export const concepts: ConceptMeta[] = [
   {
     id: 'mvcc',
     label: 'MVCC 与快照可见性',
-    description: 'ReadView 三判例定隔离级别，purge 收版本链',
+    description: 'ReadView 三规则定隔离级别，purge 收版本链',
     posts: ['mysql-innodb-mvcc', 'mysql-innodb-locks'],
   },
   {
@@ -411,7 +411,7 @@ export const concepts: ConceptMeta[] = [
   {
     id: 'cost-model',
     label: '代价模型与口径',
-    description: 'cost 按行计价；磁盘页、页访问次数与行数三种账本',
+    description: 'cost 按行计价；磁盘页、页访问次数与行数三种口径',
     posts: ['mysql-innodb-query-optimizer', 'mysql-join-algorithms', 'mysql-performance-schema'],
   },
   {
@@ -550,9 +550,9 @@ export const relatedLinks: RelatedLink[] = [
   { from: 'kernel-copy-on-write', to: 'mysql-innodb-mvcc', note: '读不加锁的两条路：复制页 vs 多版本' },
   { from: 'redis-multi-exec-watch', to: 'mysql-innodb-locks', note: 'WATCH 对望行锁：乐观赌与悲观等' },
   { from: 'redis-replication-sync', to: 'mysql-replication-gtid', note: '两个世界的主从：全量 RDB vs 增量 binlog' },
-  { from: 'redis-eviction-policy', to: 'mysql-innodb-buffer-pool-lru', note: '近似淘汰对望子链分区：八仙过海' },
+  { from: 'redis-eviction-policy', to: 'mysql-innodb-buffer-pool-lru', note: '近似淘汰对望子链分区：各有一套办法' },
   { from: 'kernel-page-cache-writeback', to: 'mysql-innodb-buffer-pool-lru', note: '内核页缓存与缓冲池：两层的冷热分级' },
-  { from: 'redis-aof-append-fsync', to: 'mysql-innodb-buffer-pool-lru', note: '写缓冲推迟落账的三种姿势' },
+  { from: 'redis-aof-append-fsync', to: 'mysql-innodb-buffer-pool-lru', note: '写缓冲推迟落盘的三种档位' },
   { from: 'redis-aof-append-fsync', to: 'mysql-binlog-redo-2pc', note: 'everysec 对望双 1：落盘纪律同题' },
   { from: 'kernel-page-cache-writeback', to: 'mysql-binlog-redo-2pc', note: 'OS 缓存兜底与主机断电的分界' },
   { from: 'mq-basics-decouple-async-peak', to: 'mysql-binlog-redo-2pc', note: '下游传染与提交传染：链上最弱一环' },
