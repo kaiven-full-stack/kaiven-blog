@@ -1,20 +1,12 @@
 ---
 title: 一次 await 究竟暂停了什么：CPython 的生成器帧与 SEND 字节码
-description: await 不是把函数重新调用一遍，也不是只记住一行源码。本文从内嵌在生成器与协程对象中的 _PyInterpreterFrame 出发，沿 RETURN_GENERATOR、send、YIELD_VALUE、yield from、GET_AWAITABLE 与 SEND 追踪暂停和恢复，辨清 yield value、send value、StopIteration.value 与 cr_await 各自如何传递控制权。实验在 CPython 3.14.7 上复核，并对照 CPython 3.12.13 与 3.16.0a0 开发源码。
+description: await 不是把函数重新调用一遍，也不是只记住一行源码。本文从内嵌在生成器与协程对象中的 _PyInterpreterFrame 出发，沿 RETURN_GENERATOR、send、YIELD_VALUE、yield from、GET_AWAITABLE 与 SEND 追踪暂停和恢复，讲清 yield value、send value、StopIteration.value 与 cr_await 在控制权传递中的位置。文中实验基于 CPython 3.14.7，另与 3.12.13 和 3.16.0a0 开发源码对照。
 pubDate: 2026-09-09T10:00:00+08:00
 category: cpython
 tags: [CPython, 编程语言, 解释器, 异步]
 ---
 
-```text
-协程对象已经创建。
-函数正文一行也没运行。
-局部变量尚未建立，执行帧却已经有了归宿。
-```
-
-三行记录都是真的。
-
-先从生成器看同一件事：
+协程对象创建之后，函数正文一行也没运行，局部变量尚未建立，执行帧却已经有了归宿。先从生成器看同一件事：
 
 ```python
 events = []
@@ -41,7 +33,7 @@ print(events)
 
 `await` 暂停的不是一行源码，也不是一只 Future 的名字。它暂停的是一份完整的执行现场：当前指令位置、fast locals、cell/free variables、操作数栈、异常状态，以及正在等待谁的委托链。
 
-本文实验以 **CPython 3.14.7、x86_64 Linux、64 位、默认 GIL、非 debug 构建**为主，并与 CPython 3.12.13 对照。稳定版结构以本机 3.14 内部头文件和实际反汇编为准；开发演进同时核对本地一份标记为 **CPython 3.16.0a0** 的源码快照，该目录没有 Git 元数据，无法绑定具体提交。具体 opcode、offset、frame state 和 C 函数均属于对应版本的 CPython 实现，不是 Python 语言或 Stable ABI 的固定布局。
+本文实验主要跑在 CPython 3.14.7 上（x86_64 Linux、64 位、默认 GIL、非 debug 构建），并与 CPython 3.12.13 对照。稳定版结构以本机 3.14 内部头文件和实际反汇编为准；开发演进核对本地一份 CPython 3.16.0a0 源码快照，该目录没有 Git 元数据，绑定不到具体提交。具体 opcode、offset、frame state 和 C 函数均属于对应版本的 CPython 实现，不是 Python 语言或 Stable ABI 的固定布局。
 
 ## 生成器调用并非完全没有 frame
 
@@ -95,7 +87,7 @@ GEN_CLOSED
 
 CPython 内部还保存更细的 frame state，用于区分 created、executing、普通 suspended、处在 yield-from 链上的 suspended，以及 cleared/finished 等情况。当前 3.16 free-threaded 实现甚至增加了读取 `gi_yieldfrom` 时的锁定状态，避免并发读写 frame 产生竞争。
 
-这些状态不是装饰标签，而是决定哪些操作合法：
+这些状态直接决定哪些操作合法：
 
 - created generator 只能先发送 `None`；
 - executing generator 不能重入；
@@ -513,7 +505,7 @@ Marker object
 close() 并清理 frame 后     对象释放
 ```
 
-这不是泄漏，而是暂停语义本身：若局部变量在恢复后还可能使用，frame 就必须保留它。
+这正是暂停语义本身：若局部变量在恢复后还可能使用，frame 就必须保留它。
 
 协程也是如此。前面的 worker 暂停时，`cr_frame.f_locals` 仍可见 `kept = "still-here"`；如果实际局部变量是一只大型对象，它也会一直活到协程恢复、结束、关闭或整个协程对象被清理。
 
@@ -579,41 +571,14 @@ CPython 会为从未 awaited、仍处于 created 状态的 coroutine 发出 `Run
 
 相对稳定的只有语义层：调用 generator/coroutine function 得到暂停对象；驱动方法恢复现场；yield 暂停并返回值；send 把值送回；return 结束并携带最终值；awaitable protocol 限定哪些对象能被 await。
 
-## 暂停以前
+## 暂停与恢复的规则
 
-**调用生成器函数不会执行正文，但不等于没有 frame。** 初始调用 frame 执行 `RETURN_GENERATOR`，再把现场复制到 generator/coroutine object 的内嵌 frame。
+调用生成器函数不会执行正文，但也不等于没有 frame：初始调用 frame 执行 `RETURN_GENERATOR`，再把现场复制到 generator/coroutine object 的内嵌 frame。生成器和协程保存的是完整执行现场，局部变量、operand stack、instr_ptr 与异常状态都跨暂停保留。
 
-**生成器和协程保存的是完整执行现场。** 局部变量、operand stack、instr_ptr 与异常状态都跨暂停保留，不是只记录一行源码。
+`send()` 是恢复，不是重新调用：它把值压入原来的 frame，成为暂停 `yield` 表达式的结果，然后从保存位置继续。`YIELD_VALUE` 交出控制权却不销毁 frame，它推进恢复位置、保存栈、撤下调用链并标记 suspended。`yield from` 与 `await` 共享 `SEND` 委托循环：receiver 再 yield 就继续暂停，receiver return 就由 `END_SEND` 取得最终值，经 `StopIteration.value` 成为委托表达式的结果。`await` 额外受 awaitable protocol 约束，`GET_AWAITABLE` 必须取得合法的 `__await__()` iterator，不能 await 任意 iterable。
 
-**`send()` 是恢复，不是重新调用。** 它把值压入原来的 frame，成为暂停 `yield` 表达式的结果，然后从保存位置继续。
+`throw()` 与 `close()` 从暂停点注入异常；`close()` 允许 `finally` 清理，却不允许生成器继续 yield。暂停的 frame 会继续留住局部对象，generator/coroutine 没有完成，就仍可能保有大对象、异常和上下文。`gi_frame` / `cr_frame` 是 Python frame object 视图，真正嵌入暂停对象的是 `_PyInterpreterFrame`，必要时可向 frame object 转移所有权。未 await 的警告只指出 created coroutine 未按协议驱动，不会替程序调度协程。版本差异要写进状态机：3.16 的原子 frame state、return-kind 和 SEND family 演进，不应冒充 3.14 的固定实现。
 
-**`YIELD_VALUE` 交出控制权却不销毁 frame。** 它推进恢复位置、保存栈、撤下调用链并标记 suspended。
+一次 `await` 暂停的是整份 coroutine frame：局部变量、栈、异常状态和等待对象一起停住；恢复时把值送回那一刻尚未完成的表达式，从头执行的只有第一次驱动。
 
-**`yield from` 与 `await` 共享 `SEND` 委托循环。** receiver 再 yield 就继续暂停，receiver return 就通过 `END_SEND` 取得最终值。
-
-**`await` 额外受 awaitable protocol 约束。** `GET_AWAITABLE` 必须取得合法 `__await__()` iterator，不能 await 任意 iterable。
-
-**`StopIteration.value` 是正常 return 的协议载体。** 它让 subgenerator 或 await iterator 的最终值成为委托表达式结果，不是普通业务失败。
-
-**`throw()` 与 `close()` 从暂停点注入异常。** `close()` 允许 `finally` 清理，却不允许生成器继续 yield。
-
-**暂停 frame 会继续留住局部对象。** generator/coroutine 没有完成，就仍可能保有大对象、异常和上下文。
-
-**`gi_frame` / `cr_frame` 是 Python frame object 视图。** 真正嵌入暂停对象的是 `_PyInterpreterFrame`，必要时可向 frame object 转移所有权。
-
-**未 await 警告不会替程序调度协程。** 它只指出 created coroutine 未按协议驱动，正文仍然没有运行。
-
-**版本差异必须写进状态机。** 3.16 的原子 frame state、return-kind 和 SEND family 演进不应冒充 3.14 的固定实现。
-
----
-
-```text
-普通 return 把现场交回并退场。
-yield 把一个值递出去，却把现场留在对象里。
-send 把一个值送回来，让同一场演出从原处继续。
-await 沿委托链交出控制权，等下一层准备好再醒来。
-```
-
-一次 `await` 暂停的，从来不只是一行代码。它让整份 coroutine frame 带着局部变量、栈、异常状态和等待对象安静下来；恢复时也不是重新开始，而是把值送回那一刻尚未完成的表达式。
-
-下一篇将离开语言协议，进入调度层：Task 怎样把 coroutine 一段一段推进，Future 如何通知它再次就绪，`asyncio` 的 `_run_once()` 又怎样在 ready queue、timer heap 与 selector 之间安排下一轮。
+下一篇离开语言协议，进入调度层：Task 怎样把 coroutine 一段一段推进，Future 如何通知它再次就绪，`asyncio` 的 `_run_once()` 又怎样在 ready queue、timer heap 与 selector 之间安排下一轮。

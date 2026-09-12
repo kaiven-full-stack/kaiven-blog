@@ -1,6 +1,6 @@
 ---
 title: 下一条指令藏在哪里：CPython 的执行帧与求值循环
-description: 同一个递归函数只共享一份 code object，为什么每一层调用仍有独立的参数、局部变量与返回位置？本文从 _PyInterpreterFrame 的 localsplus、操作数栈和指令指针出发，沿 Python 函数调用、帧切换、RETURN_VALUE、PyFrameObject 按需创建与 PEP 667 的 f_locals 代理一路追下去，辨清代码、调用现场和调试视图各自承担什么。实验在 CPython 3.14.7 上复核，并对照 CPython 3.12.13 与 3.16.0a0 开发源码。
+description: 同一个递归函数只共享一份 code object，为什么每一层调用仍有独立的参数、局部变量与返回位置？本文从 _PyInterpreterFrame 的 localsplus、操作数栈和指令指针出发，沿 Python 函数调用、帧切换、RETURN_VALUE、PyFrameObject 按需创建与 PEP 667 的 f_locals 代理一路追下去，讲清代码、调用现场和调试视图各自承担什么。实验环境为 CPython 3.14.7，并与 3.12.13、3.16.0a0 开发源码核对。
 pubDate: 2026-09-09
 category: cpython
 tags: [CPython, 编程语言, 解释器]
@@ -12,7 +12,7 @@ Python frame 数量   4
 code object 数量    1
 ```
 
-三行记录都是真的。
+这三行记录来自同一段代码：
 
 ```python
 import sys
@@ -42,13 +42,13 @@ CPython 3.14.7 的四层记录中，`frame` 地址各不相同，`frame.f_code` 
 
 这正是执行帧存在的理由。
 
-上一篇一直盯着同一处 `BINARY_OP`，看它从通用指令变成 `BINARY_OP_ADD_INT`，又在 guard 失效时回到通用语义。可一条指令不会悬在半空中执行：谁告诉解释器下一条指令在哪里？`left` 与 `right` 从哪里取出来？中间结果放在何处？调用另一个 Python 函数时，当前现场又如何留下返回地址？
+上一篇一直盯着同一处 `BINARY_OP`，看它从通用指令变成 `BINARY_OP_ADD_INT`，又在 guard 失效时回到通用语义。可一条指令不会悬在半空中执行：解释器要知道下一条指令在哪里、操作数从哪里取、中间结果放到何处，调用另一个 Python 函数时还要留下返回地址。
 
-这一篇不再问“指令怎样变快”，而是走进承载指令的现场。
+这一篇的问题从「指令怎样变快」换成「指令在哪里执行」。
 
-本文实验以 **CPython 3.14.7、x86_64 Linux、64 位、默认 GIL、非 debug 构建**为主，并与 CPython 3.12.13 做对照。稳定版结构以本机 3.14 内部头文件为准，开发演进同时核对本地一份标记为 **CPython 3.16.0a0** 的源码快照；该目录没有 Git 元数据，无法绑定到具体提交。`_PyInterpreterFrame`、`localsplus` 和求值循环中的函数名都是 CPython 内部实现，不是 Python 语言或 Stable ABI 的布局承诺。
+本文实验在 CPython 3.14.7（x86_64 Linux、64 位、默认 GIL、非 debug 构建）上完成，并与 3.12.13 对照。稳定版结构以本机 3.14 内部头文件为准，开发演进核对本地一份 CPython 3.16.0a0 源码快照；该目录没有 Git 元数据，对应不到具体提交。`_PyInterpreterFrame`、`localsplus` 和求值循环中的函数名都是 CPython 内部实现，不是 Python 语言或 Stable ABI 的布局承诺。
 
-## Code object 是剧本，frame 是这一场演出
+## Code object 与 frame 的分工
 
 函数对象持有 code object。code object 描述一段编译后的可执行内容，包括：
 
@@ -614,39 +614,16 @@ localsplus[]
 
 同样，PEP 523 允许替换 frame evaluator。本文描述的是默认 `_PyEval_EvalFrameDefault()` 与常见 Python function 快路，不保证嵌入器、自定义 evaluator 或未来执行层必须逐行照搬。
 
-## 下一条指令以前
+## 一次调用的完整现场
 
-**Code object 描述可执行剧本，frame 保存一次调用现场。** 递归调用可以共享一份 code object，却必须为每层保存独立参数、局部变量、栈与返回位置。
+code object 描述可执行内容，frame 保存一次调用现场：递归调用可以共享一份 code object，却必须为每层保存独立的参数、局部变量、栈与返回位置。现代 CPython 默认执行轻量的 `_PyInterpreterFrame`，多数普通 frame 连续分配在每线程数据栈中，不要求每次调用都立即堆分配 `PyFrameObject`。
 
-**现代 CPython 默认执行轻量 `_PyInterpreterFrame`。** 多数普通 frame 连续分配在每线程数据栈中，不要求每次调用都立即堆分配 `PyFrameObject`。
+`localsplus` 把 fast locals 与 operand stack 放在同一片变长区域：前 `co_nlocalsplus` 个槽保存参数、局部与闭包状态，后面最多使用 `co_stacksize` 个栈槽。求值循环把指令指针与栈指针缓存成局部变量，opcode 消费和产生 `_PyStackRef`，必要时再与 frame 同步；inline cache 只是字节码数组中的数据区。
 
-**`localsplus` 把 fast locals 与 operand stack 放在同一片变长区域。** 前 `co_nlocalsplus` 个槽保存参数、局部与闭包状态，后面最多使用 `co_stacksize` 个栈槽。
+常见的 Python-to-Python 调用是在同一求值循环里切换 frame，「inlined call」避免的是递归进入新的 C 求值调用，不表示函数体被复制进调用者。`RETURN_VALUE` 是一次跨 frame 交接：返回值从 callee 栈离开，callee 被清理弹出，caller 按 `return_offset` 恢复并接过结果。
 
-**求值循环把指令指针与栈指针缓存成局部状态。** opcode 消费和产生 `_PyStackRef`，必要时再与 frame 同步；inline cache 只是字节码数组中的数据区。
+内部 frame 与 Python `frame` 对象不是同一结构：`sys._getframe()`、traceback 与调试器需要时才创建对象化视图；若对象活得更久，内部现场可以转移到它自己的存储中。PEP 667 划清了 fast locals 的公开语义，3.14 的 `frame.f_locals` 是写穿代理，函数中的 `locals()` 返回独立快照，3.12 的旧行为不能继续当作现代规则。traceback 保留的是整条可达路径：只要 traceback 仍指向 frame，frame 的 `localsplus` 就可能继续留住局部对象。
 
-**常见 Python-to-Python 调用是在同一求值循环里切换 frame。** “inlined call”避免递归进入新的 C 求值调用，不表示函数体被复制进调用者。
+frame 是一份可迁移的执行状态，不只是 C 栈帧：普通调用、生成器、frame object 与线程数据栈可以在不同阶段拥有它。内部布局必须带版本，3.16 的 base/shim frame、profiling cache 和 TLBC 是开发演进，不能写成所有 CPython 版本的固定布局。
 
-**`RETURN_VALUE` 是一次跨 frame 交接。** 返回值从 callee 栈离开，callee 被清理弹出，caller 按 `return_offset` 恢复并接过结果。
-
-**内部 frame 与 Python `frame` 对象不是同一结构。** `sys._getframe()`、traceback 与调试器需要时才创建对象化视图；若对象活得更久，内部现场可以转移到它自己的存储中。
-
-**PEP 667 划清了 fast locals 的公开语义。** 3.14 的 `frame.f_locals` 是写穿代理，函数中的 `locals()` 则返回独立快照；3.12 的旧行为不能继续当作现代规则。
-
-**traceback 保留的是整条可达路径。** 只要 traceback 仍指向 frame，frame 的 `localsplus` 就可能继续留住局部对象。
-
-**frame 是可迁移的执行状态，不只是 C 栈帧。** 普通调用、生成器、frame object 与线程数据栈可以在不同阶段拥有它。
-
-**内部布局必须带版本。** 3.16 的 base/shim frame、profiling cache 和 TLBC 是开发演进，不能被写成所有 CPython 版本的契约。
-
----
-
-```text
-code object 放着剧本。
-frame 记着这一场演到哪里。
-localsplus 收好演员的名字，也托住尚未落地的中间结果。
-调用时换一处现场，返回时沿留下的偏移回到原位。
-```
-
-上一文看见字节码在一个操作点上学会走短路；这一文找到了托住那条指令的 frame。下一步，执行现场可以不再一次走到底：生成器在 `yield` 处停下，协程在 `await` 处交出控制权，保存的 `instr_ptr` 与栈又让它们从原处醒来。
-
-下一篇便沿内嵌的生成器 frame 继续，看看一次 `await` 究竟暂停了什么，`SEND` 怎样把值送进暂停的现场，又怎样接回一次 yield 或 return。
+上一篇里字节码在一个操作点上学会走短路；这一篇找到了托住那条指令的 frame。执行现场可以不再一次走到底：生成器在 `yield` 处停下，协程在 `await` 处交出控制权，保存的 `instr_ptr` 与栈又让它们从原处醒来。下一篇便沿内嵌的生成器 frame 继续，看看一次 `await` 究竟暂停了什么，`SEND` 怎样把值送进暂停的现场，又怎样接回一次 yield 或 return。

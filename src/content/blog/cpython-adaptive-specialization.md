@@ -1,6 +1,6 @@
 ---
-title: 同一条字节码，为什么越跑越短：CPython 的自适应解释器与操作特化
-description: 同一个 + 起初走通用 BINARY_OP，反复遇见 exact int 后却显示为 BINARY_OP_ADD_INT；类型一变，它又会退回或改学另一条路径。本文沿同一处操作点追踪 adaptive counter、inline cache、guard、专用指令与反特化，辨清逻辑字节码、当前执行形态和语言语义各自保证到哪里。实验在 CPython 3.14.7 上复核，并对照 CPython 3.12.13 与 3.16.0a0 开发源码。
+title: 字节码越跑越短：CPython 的自适应解释器与操作特化
+description: 同一个 + 起初走通用 BINARY_OP，反复遇见 exact int 后却显示为 BINARY_OP_ADD_INT；类型一变，它又会退回或改学另一条路径。本文沿同一处操作点追踪 adaptive counter、inline cache、guard、专用指令与反特化，分清逻辑字节码、当前执行形态和语言语义三个观察层。实验以 CPython 3.14.7 为主，对照 3.12.13 与 3.16.0a0 开发源码。
 pubDate: 2026-09-08T21:00:00+08:00
 category: cpython
 tags: [CPython, 编程语言, 解释器]
@@ -21,15 +21,15 @@ def add(left, right):
 
 源代码没有改变，函数对象没有换掉，公开的 `co_code` 字节串在热身前后也完全相同。变化发生在解释器维护的自适应执行形态中。
 
-所以标题里的“越跑越短”不是说字节码文件越来越小，也不是说一条指令从六个字节缩成两个字节。**变短的是 guard 命中时的执行路径：解释器为某个操作点写下一份可撤销的类型假设，暂时绕过一部分通用分派。**
+所以标题里的“越跑越短”不是说字节码文件越来越小，也不是说一条指令从六个字节缩成两个字节。变短的是 guard 命中时的执行路径：解释器为某个操作点写下一份可撤销的类型假设，暂时绕过一部分通用分派。
 
 上一篇追的是语义：一枚 `+` 进入 `PyNumber_Add()` 后，类型槽怎样安排 `__add__`、`__radd__`、严格子类优先、`NotImplemented` 与序列后备。这条路必须容纳 Python 的动态能力，因而足够通用。
 
-可如果同一处 `left + right` 连续一万次都只看见 exact `int`，解释器还需要每次完整翻完同一本登记册吗？
+可如果同一处 `left + right` 连续一万次都只看见 exact `int`，解释器还需要每次走完完整的通用分派吗？
 
-这一篇就盯着这一处 `BINARY_OP`，看它怎样观察、改写、守卫、失手，再重新学习。
+这一篇就盯着这一处 `BINARY_OP`，看它什么时候被改写成专用指令、改写依据什么、失手之后又怎么退回来。
 
-本文实验以 **CPython 3.14.7、x86_64 Linux、64 位、默认 GIL、非 debug 构建**为主，并与 CPython 3.12.13 做对照。稳定版内部机制参考 CPython 3.14 维护分支，开发方向则核对本地一份标记为 **CPython 3.16.0a0** 的源码快照；本地目录没有 Git 元数据，无法绑定到具体提交。专用 opcode、counter 数值、cache 布局与重试阈值都是版本实现事实，不是 Python 语言承诺。
+本文实验以 CPython 3.14.7 的默认 GIL 构建为主（x86_64 Linux，64 位，非 debug），并与 3.12.13 对照。稳定版内部机制参考 CPython 3.14 维护分支，开发方向核对本地一份 CPython 3.16.0a0 源码快照；本地目录没有 Git 元数据，绑定不到具体提交。专用 opcode、counter 数值、cache 布局与重试阈值都是版本实现事实，不是 Python 语言承诺。
 
 ## 上一篇回答找谁，这一篇回答还要不要再找
 
@@ -47,7 +47,7 @@ PyNumber_Add(left, right)
 
 上一篇已经逐层走过这条路径。它的重要性不因特化而消失：只要专用假设不成立，解释器仍要回到这里，保证用户类、子类、动态修改后的特殊方法和异常语义全部正确。
 
-自适应解释器增加的不是另一套语言规则，而是一条有条件的短路：
+自适应解释器增加的不是另一套语言规则，是一条有条件的短路：
 
 ```text
 协议决定结果必须是什么
@@ -56,7 +56,7 @@ PyNumber_Add(left, right)
 
 这也是全文的底线。CPython 没有把动态 Python 改成静态类型语言；它只在一个具体操作点上，根据近期看到的对象形态，暂时相信一件可以撤销的事。
 
-## `co_code` 与当前执行形态不是同一张照片
+## `co_code` 与当前执行形态不是同一层
 
 下面两种反汇编经常被当成互相矛盾的答案：
 
@@ -144,7 +144,7 @@ BINARY_OP(NB_ADD)
 
 它没有运行时参数，无法断定未来传进来的是整数、浮点数、字符串，还是明天才定义的用户类。因此不会直接生成 `BINARY_OP_ADD_INT`。
 
-编译后的字节码布局已经为相应 family 留出 inline cache code units。code object 初始化时，CPython 执行 quickening：遍历这些既有位置，初始化 warmup counter，并完成必要的初始 opcode 修整。quickening 不是“已经按类型优化完成”；它更像在登记册旁放好一张空白便笺，等运行时现场来填写。
+编译后的字节码布局已经为相应 family 留出 inline cache code units。code object 初始化时，CPython 执行 quickening：遍历这些既有位置，初始化 warmup counter，并完成必要的初始 opcode 修整。quickening 不是“已经按类型优化完成”，它只是把计数器和 cache 槽准备好，内容由运行时来填。
 
 真正的类型 specialization 发生在执行期间。当 counter 到达尝试点，`_Py_Specialize_BinaryOp()` 查看这一刻的左右操作数和 `oparg`，再决定：
 
@@ -154,7 +154,7 @@ BINARY_OP(NB_ADD)
 - 是否能使用其他扩展专用形态；
 - 或者当前没有合适快路，继续保留通用形态并延后重试。
 
-因此专用 opcode 不是编译器对源码做出的永久类型声明，而是运行时对一个具体操作点写下的临时判断。
+因此专用 opcode 不是编译器对源码做出的永久类型声明；它是运行时对一个具体操作点写下的临时判断。
 
 ## inline cache 就贴在操作点旁边
 
@@ -192,7 +192,7 @@ CACHE
 
 这些 `CACHE` 行是反汇编器对内部数据的格式化展示，不是解释器把它们当普通业务 opcode 一条条执行。不同 family 会给 cache 字段不同含义；也不能因为 `BINARY_OP` 的第一项叫 counter，就断言所有 inline cache 都只保存类型或次数。
 
-cache 贴在具体字节码位置旁边，意味着反馈也是 **per instruction site**。同一个函数里的两枚 `+` 可以学成两种形态：
+cache 贴在具体字节码位置旁边，意味着反馈也是 per instruction site。同一个函数里的两枚 `+` 可以学成两种形态：
 
 ```python
 def pair(a, b, c, d):
@@ -354,7 +354,7 @@ CPython 3.14.7 与 3.12.13 在本机各五轮都得到相同转折点。
 
 前 52 次不是“浮点也走整数快路”，而是每次 guard miss 后走通用后备，同时消费当前专用形态的 miss/cooldown 状态。第 53 次到达重新考虑的时机，specializer 看见当前操作数是 exact float，于是操作点直接改学 `BINARY_OP_ADD_FLOAT`。
 
-这是一项**重特化**，不必先长时间停在可见的通用形态。若新输入本身有支持的专用路径，重新尝试时可以直接换过去。
+这是一项重特化，不必先长时间停在可见的通用形态。若新输入本身有支持的专用路径，重新尝试时可以直接换过去。
 
 接着改传普通用户类：
 
@@ -469,9 +469,9 @@ opcode 仍显示整数专用形态，因为它对整数输入仍然有价值；�
 
 `BINARY_OP_EXTEND` 同样属于 Tier 1。它在 3.14 已经存在，3.16 扩大了对混合数值、列表、元组、bytes、重复操作和字典合并等组合的覆盖。它不是“调用任意扩展模块回调”的入口，也不是 Tier 2/JIT opcode；这里的 EXTEND 指 CPython 内部静态 descriptor 表扩展了专用操作集合。
 
-## pystats 能补哪份证词
+## pystats 能补充什么
 
-`dis` 擅长给某个操作点拍照，却不擅长统计长期事件总数。pystats 构建可以补充：
+`dis` 擅长看某个操作点的当前状态，却不擅长统计长期事件总数。pystats 构建可以补充：
 
 - specialization success；
 - failure；
@@ -506,7 +506,7 @@ make
 
 下文沿用源码和社区中仍常见的 Tier 1 / Tier 2 叫法；当前 3.16 内部文档同时说明它们属于历史称呼，正式讨论时更应看清各层实际职责。
 
-本文讨论的是 **Tier 1 adaptive bytecode interpreter**：
+本文讨论的是 Tier 1 adaptive bytecode interpreter：
 
 ```text
 一条 bytecode instruction
@@ -530,7 +530,7 @@ JIT                    ≠ 本文的 BINARY_OP_ADD_INT
 
 本文刻意不展开 Tier 2。读者若还不知道当前指令位置、operand stack 和局部变量放在哪里，trace 从哪里进入、guard 失败后回到何处便没有落点。下一篇应先进入执行帧与求值循环，再继续追跨指令优化。
 
-## 三层承诺不能混写
+## 语言语义、诊断接口与内部实现
 
 ### Python 语言语义
 
@@ -572,37 +572,14 @@ BINARY_OP_EXTEND
 
 free-threaded 3.16 还有额外边界：thread-local bytecode 允许不同线程拥有自己的专门化副本。于是“一个 code object 永远只有一份 adaptive 数组”也不能跨构建成立；禁用 TLBC 还会连带禁用 specialization。
 
-## 变短的是路，不是规则
+## 一份假设的生命周期
 
-**编译器只生成通用 `BINARY_OP`。** 专用 opcode 是运行时根据当前操作点观察到的对象形态原地改写出来的。
+编译器只生成通用 `BINARY_OP`，专用 opcode 是运行时根据操作点观察到的对象形态原地改写出来的。公开 `co_code` 与 adaptive 执行数组不是同一观察层：热身前后 `co_code` 完全相同，`adaptive=True` 却显示不同专用形态。inline cache 属于具体 instruction site，同一函数里的两枚加号可以分别学会整数加法和 Unicode 拼接，不存在整个函数统一变成整数版。
 
-**公开 `co_code` 与 adaptive 执行数组不是同一观察层。** 热身前后 `co_code` 可以完全相同，`adaptive=True` 却显示不同专用形态。
+counter 不是普通执行次数，它编码 warmup、cooldown 与 backoff；17、832、第二次尝试、53 次 miss，都只是当前版本参数。专用 opcode 是带 guard 的可撤销假设：命中走短路，miss 让本次执行回到通用语义，一次 miss 不等于立刻永久去特化。Tier 1 的 `BINARY_OP` 是单态并可重特化的，不在同一 cache 中保存多个类型分支，多态输入会让当前假设竞争和更替。
 
-**inline cache 属于具体 instruction site。** 同一函数里的两枚加号可以分别学会整数加法和 Unicode 拼接，不存在“整个函数统一变成整数版”。
+优化不能吞掉动态语义：exact built-in guard 排除子类与用户对象，动态修改后的 `__add__` 仍由通用类型槽协议执行。版本差异必须写进结论：3.14/3.12 的整数专用路径接受大 exact int，当前 3.16 开发快照只接受 exact compact int。`dis` 是诊断窗口，只能看到当前状态，不能单独还原此前所有 hit、miss 与退化。Tier 1、Tier 2 与 JIT 是三层不同机制：单指令特化、跨指令 trace、native code。
 
-**counter 不是普通执行次数。** 它编码 warmup、cooldown 与 backoff；17、832、第二次尝试和 53 次 miss 都只是当前版本参数。
+逻辑字节码从头到尾没有变成静态类型承诺。CPython 只是把近期稳定的事实写成一份可撤销的假设：命中时少走几步分派，失效时回到完整语义。
 
-**专用 opcode 是带 guard 的可撤销假设。** guard 命中走短路，miss 则让本次执行回到通用语义；一次 miss 不等于立刻永久去特化。
-
-**Tier 1 `BINARY_OP` 是单态并可重特化的。** 它不在同一 cache 中公开保存多个类型分支；多态输入会让当前假设竞争和更替。
-
-**优化不能吞掉动态语义。** exact built-in guard 会排除子类与用户对象，动态修改后的 `__add__` 仍由通用类型槽协议执行。
-
-**版本差异必须写进结论。** 3.14/3.12 的整数专用路径接受大 exact int；当前 3.16 开发快照只接受 exact compact int。
-
-**`dis` 是诊断窗口，不是执行历史录像。** 最终 opcode 只说明当前状态，不能单独还原此前所有 hit、miss 与退化。
-
-**Tier 1 不是 Tier 2，也不是 JIT。** 单指令特化、跨指令 trace 与 native code 是三层不同机制。
-
----
-
-```text
-第一次，解释器翻开通用登记册。
-第二次，它在操作点旁写下一张整数便笺。
-类型改变，便笺没有强迫现实服从它；守卫让执行回到原路。
-新的形状持续出现，旧便笺被改写，或暂时收起。
-```
-
-同一条逻辑字节码没有变成静态类型承诺。CPython 只把近期稳定的事实写成一份可撤销假设：命中时少走几道门，失效时仍回到完整语义。
-
-可一条指令从来不独自执行。谁保存下一条 instruction pointer，谁托住 operand stack，函数调用怎样换入新现场，异常和返回又怎样交回控制权？下一篇进入 `_PyInterpreterFrame` 与 `_PyEval_EvalFrameDefault()`，沿一次函数调用看执行帧怎样承载局部变量、数据栈与当前位置。等 Tier 1 的字节码循环站稳以后，再继续追 Tier 2 的 trace 与 micro-op executor。
+可一条指令从来不独自执行：下一条 instruction pointer 由谁保存、operand stack 由谁托住、函数调用怎样换入新现场、异常和返回怎样交回控制权，都有自己的承载者。下一篇进入 `_PyInterpreterFrame` 与 `_PyEval_EvalFrameDefault()`，沿一次函数调用看执行帧怎样承载局部变量、数据栈与当前位置。等 Tier 1 的字节码循环站稳以后，再继续追 Tier 2 的 trace 与 micro-op executor。

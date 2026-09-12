@@ -1,18 +1,12 @@
 ---
 title: 协程停在 await，后来是谁把它叫醒的：asyncio 的 Task、Future 与事件循环
-description: 等待对象尚未就绪时，await 会交出控制权，却不会替协程等待时间或监视套接字。本文从一只暂停在 Future 上的 Task 出发，沿 Task step、Future 回调、ready queue、timer heap、selector 与 _run_once() 追踪协程如何再次就绪，并辨清 set_result、取消、sleep(0) 和跨线程唤醒各自发生在哪一层。实验在 CPython 3.14.7 上复核，并与 CPython 3.12.13 对照。
+description: 等待对象尚未就绪时，await 会交出控制权，却不会替协程等待时间或监视套接字。本文从一只暂停在 Future 上的 Task 出发，沿 Task step、Future 回调、ready queue、timer heap、selector 与 _run_once() 追踪协程如何再次就绪，并分清 set_result、取消、sleep(0) 和跨线程唤醒各自发生在哪一层。实验基于 CPython 3.14.7，并与 3.12.13 对照。
 pubDate: 2026-09-09T11:00:00+08:00
 category: cpython
 tags: [CPython, 编程语言, 异步, asyncio]
 ---
 
-```text
-Future 已经完成。
-等待它的 Task 还没有完成。
-协程也还没有从 await 后面继续。
-```
-
-三行状态可以同时成立：
+Future 已经完成，等待它的 Task 还没有完成，协程也还没有从 await 后面继续。这三种状态可以同时成立：
 
 ```python
 import asyncio
@@ -65,9 +59,9 @@ Task 再次推进 coroutine
 原来的 coroutine frame 从 await 处恢复
 ```
 
-上一篇停在 CPython 的执行层：`SEND`、`YIELD_VALUE` 与内嵌 frame 解释了 coroutine **怎样暂停、怎样恢复**。这一篇进入 `asyncio` 调度层，回答另一半问题：**谁决定何时再去恢复它。**
+上一篇停在 CPython 的执行层：`SEND`、`YIELD_VALUE` 与内嵌 frame 解释了 coroutine 怎样暂停、怎样恢复。这一篇进入 `asyncio` 调度层，回答另一半问题：谁决定何时再去恢复它。
 
-本文实验以 **CPython 3.14.7、x86_64 Linux、默认 `asyncio` 事件循环**为主，并与 CPython 3.12.13 对照。Linux 本机默认得到 `_UnixSelectorEventLoop` 与 `EpollSelector`；Windows、第三方 event loop 和自定义 loop 可以使用不同 I/O 后端。Task/Future 的默认对象来自 `_asyncio` C 扩展，文中同时借助标准库保留的 Python 等价实现解释状态机，并以 `_asynciomodule.c` 校验主路径。私有字段与函数名属于当前实现，不是稳定 API。
+本文实验以 CPython 3.14.7、x86_64 Linux、默认 `asyncio` 事件循环为主，并与 CPython 3.12.13 对照。Linux 本机默认得到 `_UnixSelectorEventLoop` 与 `EpollSelector`；Windows、第三方 event loop 和自定义 loop 可以使用不同 I/O 后端。Task/Future 的默认对象来自 `_asyncio` C 扩展，文中同时借助标准库保留的 Python 等价实现解释状态机，并以 `_asynciomodule.c` 校验主路径。私有字段与函数名属于当前实现，不是稳定 API。
 
 ## coroutine、Task 与 Future 不是三个名字
 
@@ -707,39 +701,16 @@ main_task 完成，loop.stop()
 
 `_asyncio.Task`、`TaskStepMethWrapper`、`_fut_waiter`、`_ready`、`_scheduled`、self-pipe 与 `_run_once()` 都是帮助解释本机构建的实现事实。调试器可以观察它们，业务逻辑不应绑定私有布局。
 
-## 醒来以前
+## 谁叫醒了协程
 
-**coroutine 保存现场，Task 负责推进，Future 表示以后才有的结果。** 三者互相协作，却不是同一种对象的不同叫法。
+coroutine 保存现场，Task 负责推进，Future 表示以后才有的结果；三者互相协作，却不是同一种对象的不同叫法。默认 `create_task()` 先把首次 step 排入 ready queue，coroutine 正文通常稍后执行，eager start 与自定义 task factory 是需要明确标出的例外。
 
-**默认 `create_task()` 先把首次 step 排入 ready queue。** coroutine 正文通常稍后执行；eager start 与自定义 task factory 是需要明确标出的例外。
+pending Future 的 `__await__()` 会 yield 自己，Task 收到后记录 waiter，并把 wakeup 注册为 Future 的完成回调。`set_result()` 不同步重入等待者：它先改变 Future 状态，再通过 `call_soon()` 排入回调，Task 不会因此立即完成。反过来，等待已完成的 Future 可能根本不暂停，`await` 是否交出控制权取决于 awaitable 当下是否 yield。
 
-**pending Future 的 `__await__()` 会 yield 自己。** Task 收到它后记录 waiter，并把 wakeup 注册为 Future 的完成回调。
+`_run_once()` 把立即回调、到期定时器和 I/O 事件汇入同一只 ready queue；selector 不轮询所有 Task，也不直接恢复 coroutine。ready queue 按批次执行，当前批次中新增的 Handle 留到下一轮，一轮不会被不断追加的工作无限延长。正延迟的 sleep 通过 TimerHandle 完成 Future，`sleep(0)` 走 bare yield 快路，只请求下一轮再推进。
 
-**`set_result()` 不同步重入等待者。** 它先改变 Future 状态，再通过 `call_soon()` 排入回调；Task 尚未因此立即完成。
+取消是异常注入协议：Task 可以在 `finally` 中清理，也可以捕获取消后正常返回，`cancel()` 不立即销毁执行现场。跨线程调度还要唤醒 selector，`call_soon_threadsafe()` 既追加 Handle，也通过 self-pipe 让阻塞中的 loop 注意到新工作。这些实现细节都带着版本与后端：CPython C Task、Python 等价实现、Linux selector loop 和第三方 event loop，不能画成唯一的永久结构。
 
-**等待已完成 Future 可能不暂停。** `await` 是否交出控制权取决于 awaitable 当下是否 yield，而不是语法中出现了 `await` 就必定换轮。
-
-**`_run_once()` 把立即回调、到期定时器和 I/O 事件汇入 ready queue。** selector 不轮询所有 Task，也不直接恢复 coroutine。
-
-**ready queue 按批次执行。** 当前批次中新增的 Handle 留到下一轮，避免一轮被不断追加的工作无限延长。
-
-**正延迟 sleep 通过 TimerHandle 完成 Future。** `sleep(0)` 则使用 bare yield 快路，只请求下一轮再推进。
-
-**取消是异常注入协议。** Task 可以在 `finally` 中清理，也可以捕获取消后正常返回；`cancel()` 不是立即销毁执行现场。
-
-**跨线程调度还要唤醒 selector。** `call_soon_threadsafe()` 既追加 Handle，也通过 self-pipe 让阻塞中的 loop 注意到新工作。
-
-**实现细节必须带版本与后端。** CPython C Task、Python 等价实现、Linux selector loop 和第三方 event loop 不能画成唯一永久结构。
-
----
-
-```text
-await 让 coroutine 把现场留在原地。
-Task 记住它正在等哪一份结果。
-Future 完成时，只把一封唤醒通知放进队列。
-事件循环收拢定时器、I/O 与立即回调，再决定下一封通知何时拆开。
-```
-
-所以后来叫醒协程的，从来不是 `await` 自己。外部事件先让 Future 完成，Future 通知 Task，事件循环执行通知，Task 才再次推进那份一直保存在 coroutine object 里的 frame。
+回到开头的问题：叫醒协程的不是 `await` 自己。外部事件先让 Future 完成，Future 通知 Task，事件循环执行这条通知，Task 才再次推进那份一直保存在 coroutine object 里的 frame。
 
 下一篇可以继续追更难的一层：当 GIL 不再替这些状态提供全局串行背景，Task、Future、frame 与引用计数怎样在 free-threaded CPython 中加入对象锁、原子状态和新的并发边界。
