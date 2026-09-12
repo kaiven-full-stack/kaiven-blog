@@ -399,7 +399,7 @@ export const concepts: ConceptMeta[] = [
   {
     id: 'wal',
     label: 'WAL 与崩溃恢复',
-    description: '先记日志再改页面，redo 重放 undo 回滚',
+    description: '先记日志再改页面，redo 重放 undo 回滚；Kafka 把日志本身做成产品',
     posts: ['mysql-innodb-redo-recovery', 'mysql-binlog-redo-2pc', 'kafka-log-segments'],
   },
   {
@@ -462,7 +462,7 @@ export const concepts: ConceptMeta[] = [
   {
     id: 'mq-pubsub',
     label: '发布订阅',
-    description: '一份事实多家消费 vs 一堆活多家分摊',
+    description: '一份事实多家各自订阅消费，一堆任务多家竞争分摊',
     posts: ['mq-basics-decouple-async-peak'],
   },
   {
@@ -480,13 +480,13 @@ export const concepts: ConceptMeta[] = [
   {
     id: 'delivery-semantics',
     label: '投递语义',
-    description: 'at-most / at-least / exactly-once 三档与各自的账单',
+    description: 'at-most / at-least / exactly-once 三档语义与各自的代价',
     posts: ['mq-basics-delivery-semantics'],
   },
   {
     id: 'dead-letter',
     label: '死信',
-    description: '处理不了的消息带着 x-death 档案去该去的地方',
+    description: '处理不了的消息带着 x-death 头转存到死信队列',
     posts: ['mq-basics-delivery-semantics'],
   },
   {
@@ -555,9 +555,9 @@ export const relatedLinks: RelatedLink[] = [
   { from: 'redis-aof-append-fsync', to: 'mysql-innodb-buffer-pool-lru', note: '写缓冲推迟落盘的三种档位' },
   { from: 'redis-aof-append-fsync', to: 'mysql-binlog-redo-2pc', note: 'everysec 对望双 1：落盘纪律同题' },
   { from: 'kernel-page-cache-writeback', to: 'mysql-binlog-redo-2pc', note: 'OS 缓存兜底与主机断电的分界' },
-  { from: 'mq-basics-decouple-async-peak', to: 'mysql-binlog-redo-2pc', note: '下游传染与提交传染：链上最弱一环' },
-  { from: 'mq-basics-delivery-semantics', to: 'mysql-binlog-redo-2pc', note: '半途的工作谁说了算：重投对望裁决' },
-  { from: 'mq-basics-delivery-semantics', to: 'mysql-replication-gtid', note: 'GTID 去重对望消费幂等' },
-  { from: 'kafka-message-journey', to: 'mysql-replication-gtid', note: '位点对望位移：拉日志的两种读者' },
-  { from: 'kafka-log-segments', to: 'mysql-innodb-pages-btree', note: '顺序追加对望随机 I/O：两种命运' },
+  { from: 'mq-basics-decouple-async-peak', to: 'mysql-binlog-redo-2pc', note: '等的是谁：同步链的 2 秒下游，提交链的两次 fsync' },
+  { from: 'mq-basics-delivery-semantics', to: 'mysql-binlog-redo-2pc', note: '半途的工作谁说了算：重投兜底与 binlog 裁决' },
+  { from: 'mq-basics-delivery-semantics', to: 'mysql-replication-gtid', note: 'GTID 去重与消费幂等：同一道题的两处解法' },
+  { from: 'kafka-message-journey', to: 'mysql-replication-gtid', note: '位点与位移：拉日志的两种读者' },
+  { from: 'kafka-log-segments', to: 'mysql-innodb-pages-btree', note: '顺序追加与随机 I/O：同一块磁盘的两种用法' },
 ];
