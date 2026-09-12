@@ -565,7 +565,25 @@ export const concepts: ConceptMeta[] = [
     id: 'consumer-offset',
     label: '位移',
     description: '消费者的书签：提交到 __consumer_offsets',
-    posts: ['kafka-message-journey'],
+    posts: ['kafka-message-journey', 'kafka-consumer-group-rebalance'],
+  },
+  {
+    id: 'group-coordinator',
+    label: '组协调者',
+    description: '管花名册的 broker：组名哈希定分区，分区 leader 出任',
+    posts: ['kafka-consumer-group-rebalance'],
+  },
+  {
+    id: 'rebalance-protocol',
+    label: '再平衡协议',
+    description: 'eager 全停、cooperative 增量、KIP-848 服务端定向三种走法',
+    posts: ['kafka-consumer-group-rebalance'],
+  },
+  {
+    id: 'static-membership',
+    label: '静态成员',
+    description: 'group.instance.id 钉死席位，重启原位复工不动组',
+    posts: ['kafka-consumer-group-rebalance'],
   },
   {
     id: 'lag',
@@ -627,4 +645,5 @@ export const relatedLinks: RelatedLink[] = [
   { from: 'kafka-replicas-isr', to: 'mysql-replication-gtid', note: '副本不够时：半同步降级 vs 拒收' },
   { from: 'kafka-replicas-isr', to: 'redis-sentinel-failover', note: '两道多数票 vs 控制器直接指定' },
   { from: 'kafka-replicas-isr', to: 'redis-replication-sync', note: '异步复制与 acks=0：同一姿态两个名字' },
+  { from: 'kafka-consumer-group-rebalance', to: 'redis-sentinel-failover', note: '会话超时与 down-after：同款旋钮' },
 ];
