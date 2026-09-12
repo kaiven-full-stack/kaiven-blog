@@ -136,6 +136,12 @@ export const concepts: ConceptMeta[] = [
     description: '字节切片加约定，编码显式认领',
     posts: ['zig-strings', 'zig-pointer-family', 'cpython-str-internals'],
   },
+  {
+    id: 'resharding',
+    label: '扩容搬家',
+    description: '槽迁数据、REORGANIZE 重排行、取模只改规则三种搬法',
+    posts: ['redis-cluster-migration', 'mysql-partitioning', 'kafka-partitions-keys'],
+  },
 
   // ---- Redis 系列 ----
   {
@@ -499,7 +505,25 @@ export const concepts: ConceptMeta[] = [
     id: 'partition',
     label: '分区',
     description: '哈希定落点：顺序性与并行度的交换单位',
-    posts: ['kafka-message-journey'],
+    posts: ['kafka-message-journey', 'kafka-partitions-keys'],
+  },
+  {
+    id: 'partitioner',
+    label: '分区器',
+    description: 'toPositive(murmur2(key)) 对分区数取模，可手算、跨语言一致',
+    posts: ['kafka-partitions-keys'],
+  },
+  {
+    id: 'repartition-rehash',
+    label: '加分区重哈希',
+    description: '分母变了 key 改落点，历史劈开顺序破，只增不减',
+    posts: ['kafka-partitions-keys'],
+  },
+  {
+    id: 'total-order',
+    label: '顺序性边界',
+    description: '分区内全序、跨分区无序，范围由分区数钉死',
+    posts: ['kafka-message-journey', 'kafka-partitions-keys'],
   },
   {
     id: 'consumer-offset',
@@ -560,4 +584,7 @@ export const relatedLinks: RelatedLink[] = [
   { from: 'mq-basics-delivery-semantics', to: 'mysql-replication-gtid', note: 'GTID 去重与消费幂等：同一道题的两处解法' },
   { from: 'kafka-message-journey', to: 'mysql-replication-gtid', note: '位点与位移：拉日志的两种读者' },
   { from: 'kafka-log-segments', to: 'mysql-innodb-pages-btree', note: '顺序追加与随机 I/O：同一块磁盘的两种用法' },
+  { from: 'kafka-partitions-keys', to: 'redis-cluster-migration', note: '扩容两法：搬数据与改规则' },
+  { from: 'kafka-partitions-keys', to: 'mysql-partitioning', note: '加分区：MySQL 搬数据，Kafka 劈历史' },
+  { from: 'kafka-partitions-keys', to: 'cpython-float-ieee754', note: '2^53 悬崖咬到 murmur2 浮点实现' },
 ];
