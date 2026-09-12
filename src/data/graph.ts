@@ -538,6 +538,30 @@ export const concepts: ConceptMeta[] = [
     posts: ['kafka-ordering-boundaries'],
   },
   {
+    id: 'kafka-isr',
+    label: 'ISR 与副本',
+    description: '花名册记谁跟上了：心跳会话 fence 与落后超时两条除名路径',
+    posts: ['kafka-replicas-isr'],
+  },
+  {
+    id: 'high-watermark',
+    label: '高水位',
+    description: 'ISR 最小 LEO，提交与可读的边界，ack 成功不等于可见',
+    posts: ['kafka-replicas-isr'],
+  },
+  {
+    id: 'unclean-election',
+    label: 'unclean 选举',
+    description: '立陈旧副本上岗：拿实丢 100 条换可用，原副本归队即截断',
+    posts: ['kafka-replicas-isr'],
+  },
+  {
+    id: 'acks-durability',
+    label: 'acks 与 min.insync',
+    description: '等几份回执与花名册底线：拒收和降级的分岔点',
+    posts: ['kafka-replicas-isr'],
+  },
+  {
     id: 'consumer-offset',
     label: '位移',
     description: '消费者的书签：提交到 __consumer_offsets',
@@ -600,4 +624,7 @@ export const relatedLinks: RelatedLink[] = [
   { from: 'kafka-partitions-keys', to: 'mysql-partitioning', note: '加分区：MySQL 搬数据，Kafka 劈历史' },
   { from: 'kafka-partitions-keys', to: 'cpython-float-ieee754', note: '2^53 悬崖咬到 murmur2 浮点实现' },
   { from: 'kafka-ordering-boundaries', to: 'mysql-replication-gtid', note: '串行流并行重演也提不了速：同一堵墙' },
+  { from: 'kafka-replicas-isr', to: 'mysql-replication-gtid', note: '副本不够时：半同步降级 vs 拒收' },
+  { from: 'kafka-replicas-isr', to: 'redis-sentinel-failover', note: '两道多数票 vs 控制器直接指定' },
+  { from: 'kafka-replicas-isr', to: 'redis-replication-sync', note: '异步复制与 acks=0：同一姿态两个名字' },
 ];
