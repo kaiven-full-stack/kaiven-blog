@@ -41,6 +41,47 @@ Rss=12kB  Shared_Dirty=0kB   Private_Dirty=12kB   A/B/C exclusive=1
 
 三个数字同时翻转：私有清零，共享全额，`exclusive` 灭灯。注意 **Rss 一页没多**，fork 没有分配任何数据页。上一篇量过 fork 的真实成本在页表（512:1），这一步只是把双方的写权限没收了。私有财产充公成共同财产，只需要改地图上的旗子，不需要搬任何东西。
 
+换旗子的现场：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 332" role="img" aria-label="fork 前后对照：T0 父进程的可写 PTE 独占指向 A B C 三个物理页；T1 fork 后父与子的 PTE 都变成只读，双双指向同一批物理页，页的引用计数各加一，内容零复制" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="kern2As1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="28" font-size="12" fill="#6b675e">T0 · fork 前：独占，可写</text>
+<rect class="bx" x="60" y="40" width="150" height="56" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="135" y="62" text-anchor="middle" font-size="13" fill="#2b2a26">父进程</text>
+<text class="ts" x="135" y="82" text-anchor="middle" font-size="11" fill="#6b675e">PTE：A/B/C 可写</text>
+<line class="fl" x1="210" y1="68" x2="296" y2="68" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern2As1)"/>
+<rect class="bx-q" x="300" y="40" width="44" height="56" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="322" y="72" text-anchor="middle" font-size="13" fill="#2b2a26">A</text>
+<rect class="bx-q" x="356" y="40" width="44" height="56" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="378" y="72" text-anchor="middle" font-size="13" fill="#2b2a26">B</text>
+<rect class="bx-q" x="412" y="40" width="44" height="56" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="434" y="72" text-anchor="middle" font-size="13" fill="#2b2a26">C</text>
+<text class="ts" x="470" y="62" font-size="12" fill="#6b675e">三页 exclusive=1；</text>
+<text class="ts" x="470" y="80" font-size="12" fill="#6b675e">D 还在零页，E、F 没有 PTE</text>
+<text class="ts" x="20" y="156" font-size="12" fill="#6b675e">T1 · fork 后：双方只读，同一批页</text>
+<rect class="bx" x="60" y="168" width="150" height="44" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="135" y="186" text-anchor="middle" font-size="13" fill="#2b2a26">父进程</text>
+<text class="ts" x="135" y="204" text-anchor="middle" font-size="11" fill="#6b675e">PTE：只读</text>
+<rect class="bx" x="60" y="236" width="150" height="44" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="135" y="254" text-anchor="middle" font-size="13" fill="#2b2a26">子进程</text>
+<text class="ts" x="135" y="272" text-anchor="middle" font-size="11" fill="#6b675e">PTE：只读</text>
+<line class="fl" x1="210" y1="190" x2="296" y2="208" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern2As1)"/>
+<line class="fl" x1="210" y1="258" x2="296" y2="240" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern2As1)"/>
+<rect class="bx-q" x="300" y="196" width="44" height="56" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="322" y="228" text-anchor="middle" font-size="13" fill="#2b2a26">A</text>
+<rect class="bx-q" x="356" y="196" width="44" height="56" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="378" y="228" text-anchor="middle" font-size="13" fill="#2b2a26">B</text>
+<rect class="bx-q" x="412" y="196" width="44" height="56" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="434" y="228" text-anchor="middle" font-size="13" fill="#2b2a26">C</text>
+<text class="ts" x="470" y="216" font-size="12" fill="#6b675e">引用计数各 +1</text>
+<text class="ts" x="470" y="234" font-size="12" fill="#6b675e">内容零复制</text>
+<text class="ts" x="20" y="316" font-size="12" fill="#6b675e">Private_Dirty 12kB→0，Shared_Dirty 0→12kB：旗子换了，领土一步没搬</text>
+</svg>
+</figure>
+
 `PageAnonExclusive` 在这一刻也一并清除。fork 的复制路径 `copy_present_ptes()` 里还有一行值得读：
 
 ```c
@@ -91,6 +132,35 @@ if (!pfn_is_zero)
 ```
 
 上一篇见过：匿名映射读缺页落在全内核共享的零页上。现在写它，`pfn_is_zero` 命中，新页本来就以清零页分配（`need_zero`），**拷贝这一步直接跳过**。抄一页全零的内容没有意义，零页转正的成本只有「分配一页」，不含「复制一页」。
+
+三条岔路摆在一张图上：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 268" role="img" aria-label="do_wp_page 三岔路口：写缺页进来后先问页是否归自己独占，独占就走 reuse 把 PTE 改回可写零复制；真的共享就走 wp_page_copy 分配新页拷贝 4096 字节；共享的是零页则分配新页但跳过拷贝" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="kern2As2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">写缺页走到 do_wp_page：先看这页的归属，再定价</text>
+<rect class="bx-q" x="220" y="36" width="220" height="40" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="330" y="61" text-anchor="middle" font-size="13" fill="#2b2a26">写缺页 · do_wp_page</text>
+<line class="fl" x1="270" y1="76" x2="130" y2="116" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern2As2)"/>
+<line class="fl" x1="330" y1="76" x2="330" y2="116" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern2As2)"/>
+<line class="fl" x1="390" y1="76" x2="530" y2="116" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern2As2)"/>
+<rect class="bx" x="20" y="120" width="210" height="88" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="125" y="144" text-anchor="middle" font-size="13" fill="#2b2a26">岔口一 · 本就独占</text>
+<text class="ts" x="125" y="166" text-anchor="middle" font-size="11" fill="#6b675e">reuse：PTE 改回可写</text>
+<text class="ts" x="125" y="184" text-anchor="middle" font-size="11" fill="#6b675e">零复制、零新页</text>
+<rect class="bx-sick" x="245" y="120" width="210" height="88" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="t" x="350" y="144" text-anchor="middle" font-size="13" fill="#2b2a26">岔口二 · 真的共享</text>
+<text class="ts" x="350" y="166" text-anchor="middle" font-size="11" fill="#6b675e">分配新页，拷满 4096 字节</text>
+<text class="ts" x="350" y="184" text-anchor="middle" font-size="11" fill="#6b675e">PTE 指新页，旧页计数 −1</text>
+<rect class="bx" x="470" y="120" width="170" height="88" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="555" y="144" text-anchor="middle" font-size="13" fill="#2b2a26">岔口三 · 零页</text>
+<text class="ts" x="555" y="166" text-anchor="middle" font-size="11" fill="#6b675e">分配新页，跳过拷贝</text>
+<text class="ts" x="555" y="184" text-anchor="middle" font-size="11" fill="#6b675e">抄全零没有意义</text>
+<text class="ts" x="20" y="248" font-size="12" fill="#6b675e">三条岔路的 minflt 都 +1，价钱却分三档：改一个权限位、分配加拷贝、只分配</text>
+</svg>
+</figure>
 
 ## 一页的一生：完整时间线
 
@@ -145,7 +215,73 @@ Rss=20kB  Shared_Dirty=0kB  Private_Dirty=20kB   A/B/C exclusive=1
 
 五个页（A、C 的旧页、B 的新页、D、E）全部翻回私有。子进程退出释放地址空间，它映射的页引用计数减一；减到只剩父进程一个持有者的页，重新点亮 `PageAnonExclusive`。不经过任何缺页，不搬任何数据，纯粹是引用计数到 1 时顺手翻的账。Rss=20kB 恰好对得上：三次 COW/分配（B、D、E）加两页回流的旧页（A、C）。
 
+父子两本账，从 T1 到 T7：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 254" role="img" aria-label="父子两本 smaps 账的条形对照：T1 fork 后双方 Shared_Dirty 都是 12kB；T3 父进程写 B 后变成共享 8kB 私有 4kB，子进程写 C 后变成共享 4kB 私有 8kB，其中多出的 4kB 是父进程不要的 B 旧页；T7 子进程退出，父进程私有涨到 20kB" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="t" x="20" y="40" font-size="13" fill="#2b2a26">父进程的账</text>
+<text class="ts" x="20" y="68" font-size="11" fill="#6b675e">T1 fork 后</text>
+<rect class="bx" x="20" y="74" width="120" height="14" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="146" y="86" font-size="11" fill="#6b675e">共享 12kB</text>
+<text class="ts" x="20" y="110" font-size="11" fill="#6b675e">T3 写 B（缺页 +1）</text>
+<rect class="bx" x="20" y="116" width="80" height="14" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<rect class="bx-sick" x="100" y="116" width="40" height="14" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/>
+<text class="ts" x="146" y="128" font-size="11" fill="#6b675e">8 + 4</text>
+<text class="ts" x="20" y="152" font-size="11" fill="#6b675e">T7 子进程退出</text>
+<rect class="bx-sick" x="20" y="158" width="200" height="14" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/>
+<text class="ts" x="226" y="170" font-size="11" fill="#6b675e">私有 20kB</text>
+<line class="axis" x1="320" y1="28" x2="320" y2="184" stroke="#6b675e" stroke-width="1" stroke-dasharray="4 3"/>
+<text class="t" x="350" y="40" font-size="13" fill="#2b2a26">子进程的账</text>
+<text class="ts" x="350" y="68" font-size="11" fill="#6b675e">T1 fork 后</text>
+<rect class="bx" x="350" y="74" width="120" height="14" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="476" y="86" font-size="11" fill="#6b675e">共享 12kB</text>
+<text class="ts" x="350" y="110" font-size="11" fill="#6b675e">T2b 写 C（缺页 +1）</text>
+<rect class="bx" x="350" y="116" width="40" height="14" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<rect class="bx-sick" x="390" y="116" width="80" height="14" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/>
+<text class="ts" x="476" y="128" font-size="11" fill="#6b675e">4 + 8</text>
+<rect class="bx-gone" x="350" y="152" width="140" height="20" rx="3" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<text class="ts" x="420" y="166" text-anchor="middle" font-size="11" fill="#6b675e">已退出，页回流</text>
+<rect class="bx" x="20" y="196" width="12" height="12" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="38" y="206" font-size="11" fill="#6b675e">Shared_Dirty</text>
+<rect class="bx-sick" x="150" y="196" width="12" height="12" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/>
+<text class="ts" x="168" y="206" font-size="11" fill="#6b675e">Private_Dirty</text>
+<text class="ts" x="290" y="206" font-size="11" fill="#6b675e">条长：10 像素 = 1kB</text>
+<text class="ts" x="20" y="238" font-size="12" fill="#6b675e">两本账互不通气，搬运全靠引用计数顺手完成</text>
+</svg>
+</figure>
+
 一页的一生到此闭环：私有 →（fork）共享 →（写）私有新页 或（对方写）私有旧页 →（对方退出）私有。「独占」自始至终只是引用计数的一句话：只剩我一个映射者。
+
+这个闭环画成状态迁移：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 272" role="img" aria-label="一页的四种状态迁移：独占私有经 fork 变成共享只读；共享页自己写就复制出独占新页，对方写则旧页归自己独占，对方退出且引用计数归一则翻回独占私有" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="kern2As4" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">四种状态之间，全靠引用计数搬运</text>
+<rect class="bx-q" x="40" y="104" width="140" height="56" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="110" y="128" text-anchor="middle" font-size="13" fill="#2b2a26">独占私有</text>
+<text class="ts" x="110" y="148" text-anchor="middle" font-size="11" fill="#6b675e">exclusive=1</text>
+<rect class="bx" x="260" y="104" width="140" height="56" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="330" y="128" text-anchor="middle" font-size="13" fill="#2b2a26">共享只读</text>
+<text class="ts" x="330" y="148" text-anchor="middle" font-size="11" fill="#6b675e">exclusive=0</text>
+<line class="fl" x1="180" y1="132" x2="256" y2="132" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern2As4)"/>
+<text class="ts" x="218" y="122" text-anchor="middle" font-size="11" fill="#6b675e">fork</text>
+<rect class="bx-q" x="470" y="40" width="160" height="48" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="550" y="60" text-anchor="middle" font-size="13" fill="#2b2a26">私有 · 新页</text>
+<text class="ts" x="550" y="78" text-anchor="middle" font-size="11" fill="#6b675e">带着独占出生</text>
+<rect class="bx-q" x="470" y="176" width="160" height="48" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="550" y="196" text-anchor="middle" font-size="13" fill="#2b2a26">私有 · 旧页</text>
+<text class="ts" x="550" y="214" text-anchor="middle" font-size="11" fill="#6b675e">从对方名下流回</text>
+<line class="fl" x1="400" y1="120" x2="466" y2="76" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern2As4)"/>
+<text class="ts" x="418" y="86" font-size="11" fill="#6b675e">自己写：复制新页</text>
+<line class="fl" x1="400" y1="144" x2="466" y2="188" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern2As4)"/>
+<text class="ts" x="418" y="178" font-size="11" fill="#6b675e">对方写：旧页归自己</text>
+<path class="fl" d="M330 160 L330 244 L110 244 L110 166" fill="none" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern2As4)"/>
+<text class="ts" x="220" y="238" text-anchor="middle" font-size="11" fill="#6b675e">对方退出：计数归 1，翻回独占</text>
+</svg>
+</figure>
 
 ## THP：写一个字节，复制 512 页？
 
@@ -188,6 +324,34 @@ unlock_fallback:
 
 独占就改权限；共享就**把大页拆成 512 个 PTE**，返回 `VM_FAULT_FALLBACK` 让同一次缺页按 4KiB 粒度重走，然后落进上一节的 `do_wp_page()` 三岔口，只复制被写的那一页。整个函数里**没有一行「分配新大页」的代码**。
 
+这个函数的两条出路：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 274" role="img" aria-label="大页写缺页 do_huge_pmd_wp_page 的两条出路：独占或引用只剩自己时走 reuse 改回可写零复制；仍共享时把大页拆成 512 个 PTE，同一次缺页按 4KiB 重走 do_wp_page 三岔口，只复制被写的那一页。实测 Private_Dirty 只涨 4kB，AnonHuge 掉 2048kB" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="kern2As5" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">大页写缺页：两条出路，没有第三条</text>
+<rect class="bx-q" x="190" y="36" width="280" height="40" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="330" y="61" text-anchor="middle" font-size="13" fill="#2b2a26">大页写缺页 · do_huge_pmd_wp_page</text>
+<line class="fl" x1="270" y1="76" x2="160" y2="116" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern2As5)"/>
+<line class="fl" x1="390" y1="76" x2="500" y2="116" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern2As5)"/>
+<rect class="bx" x="30" y="120" width="260" height="76" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="160" y="144" text-anchor="middle" font-size="13" fill="#2b2a26">独占，或引用只剩自己</text>
+<text class="ts" x="160" y="166" text-anchor="middle" font-size="11" fill="#6b675e">reuse：权限改回可写</text>
+<text class="ts" x="160" y="184" text-anchor="middle" font-size="11" fill="#6b675e">复制为零</text>
+<rect class="bx-sick" x="370" y="120" width="260" height="76" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="t" x="500" y="144" text-anchor="middle" font-size="13" fill="#2b2a26">仍共享</text>
+<text class="ts" x="500" y="166" text-anchor="middle" font-size="11" fill="#6b675e">拆分：大页变成 512 个 PTE</text>
+<text class="ts" x="500" y="184" text-anchor="middle" font-size="11" fill="#6b675e">同一次缺页按 4KiB 重走</text>
+<line class="fl" x1="500" y1="196" x2="500" y2="216" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern2As5)"/>
+<rect class="bx" x="370" y="220" width="260" height="40" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="500" y="244" text-anchor="middle" font-size="11" fill="#6b675e">落进 do_wp_page 三岔口：只复制被写那页</text>
+<text class="tc" x="30" y="234" font-size="12" fill="#b03a2e">实测：Private_Dirty 只涨 4kB</text>
+<text class="ts" x="30" y="254" font-size="12" fill="#6b675e">AnonHuge −2048kB：那个大页退出大页编制</text>
+</svg>
+</figure>
+
 ### 那个 512 倍的故事，曾经是真的
 
 旧文档不是凭空捏造。考古两份历史源码，分界清晰：
@@ -196,6 +360,32 @@ unlock_fallback:
 - **v5.15**（2021）：fallback 函数已经没了，结构与 v7.2 相同，只有 reuse 和拆分。
 
 也就是说，「THP 放大 COW」的真实区间是 4.x 及更早；5.x 某次写时复制重做（介于 5.15 与 4.19 之间，具体版本不再逐个考证）之后出生的内核，包括 6.1/6.6/6.12/6.18 全部 LTS 和本机 7.2，写大页一个字节就只复制一页。Redis 官方文档的这句话，描绘的是它诞生那年的内核；十几年过去，调优建议还在流传，理由已经换了一茬。
+
+两份历史源码摆在一起：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 212" role="img" aria-label="同名函数的两种实现：v4.19 的 do_huge_pmd_wp_page 在 reuse 失败后走 fallback，分配 512 个小页全量拷贝 2MiB，写一字节复制一整块大页是真的；v5.15 及之后 fallback 路径被整个删掉，只剩拆分后按 4KiB 重走，只复制一页" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="kern2As6" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="48" font-size="12" fill="#6b675e">v4.19（2018）</text>
+<rect class="bx-sick" x="130" y="30" width="140" height="36" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="ts" x="200" y="52" text-anchor="middle" font-size="12" fill="#6b675e">reuse 失败</text>
+<line class="fl" x1="270" y1="48" x2="306" y2="48" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern2As6)"/>
+<rect class="bx-sick" x="310" y="30" width="330" height="36" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="475" y="52" text-anchor="middle" font-size="12" fill="#b03a2e">fallback：分配 512 小页，全量拷贝 2MiB</text>
+<text class="ts" x="130" y="86" font-size="11" fill="#6b675e">写一字节、复制 2MiB：512 倍的故事在这个年代是真的</text>
+<line class="axis" x1="20" y1="102" x2="640" y2="102" stroke="#6b675e" stroke-width="1" stroke-dasharray="4 3"/>
+<text class="ts" x="20" y="140" font-size="12" fill="#6b675e">v5.15 起（含全部在役 LTS）</text>
+<rect class="bx" x="200" y="122" width="140" height="36" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="270" y="144" text-anchor="middle" font-size="12" fill="#6b675e">reuse 失败</text>
+<line class="fl" x1="340" y1="140" x2="376" y2="140" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern2As6)"/>
+<rect class="bx" x="380" y="122" width="260" height="36" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="510" y="144" text-anchor="middle" font-size="12" fill="#6b675e">拆分，按 4KiB 重走：只复制一页</text>
+<text class="ts" x="200" y="178" font-size="11" fill="#6b675e">fallback 函数整个消失，全量拷贝路径不复存在</text>
+<text class="ts" x="20" y="202" font-size="12" fill="#6b675e">函数名没变，路径变了：读旧文档先问它是照着哪一年的内核写的</text>
+</svg>
+</figure>
 
 这正好给上一篇的版本纪律补一条注脚：内核行为的「常识」很容易过期。CFS 换了 EEVDF，THP 的写时复制换了实现，文档却不会自己过期。
 
