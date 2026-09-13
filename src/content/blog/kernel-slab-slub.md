@@ -28,6 +28,45 @@ const struct kmalloc_info_struct kmalloc_info[] __initconst = {
 
 8 字节到 2MiB 的幂次序列，外加 96 和 192 两档特招。没有它们，97~128 字节的请求全要取整到 128，插这两档把最常见的「略超过 96」区间省下来。pymalloc 的 32 档精细是因为 Python 对象尺寸千奇百怪；slab 通用档粗，因为专用 cache 才是主力，需要高频分配的结构体干脆自建柜台，对象大小就是柜台大小，零取整损耗。**通用档给「偶发、尺寸不定」的分配兜底，专用柜台服务「高频、尺寸固定」的主力**。这个分工 pymalloc 也有影子：类型自己的 freelist 对 slub 的专用 cache。
 
+通用柜台的档位排开：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 182" role="img" aria-label="kmalloc 通用档位：8、16、32、64、96、128、192、256、512、1K 直到 2M，其中 96 和 192 是朱砂标出的特招档；90 字节的请求落进 96 档只浪费 6 字节，没有 96 档就得取整到 128 浪费 38 字节" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="kern4Ac3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-c" d="M0 0 L8 4 L0 8 Z" fill="#b03a2e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">kmalloc 通用档：2 的幂打底，两档特招（朱砂框）</text>
+<rect class="bx" x="20" y="44" width="44" height="40" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="42" y="69" text-anchor="middle" font-size="12" fill="#2b2a26">8</text>
+<rect class="bx" x="72" y="44" width="44" height="40" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="94" y="69" text-anchor="middle" font-size="12" fill="#2b2a26">16</text>
+<rect class="bx" x="124" y="44" width="44" height="40" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="146" y="69" text-anchor="middle" font-size="12" fill="#2b2a26">32</text>
+<rect class="bx" x="176" y="44" width="44" height="40" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="198" y="69" text-anchor="middle" font-size="12" fill="#2b2a26">64</text>
+<rect class="bx-sick" x="228" y="44" width="44" height="40" rx="3" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="t" x="250" y="69" text-anchor="middle" font-size="12" fill="#2b2a26">96</text>
+<rect class="bx" x="280" y="44" width="44" height="40" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="302" y="69" text-anchor="middle" font-size="12" fill="#2b2a26">128</text>
+<rect class="bx-sick" x="332" y="44" width="44" height="40" rx="3" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="t" x="354" y="69" text-anchor="middle" font-size="12" fill="#2b2a26">192</text>
+<rect class="bx" x="384" y="44" width="44" height="40" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="406" y="69" text-anchor="middle" font-size="12" fill="#2b2a26">256</text>
+<rect class="bx" x="436" y="44" width="44" height="40" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="458" y="69" text-anchor="middle" font-size="12" fill="#2b2a26">512</text>
+<rect class="bx" x="488" y="44" width="44" height="40" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="510" y="69" text-anchor="middle" font-size="12" fill="#2b2a26">1K</text>
+<text class="ts" x="562" y="69" text-anchor="middle" font-size="14" fill="#6b675e">…</text>
+<rect class="bx" x="592" y="44" width="44" height="40" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="614" y="69" text-anchor="middle" font-size="12" fill="#2b2a26">2M</text>
+<text class="ts" x="20" y="118" font-size="12" fill="#6b675e">例：90 字节的请求</text>
+<line class="flc" x1="170" y1="112" x2="240" y2="90" stroke="#b03a2e" stroke-width="1.6" marker-end="url(#kern4Ac3)"/>
+<text class="tc" x="250" y="118" font-size="12" fill="#b03a2e">落进 96 档，只浪费 6 字节</text>
+<text class="ts" x="20" y="146" font-size="12" fill="#6b675e">没有 96 档，它得取整到 128、浪费 38 字节：特招的全部理由</text>
+<text class="ts" x="20" y="168" font-size="12" fill="#6b675e">专用 kmem_cache 不进这排档位：柜台按对象定制，零取整损耗</text>
+</svg>
+</figure>
+
 专用柜台还有一手：合并。尺寸相近、属性相同的 cache 可以共享底层 slab（`/sys/kernel/slab` 里那些 `:0000064` 伪目录名就是合并后的匿名柜台，本机无特权读不了内容，但目录名本身泄露了尺寸）。合并省内存，代价是失去隔离；带 `SLAB_NO_MERGE` 的柜台（比如涉及安全的）保持独立。
 
 ## 三级库存：per-CPU、partial、新页
@@ -54,6 +93,62 @@ slab = new_slab(s, trynode_flags, ac->alloc_flags, node); /* 再开新页 */
 
 第一级不在慢路径函数里，**per-CPU freelist 是内联在分配入口的快路径**：每个 CPU 持有一张「冻结」（frozen）的 slab，从它上面摘对象只是一次指针操作，无锁、无原子指令、无 cache line 弹跳。这是 SLUB 相对老 SLAB 的核心进化，也是它对 pymalloc 最大的超越：CPython 靠 GIL 天然单线程，pymalloc 的 usedpools 不用考虑竞争；内核上百个 CPU 同时分配，快路径必须无锁。快路径耗尽才进 `___slab_alloc`：从节点 partial 链表取一张半空的页，都没有就 `new_slab` 向伙伴系统要新页。
 
+三级库存，一级一列：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 266" role="img" aria-label="SLUB 三级库存：第一级 per-CPU 冻结页是无锁快路径，对象从这里逐个摘走；耗尽后从第二级节点 partial 链表取半空的页；再没有才走第三级 new_slab 向伙伴系统要一张 order-0 新页切成对象" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="kern4As1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="t" x="110" y="52" text-anchor="middle" font-size="13" fill="#2b2a26">第一级 · per-CPU 冻结页</text>
+<text class="ts" x="110" y="70" text-anchor="middle" font-size="11" fill="#6b675e">快路径：无锁指针操作</text>
+<rect class="bx-q" x="45" y="84" width="130" height="92" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<rect class="bar" x="55" y="94" width="22" height="22" fill="#2b2a26"/>
+<rect class="bar" x="85" y="94" width="22" height="22" fill="#2b2a26"/>
+<rect class="bar" x="115" y="94" width="22" height="22" fill="#2b2a26"/>
+<rect class="bar" x="145" y="94" width="22" height="22" fill="#2b2a26"/>
+<rect class="bar" x="55" y="132" width="22" height="22" fill="#2b2a26"/>
+<rect class="bx" x="85" y="132" width="22" height="22" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<rect class="bx" x="115" y="132" width="22" height="22" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<rect class="bx" x="145" y="132" width="22" height="22" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="110" y="196" text-anchor="middle" font-size="11" fill="#6b675e">对象从这里逐个摘走</text>
+<line class="fl" x1="200" y1="120" x2="241" y2="120" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern4As1)"/>
+<text class="ts" x="220" y="110" text-anchor="middle" font-size="10" fill="#6b675e">摘空了</text>
+<text class="t" x="335" y="52" text-anchor="middle" font-size="13" fill="#2b2a26">第二级 · partial 链表</text>
+<text class="ts" x="335" y="70" text-anchor="middle" font-size="11" fill="#6b675e">半空的页，排队等着被领走</text>
+<rect class="bx" x="265" y="84" width="130" height="40" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<rect class="bar" x="271" y="98" width="11" height="11" fill="#2b2a26"/>
+<rect class="bar" x="286" y="98" width="11" height="11" fill="#2b2a26"/>
+<rect class="bar" x="301" y="98" width="11" height="11" fill="#2b2a26"/>
+<rect class="bx-q" x="316" y="98" width="11" height="11" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<rect class="bx-q" x="331" y="98" width="11" height="11" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<rect class="bx-q" x="346" y="98" width="11" height="11" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<rect class="bx-q" x="361" y="98" width="11" height="11" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<rect class="bx" x="275" y="132" width="130" height="40" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<rect class="bar" x="281" y="146" width="11" height="11" fill="#2b2a26"/>
+<rect class="bar" x="296" y="146" width="11" height="11" fill="#2b2a26"/>
+<rect class="bar" x="311" y="146" width="11" height="11" fill="#2b2a26"/>
+<rect class="bar" x="326" y="146" width="11" height="11" fill="#2b2a26"/>
+<rect class="bar" x="341" y="146" width="11" height="11" fill="#2b2a26"/>
+<rect class="bar" x="356" y="146" width="11" height="11" fill="#2b2a26"/>
+<rect class="bx-q" x="371" y="146" width="11" height="11" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<rect class="bx-q" x="386" y="146" width="11" height="11" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="335" y="196" text-anchor="middle" font-size="11" fill="#6b675e">这样的页排成一条链</text>
+<line class="fl" x1="425" y1="120" x2="466" y2="120" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern4As1)"/>
+<text class="ts" x="445" y="110" text-anchor="middle" font-size="10" fill="#6b675e">链上没了</text>
+<text class="t" x="560" y="52" text-anchor="middle" font-size="13" fill="#2b2a26">第三级 · 伙伴系统</text>
+<text class="ts" x="560" y="70" text-anchor="middle" font-size="11" fill="#6b675e">new_slab：要一张 order-0 新页</text>
+<rect class="bx-q" x="495" y="84" width="130" height="92" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<line class="grid" x1="527" y1="84" x2="527" y2="176" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 3"/>
+<line class="grid" x1="559" y1="84" x2="559" y2="176" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 3"/>
+<line class="grid" x1="591" y1="84" x2="591" y2="176" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 3"/>
+<text class="ts" x="560" y="134" text-anchor="middle" font-size="11" fill="#6b675e">切成 N 个对象</text>
+<text class="ts" x="560" y="196" text-anchor="middle" font-size="11" fill="#6b675e">到这一级才惊动伙伴系统</text>
+<text class="ts" x="20" y="232" font-size="12" fill="#6b675e">第一级内联在分配入口：命中就走完，连慢路径函数都不进</text>
+<text class="ts" x="20" y="252" font-size="12" fill="#6b675e">深色格是在用对象，浅色格是空闲对象</text>
+</svg>
+</figure>
+
 释放对称：对象回到 slab 的空闲链，多数情况不惊动任何锁。页的生命周期由 `__slab_free()` 收尾，全空时有一个熟悉的判断：
 
 ```c
@@ -65,7 +160,46 @@ slab_empty:
         discard_slab(s, slab);      /* 整页归还伙伴系统 */
 ```
 
-**slab 页全空，且 partial 链上已有的空页数没超过 `min_partial`，页才会归还伙伴系统。** 这个条件和 pymalloc 那篇「arena 必须整体满足条件才能退还」几乎是同一句话：block 回 pool 只是复用，pool 全空回 arena 只是复用，arena 整体空闲才真正退租；对象回 slab 只是复用，slab 全空进 partial 只是库存，partial 够数后整页才真正退还。差一个对象，整页退不掉。arena 卡 1MiB，slab 卡 4KiB，第三篇的伙伴块卡 2MiB，同一个结构在三个尺度上反复出现。这是「页粒度库存 × 小对象需求」这道题的数学必然。
+**slab 页全空，且 partial 链上的页数已经够到 `min_partial`，页才会归还伙伴系统；不够数就留在链上当库存。** 这个条件和 pymalloc 那篇「arena 必须整体满足条件才能退还」几乎是同一句话：block 回 pool 只是复用，pool 全空回 arena 只是复用，arena 整体空闲才真正退租；对象回 slab 只是复用，slab 全空进 partial 只是库存，partial 够数后整页才真正退还。差一个对象，整页退不掉。arena 卡 1MiB，slab 卡 4KiB，第三篇的伙伴块卡 2MiB，同一个结构在三个尺度上反复出现。这是「页粒度库存 × 小对象需求」这道题的数学必然。
+
+一张 slab 页的流转：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 258" role="img" aria-label="slab 页状态流转：new_slab 从伙伴系统拿到 order-0 页，挂在某个 CPU 上成为冻结页；对象摘空后转入节点 partial 链表；被 CPU 领走则回到冻结态；全空时若 partial 库存已够深就整页归还伙伴系统，库存不够则留下当预备" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="kern4As2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="26" font-size="12" fill="#6b675e">一张 slab 页在三种状态之间流转</text>
+<path class="fl" d="M410 96 C 390 52, 265 52, 248 92" fill="none" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern4As2)"/>
+<text class="ts" x="328" y="48" text-anchor="middle" font-size="11" fill="#6b675e">被某个 CPU 领走，继续冻结</text>
+<rect class="bx" x="20" y="96" width="120" height="56" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="80" y="120" text-anchor="middle" font-size="13" fill="#2b2a26">伙伴系统</text>
+<text class="ts" x="80" y="140" text-anchor="middle" font-size="11" fill="#6b675e">order-0 的一页</text>
+<line class="fl" x1="140" y1="124" x2="191" y2="124" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern4As2)"/>
+<text class="ts" x="165" y="114" text-anchor="middle" font-size="10" fill="#6b675e">new_slab</text>
+<rect class="bx-q" x="195" y="96" width="140" height="56" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="265" y="120" text-anchor="middle" font-size="13" fill="#2b2a26">冻结页 frozen</text>
+<text class="ts" x="265" y="140" text-anchor="middle" font-size="11" fill="#6b675e">挂在某个 CPU 上</text>
+<line class="fl" x1="335" y1="124" x2="386" y2="124" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern4As2)"/>
+<text class="ts" x="360" y="114" text-anchor="middle" font-size="10" fill="#6b675e">对象摘空</text>
+<rect class="bx" x="390" y="96" width="140" height="56" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="460" y="120" text-anchor="middle" font-size="13" fill="#2b2a26">partial 链表</text>
+<text class="ts" x="460" y="140" text-anchor="middle" font-size="11" fill="#6b675e">半空页的库存</text>
+<line class="fl" x1="430" y1="152" x2="430" y2="186" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern4As2)"/>
+<text class="ts" x="420" y="174" text-anchor="end" font-size="10" fill="#6b675e">全空，库存已够深</text>
+<line class="fl" x1="500" y1="152" x2="565" y2="186" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern4As2)"/>
+<text class="ts" x="512" y="174" font-size="10" fill="#6b675e">全空，库存还不够</text>
+<rect class="bx-sick" x="370" y="190" width="120" height="44" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="t" x="430" y="208" text-anchor="middle" font-size="12" fill="#2b2a26">整页归还</text>
+<text class="ts" x="430" y="226" text-anchor="middle" font-size="10" fill="#6b675e">discard_slab</text>
+<rect class="bx" x="525" y="190" width="125" height="44" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="587" y="208" text-anchor="middle" font-size="12" fill="#2b2a26">留在库存</text>
+<text class="ts" x="587" y="226" text-anchor="middle" font-size="10" fill="#6b675e">防「刚还就借」的抖动</text>
+<path class="fl" d="M370 212 L 80 212 L 80 158" fill="none" stroke="#6b675e" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#kern4As2)"/>
+<text class="ts" x="200" y="206" text-anchor="middle" font-size="10" fill="#6b675e">回到货架</text>
+<text class="ts" x="20" y="248" font-size="12" fill="#6b675e">流转兜兜转转，只有「整页归还」那一步真的碰伙伴系统</text>
+</svg>
+</figure>
 
 ## 实验：6 万个文件的三种命运
 
@@ -87,6 +221,40 @@ S4 再删除    177429     138460     689584       295508   (+4.9MB)
 **命运二：残留在 min_partial。** dentry 计数归零了，Slab 却留下 +2.9MB（S2）。释放的 6 万个对象散在许多张 slab 页上，每页只要还有一个别家的对象，整页退不掉（`min_partial` 条件）；S4 残留涨到 +4.9MB，两轮循环的钉子越积越多，和 pymalloc 那篇「稀疏幸存者钉住 39 座 arena」是同款结构，尺度缩小一千倍。
 
 **命运三：循环复用，峰值不涨。** S3 重建 6 万个文件，Slab 涨回 728MB，**没有超过 S1 的峰值 729MB**。第二循环的分配没有开新页，用的是第一轮留在 partial 链上的空对象：缓存的真正收益在 S2→S3 这一跳，min_partial 那 2.9MB「没退掉」的页，恰好是下一轮「不用再要」的库存。pymalloc 留最后一座全空 arena 防「刚还就借」的抖动，slab 留 `min_partial` 张空页防「刚 discard 就 new_slab」的抖动。同一笔保险费，两家都交，而且都交得心甘情愿。
+
+两本账五个阶段，叠在同一条时间轴上：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 286" role="img" aria-label="6 万文件实验的两条折线：上排 dentry 总数在 177426 与 237430 之间整齐起落，删除 6 万就回落 6 万；下排 SUnreclaim 在 290628kB 与 335108kB 之间起落，但删除后不回基线，残留从 +2.9MB 涨到 +4.9MB" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<line class="grid" x1="100" y1="30" x2="100" y2="232" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 4"/>
+<line class="grid" x1="220" y1="30" x2="220" y2="232" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 4"/>
+<line class="grid" x1="340" y1="30" x2="340" y2="232" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 4"/>
+<line class="grid" x1="460" y1="30" x2="460" y2="232" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 4"/>
+<line class="grid" x1="580" y1="30" x2="580" y2="232" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 4"/>
+<text class="t" x="20" y="36" font-size="13" fill="#2b2a26">dentry 总数</text>
+<polyline class="curve-k" points="100,100 220,40 340,100 460,40 580,100" fill="none" stroke="#2b2a26" stroke-width="2"/>
+<circle class="fill-c" cx="100" cy="100" r="3" fill="#b03a2e"/>
+<circle class="fill-c" cx="220" cy="40" r="3" fill="#b03a2e"/>
+<circle class="fill-c" cx="340" cy="100" r="3" fill="#b03a2e"/>
+<circle class="fill-c" cx="460" cy="40" r="3" fill="#b03a2e"/>
+<circle class="fill-c" cx="580" cy="100" r="3" fill="#b03a2e"/>
+<text class="tc" x="340" y="128" text-anchor="middle" font-size="12" fill="#b03a2e">删 6 万就回落 6 万，一个不差</text>
+<text class="t" x="20" y="166" font-size="13" fill="#2b2a26">SUnreclaim（kB）</text>
+<polyline class="curve-k" points="100,230 220,170 340,226 460,171 580,223" fill="none" stroke="#2b2a26" stroke-width="2"/>
+<circle class="fill-c" cx="100" cy="230" r="3" fill="#b03a2e"/>
+<circle class="fill-c" cx="220" cy="170" r="3" fill="#b03a2e"/>
+<circle class="fill-c" cx="340" cy="226" r="3" fill="#b03a2e"/>
+<circle class="fill-c" cx="460" cy="171" r="3" fill="#b03a2e"/>
+<circle class="fill-c" cx="580" cy="223" r="3" fill="#b03a2e"/>
+<text class="tc" x="220" y="152" text-anchor="middle" font-size="12" fill="#b03a2e">涨的 44.5MB 全记在不可回收侧</text>
+<text class="ts" x="100" y="252" text-anchor="middle" font-size="11" fill="#6b675e">S0 基线</text>
+<text class="ts" x="220" y="252" text-anchor="middle" font-size="11" fill="#6b675e">S1 创建 6 万</text>
+<text class="ts" x="340" y="252" text-anchor="middle" font-size="11" fill="#6b675e">S2 删除</text>
+<text class="ts" x="460" y="252" text-anchor="middle" font-size="11" fill="#6b675e">S3 重建</text>
+<text class="ts" x="580" y="252" text-anchor="middle" font-size="11" fill="#6b675e">S4 再删除</text>
+<text class="tc" x="20" y="276" font-size="12" fill="#b03a2e">删除之后：dentry 当场退房，SUnreclaim 的页滞留 min_partial，残留 +2.9MB → +4.9MB</text>
+</svg>
+</figure>
 
 还有一个分流细节：涨的 44.5MB 全记在 **SUnreclaim**，不是 SReclaimable。dentry cache 本身带 `SLAB_RECLAIM_ACCOUNT` 标志（`dcache.c:3475`），理论上记入可回收；但 tmpfs 的文件 inode（shmem_inode_cache）活着的文件是不可回收的，加上新建 dentry 在被引用期间也不可回收，这笔账大部分落在不可回收侧。记在哪一侧，按「对象当前是否可被丢弃重建」决定。这个细节现在不重要，到 OOM 篇会用上。
 
@@ -118,6 +286,27 @@ S2 +2s            686124        394024            292100   (回落)
 ```
 
 8000 次进程生死，SReclaimable 一点没动，进程开销全部落在不可回收侧，与 dentry 实验的分流互相印证。SUnreclaim 只起 ±1MB 的涟漪随即回稳：释放的对象回到 per-CPU freelist 和 partial 链，绝大多数根本没有走到「向伙伴系统归还」那一步，下一批进程立刻复用。**slab 的库存深度（per-CPU + partial）天然是个减震器**：稳态负载下，进出柜台的对象流在内部就消化了，伙伴系统几乎感觉不到。这也解释了 Slab 那 685MB 为什么长期稳定：那是柜台的合理库存水位，不是泄漏。
+
+涟漪的形状：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 184" role="img" aria-label="8000 个进程生死的 SUnreclaim 折线：从基线 291024kB 升到 292172kB 又微微回落，全程只有约 1MB 的涟漪，纵轴已放大" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">8000 个进程生死：SUnreclaim 只起 ±1MB 涟漪（纵轴已放大）</text>
+<line class="axis" x1="60" y1="128" x2="600" y2="128" stroke="#6b675e" stroke-width="1.2"/>
+<polyline class="curve-k" points="80,120 200,58 320,49 440,40 560,45" fill="none" stroke="#2b2a26" stroke-width="2"/>
+<circle class="fill-c" cx="80" cy="120" r="3" fill="#b03a2e"/>
+<circle class="fill-c" cx="200" cy="58" r="3" fill="#b03a2e"/>
+<circle class="fill-c" cx="320" cy="49" r="3" fill="#b03a2e"/>
+<circle class="fill-c" cx="440" cy="40" r="3" fill="#b03a2e"/>
+<circle class="fill-c" cx="560" cy="45" r="3" fill="#b03a2e"/>
+<text class="ts" x="80" y="146" text-anchor="middle" font-size="11" fill="#6b675e">S0 基线</text>
+<text class="ts" x="200" y="146" text-anchor="middle" font-size="11" fill="#6b675e">4000 进程</text>
+<text class="ts" x="320" y="146" text-anchor="middle" font-size="11" fill="#6b675e">+2s</text>
+<text class="ts" x="440" y="146" text-anchor="middle" font-size="11" fill="#6b675e">再 4000</text>
+<text class="ts" x="560" y="146" text-anchor="middle" font-size="11" fill="#6b675e">+2s 回稳</text>
+<text class="ts" x="20" y="172" font-size="12" fill="#6b675e">爬升、平台、微落：全程发生在库存内部，整页归还那一步几乎没被触发</text>
+</svg>
+</figure>
 
 ## 对照总表：pymalloc × SLUB
 
