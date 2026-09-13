@@ -39,10 +39,39 @@ typedef struct {
 
 对照 dict 的方案，差异一目了然：
 
-```text
-dict：索引表（1/2/4 字节下标）→ 条目表（key+value+hash 连续存放）
-set ：槽位直接是 {key, hash} 二元组，16 字节一槽
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 220" role="img" aria-label="dict 与 set 的结构对照：dict 分两张表，索引表每项 1 到 4 字节指向紧凑的条目表，条目里 key、value、hash 连续存放；set 只有一张表，每个槽 16 字节直接存 key 指针和缓存哈希，槽位就是数据本身" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="setAs1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">同样 170 个元素：dict 27.6 B/条目，set 49.5 B/条目</text>
+<text class="t" x="20" y="48" font-size="12" fill="#2b2a26">dict：两张表分层</text>
+<rect class="bx" x="20" y="58" width="20" height="20" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<rect class="bx" x="40" y="58" width="20" height="20" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<rect class="bx" x="60" y="58" width="20" height="20" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<rect class="bx" x="80" y="58" width="20" height="20" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<rect class="bx" x="100" y="58" width="20" height="20" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<rect class="bx" x="120" y="58" width="20" height="20" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="150" y="72" font-size="10" fill="#6b675e">索引表：每项 1–4 字节</text>
+<line class="fl" x1="70" y1="78" x2="70" y2="94" stroke="#6b675e" stroke-width="1.4" marker-end="url(#setAs1)"/>
+<rect class="bx-q" x="20" y="98" width="250" height="22" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="145" y="113" text-anchor="middle" font-size="10" fill="#6b675e">条目：key · value · hash 连续存放</text>
+<rect class="bx-q" x="20" y="120" width="250" height="22" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="145" y="135" text-anchor="middle" font-size="10" fill="#6b675e">条目表紧凑连续，删除标灰不挖洞</text>
+<text class="t" x="350" y="48" font-size="12" fill="#2b2a26">set：单表开放寻址</text>
+<rect class="bx-q" x="350" y="58" width="130" height="26" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="415" y="75" text-anchor="middle" font-size="10" fill="#6b675e">key 指针 8B</text>
+<rect class="bx-sick" x="480" y="58" width="130" height="26" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="ts" x="545" y="75" text-anchor="middle" font-size="10" fill="#6b675e">hash 8B</text>
+<rect class="bx-q" x="350" y="84" width="130" height="26" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<rect class="bx-sick" x="480" y="84" width="130" height="26" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<rect class="bx-q" x="350" y="110" width="130" height="26" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<rect class="bx-sick" x="480" y="110" width="130" height="26" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="ts" x="350" y="156" font-size="10" fill="#6b675e">每槽 16 字节的 {key, hash} 二元组，碰撞就地向后探</text>
+<text class="ts" x="20" y="188" font-size="12" fill="#6b675e">set 的槽位就是数据本身：哈希值每槽存一份，没有第二张表可以挪</text>
+<text class="ts" x="20" y="208" font-size="12" fill="#6b675e">换来的是命中路径少一次间接寻址：百万元素查一万次，set 2.60ms 对 dict 3.53ms</text>
+</svg>
+</figure>
 
 每槽 16 字节，dict 的索引项只要 1–4 字节，差距的主因就在这里。dict 把「表」和「数据」分开后，表可以缩到极致；set 的槽位就是数据本身，哈希值只能每个槽存一份，没有第二张表可以挪。
 
@@ -71,6 +100,49 @@ while (1) {
 
 「先扫描后跳跃」是对缓存折中的产物：纯线性探测聚集严重，纯双重散列每次探测都可能缓存 miss，九连探用 9 次廉价探测换 1 次跳跃，在两者之间取平衡。dict 篇的 `perturb >>= 5` 递推与这里完全同源，dict 的索引表探测沿用了 set 的方案，只是不需要 LINEAR_PROBES：它的索引表小到整表都留在缓存里。
 
+探测路径：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 216" role="img" aria-label="set 的探测路径：hash 与 mask 定位落点后先做九连探，从落点起一口气看 9 个相邻槽，大概率同在一两个缓存行；九连探落空则按 i 乘 5 加 1 加 perturb 跳到表的另一头再来，perturb 每轮右移 5 位把哈希高位搅进位置，保证全覆盖" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="setAs2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-c" d="M0 0 L8 4 L0 8 Z" fill="#b03a2e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">两段式探测：九连探吃缓存红利，跳跃保全覆盖</text>
+<text class="tc" x="138" y="52" text-anchor="middle" font-size="10" fill="#b03a2e">hash &amp; mask 落点</text>
+<rect class="bx-q" x="20" y="60" width="44" height="34" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="42" y="81" text-anchor="middle" font-size="10" fill="#6b675e">空</text>
+<rect class="bx" x="68" y="60" width="44" height="34" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="90" y="81" text-anchor="middle" font-size="10" fill="#6b675e">占</text>
+<rect class="bx-sick" x="116" y="60" width="44" height="34" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="ts" x="138" y="81" text-anchor="middle" font-size="10" fill="#6b675e">占</text>
+<rect class="bx" x="164" y="60" width="44" height="34" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="186" y="81" text-anchor="middle" font-size="10" fill="#6b675e">占</text>
+<rect class="bx-q" x="212" y="60" width="44" height="34" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.6"/>
+<text class="tc" x="234" y="81" text-anchor="middle" font-size="10" fill="#b03a2e">空 ✓</text>
+<rect class="bx" x="260" y="60" width="44" height="34" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="282" y="81" text-anchor="middle" font-size="10" fill="#6b675e">占</text>
+<rect class="bx" x="308" y="60" width="44" height="34" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="330" y="81" text-anchor="middle" font-size="10" fill="#6b675e">占</text>
+<rect class="bx" x="356" y="60" width="44" height="34" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="378" y="81" text-anchor="middle" font-size="10" fill="#6b675e">占</text>
+<rect class="bx" x="404" y="60" width="44" height="34" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="426" y="81" text-anchor="middle" font-size="10" fill="#6b675e">占</text>
+<rect class="bx" x="452" y="60" width="44" height="34" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="474" y="81" text-anchor="middle" font-size="10" fill="#6b675e">占</text>
+<rect class="bx" x="500" y="60" width="44" height="34" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="522" y="81" text-anchor="middle" font-size="10" fill="#6b675e">占</text>
+<rect class="bx-q" x="548" y="60" width="44" height="34" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="570" y="81" text-anchor="middle" font-size="10" fill="#6b675e">空</text>
+<path class="fl" d="M116 100 L116 110 L544 110 L544 100" fill="none" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="330" y="128" text-anchor="middle" font-size="11" fill="#6b675e">第一段：LINEAR_PROBES = 9，从落点起一口气看完（大概率同一两个缓存行）</text>
+<path class="flc" d="M522 56 C 540 26, 580 26, 596 44" fill="none" stroke="#b03a2e" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#setAs2)"/>
+<text class="tc" x="470" y="36" text-anchor="middle" font-size="10" fill="#b03a2e">九连探落空 → 跳到表的另一头</text>
+<text class="ts" x="20" y="156" font-size="12" fill="#6b675e">第二段：i = (i×5 + 1 + perturb) &amp; mask；perturb 每轮右移 5 位，把哈希高位逐步搅进位置</text>
+<text class="ts" x="20" y="178" font-size="12" fill="#6b675e">右移递推保证最坏情况下所有槽都会被访问到：查找永远不会漏</text>
+<text class="ts" x="20" y="200" font-size="12" fill="#6b675e">dict 的探测递推与此同源，但没有九连探：它的索引表小到整表常驻缓存</text>
+</svg>
+</figure>
+
 ## 扩容：fill 过五分之三就触发
 
 `set_add_entry` 的收尾处写着扩容条件：
@@ -92,15 +164,73 @@ n=85  8,408 字节（512 槽）    n=171 33,064 字节（2048 槽）
 
 `used > 50000 ? ×2 : ×4` 这个分支是 2008 年 Guido 改的（commit 注释还在源码里）：大 set 翻 4 倍太浪费内存，改翻 2 倍；小表多翻一点，减少 rehash 频率。负载因子和扩容倍率的每个数字，背后都是探测成本、内存空转、rehash 频率三者的权衡。
 
+公式与跳变点：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 224" role="img" aria-label="set 扩容规则：fill 乘 5 大于等于 mask 乘 3 即触发，fill 含墓碑所以删除也在施压；新尺寸小表取 used 乘 4、超过五万元素取乘 2，取整到 2 的幂；实测容量跳变 8 到 32 到 128 到 512 到 2048" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="setAs3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">负载上限 3/5：fill（含墓碑）过线就扩</text>
+<rect class="bx-sick" x="20" y="40" width="280" height="40" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="160" y="64" text-anchor="middle" font-size="11" fill="#b03a2e">fill × 5 ≥ mask × 3 ？</text>
+<line class="fl" x1="300" y1="60" x2="336" y2="60" stroke="#6b675e" stroke-width="1.5" marker-end="url(#setAs3)"/>
+<rect class="bx" x="340" y="40" width="300" height="40" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="490" y="58" text-anchor="middle" font-size="11" fill="#6b675e">新尺寸 = used×4（小表）/ used×2（&gt;50000）</text>
+<text class="ts" x="490" y="74" text-anchor="middle" font-size="10" fill="#6b675e">取整到 2 的幂</text>
+<rect class="bx-q" x="20" y="100" width="90" height="34" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="65" y="121" text-anchor="middle" font-size="11" fill="#6b675e">8 槽</text>
+<line class="fl" x1="110" y1="117" x2="136" y2="117" stroke="#6b675e" stroke-width="1.4" marker-end="url(#setAs3)"/>
+<rect class="bx-q" x="140" y="100" width="90" height="34" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="185" y="121" text-anchor="middle" font-size="11" fill="#6b675e">32 槽</text>
+<line class="fl" x1="230" y1="117" x2="256" y2="117" stroke="#6b675e" stroke-width="1.4" marker-end="url(#setAs3)"/>
+<rect class="bx-q" x="260" y="100" width="90" height="34" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="305" y="121" text-anchor="middle" font-size="11" fill="#6b675e">128 槽</text>
+<line class="fl" x1="350" y1="117" x2="376" y2="117" stroke="#6b675e" stroke-width="1.4" marker-end="url(#setAs3)"/>
+<rect class="bx-q" x="380" y="100" width="90" height="34" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="425" y="121" text-anchor="middle" font-size="11" fill="#6b675e">512 槽</text>
+<line class="fl" x1="470" y1="117" x2="496" y2="117" stroke="#6b675e" stroke-width="1.4" marker-end="url(#setAs3)"/>
+<rect class="bx-q" x="500" y="100" width="100" height="34" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="550" y="121" text-anchor="middle" font-size="11" fill="#6b675e">2048 槽</text>
+<text class="ts" x="20" y="158" font-size="11" fill="#6b675e">实测对应点：n=17 · 728B · 32 槽　　n=21 · 2,264B · 128 槽　　n=85 · 8,408B · 512 槽　　n=171 · 33,064B · 2048 槽</text>
+<text class="ts" x="20" y="184" font-size="12" fill="#6b675e">dict 的上限是 2/3，set 收到 3/5：单表没有索引表分摊探测成本，聚集更致命</text>
+<text class="ts" x="20" y="206" font-size="12" fill="#6b675e">分子是 fill 不是 used：墓碑也参与探测成本，删除同样在给扩容施压</text>
+</svg>
+</figure>
+
 ## 墓碑：删除不搬家，只立碑
 
 删除是开放寻址最麻烦的操作。直接把槽清空，会截断经过它的探测链，后面同哈希的元素就「找不到了」：
 
-```text
-槽 10: A（hash→10）
-槽 11: B（hash→10，被 A 挤过来的）
-清空槽 10 后查 B：从槽 10 开始探，槽 10 空 → 判定不存在 ✗
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 254" role="img" aria-label="墓碑机制三行对照：B 的哈希落点是槽 10，被 A 挤到槽 11；若删 A 时直接清空槽 10，查 B 的探测链在空槽停下、误判不存在；set 的做法是槽 10 立墓碑，探测链遇碑跳过继续走，B 仍能找到，插入还可以复用墓碑槽" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="setAs4" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">删除为什么不能直接清空槽：探测链会被截断</text>
+<text class="ts" x="20" y="52" font-size="11" fill="#6b675e">初始：B 的落点是槽 10，被 A 挤到 11</text>
+<rect class="bx" x="290" y="38" width="80" height="30" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="330" y="57" text-anchor="middle" font-size="10" fill="#6b675e">槽10 · A</text>
+<rect class="bx-q" x="378" y="38" width="110" height="30" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="433" y="57" text-anchor="middle" font-size="10" fill="#6b675e">槽11 · B（hash→10）</text>
+<text class="ts" x="20" y="100" font-size="11" fill="#6b675e">若删 A 直接清空：查 B 误判不存在</text>
+<rect class="bx-gone" x="290" y="86" width="80" height="30" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<text class="ts" x="330" y="105" text-anchor="middle" font-size="10" fill="#6b675e">槽10 · 空</text>
+<rect class="bx-q" x="378" y="86" width="110" height="30" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="433" y="105" text-anchor="middle" font-size="10" fill="#6b675e">槽11 · B 还在</text>
+<line class="flc" x1="290" y1="128" x2="356" y2="128" stroke="#b03a2e" stroke-width="1.4" stroke-dasharray="4 3"/>
+<text class="tc" x="364" y="132" font-size="10" fill="#b03a2e">查 B：槽10 空 → 停 → 「不存在」✗</text>
+<text class="ts" x="20" y="166" font-size="11" fill="#6b675e">set 的做法：立墓碑，链不断</text>
+<rect class="bx-sick" x="290" y="152" width="80" height="30" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="330" y="171" text-anchor="middle" font-size="10" fill="#b03a2e">槽10 · 墓碑</text>
+<rect class="bx-q" x="378" y="152" width="110" height="30" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="433" y="171" text-anchor="middle" font-size="10" fill="#6b675e">槽11 · B</text>
+<line class="fl" x1="290" y1="194" x2="428" y2="194" stroke="#6b675e" stroke-width="1.4" marker-end="url(#setAs4)"/>
+<text class="ts" x="436" y="198" font-size="10" fill="#6b675e">查 B：遇碑跳过 → 命中 ✓；插入可复用碑位</text>
+<text class="ts" x="20" y="226" font-size="12" fill="#6b675e">规则：查找遇空槽停、遇墓碑跳过；插入记住第一个墓碑，找一圈没有就复用它</text>
+<text class="ts" x="20" y="246" font-size="12" fill="#6b675e">代价：dict 的灰标记只占索引项 1 比特，set 的墓碑占满 16 字节一槽，还计入 fill</text>
+</svg>
+</figure>
 
 set 的解法是墓碑（dummy）：删 A 时槽 10 换成一个特殊标记对象，占位但不等于任何键。探测链经过墓碑不停下（继续往后找），但插入遇到墓碑可以复用。于是：
 
@@ -140,6 +270,25 @@ n=2,000  162.8 ms    （2 倍规模 → 3.8 倍耗时）
 ```
 
 标准的二次方曲线。九连探在这里帮不上忙（同一落点，探完 9 个还是同一批键），perturb 跳跃也只是换到另一批同样拥挤的槽，每次插入都要 O(n) 次比较才能找到空槽。dict 面对同样的攻击退化得更狠（它连 LINEAR_PROBES 都没有）。这也是 str 的哈希默认加盐（PYTHONHASHSEED）的原因之一：不让外部输入预测哈希分布。
+
+二次方的形状：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 194" role="img" aria-label="全部同哈希的恶意键逐个插入 set 的耗时条形图：500 个 10.8 毫秒，1000 个 43.3 毫秒是 4 倍，2000 个 162.8 毫秒再约 4 倍，标准二次方曲线；每次插入都要 O(n) 次比较才能找到空槽" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">__hash__ 恒返回 42 的恶意键：规模翻倍，耗时翻两番</text>
+<text class="ts" x="20" y="58" font-size="11" fill="#6b675e">n=500</text>
+<rect class="bar" x="110" y="44" width="33" height="18" fill="#2b2a26"/>
+<text class="ts" x="151" y="58" font-size="11" fill="#6b675e">10.8 ms</text>
+<text class="ts" x="20" y="94" font-size="11" fill="#6b675e">n=1,000</text>
+<rect class="bar" x="110" y="80" width="132" height="18" fill="#6b675e"/>
+<text class="tc" x="250" y="94" font-size="11" fill="#b03a2e">43.3 ms · 2 倍规模 → 4 倍耗时</text>
+<text class="ts" x="20" y="130" font-size="11" fill="#6b675e">n=2,000</text>
+<rect class="bar" x="110" y="116" width="497" height="18" fill="#b03a2e"/>
+<text class="onbar" x="120" y="130" font-size="10" fill="#f6f3ec">162.8 ms · 再 ×3.8</text>
+<text class="ts" x="20" y="160" font-size="12" fill="#6b675e">防线一：str 哈希默认加盐（PYTHONHASHSEED），外部输入猜不到分布</text>
+<text class="ts" x="20" y="182" font-size="12" fill="#6b675e">防线二：重写 __eq__ 必须配套重写 __hash__——「return 1」的老代码会把表滑进这张图</text>
+</svg>
+</figure>
 
 日常代码里的「意外同哈希」没这么极端，但方向相同：自定义类不写 `__hash__` 时默认用 id，分布尚可；写了糟糕的 `__hash__`（比如 `return 1` 的老代码），set 的性能就会滑向上面那张表。重写 `__eq__` 时必须同时重写 `__hash__`，这既是语义要求（相等对象必须同哈希），也直接决定这张表的性能。
 
