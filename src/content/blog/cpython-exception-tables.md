@@ -52,6 +52,33 @@ C++ 当年也面对过同一道题，给出的答案是零成本异常（zero-co
 
 新世界里 try 的唯一残留是 body 前那条 `NOP`：对齐用的占位，别的什么都不是。
 
+旧世界与新世界的指令流：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 234" role="img" aria-label="3.10 与 3.11 的 try 成本对照：旧世界每个 try 在字节码里有 SETUP_FINALLY 入场指令，执行到它就往运行时块栈登记 handler，body 结束 POP_BLOCK 注销；新世界 body 指令流与裸代码完全一致，handler 信息住在 code object 旁的静态表里，不被执行不花钱" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">先买票后上车 vs 出事才查表</text>
+<text class="t" x="170" y="48" text-anchor="middle" font-size="12" fill="#2b2a26">3.10 及以前</text>
+<rect class="bx-sick" x="70" y="60" width="200" height="26" rx="3" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="ts" x="170" y="77" text-anchor="middle" font-size="10" fill="#6b675e">SETUP_FINALLY → 压块栈登记</text>
+<rect class="bx" x="70" y="92" width="200" height="26" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="170" y="109" text-anchor="middle" font-size="10" fill="#6b675e">try body 指令</text>
+<rect class="bx" x="70" y="124" width="200" height="26" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="170" y="141" text-anchor="middle" font-size="10" fill="#6b675e">POP_BLOCK 注销</text>
+<text class="ts" x="170" y="170" text-anchor="middle" font-size="10" fill="#6b675e">每进一次 try 登记一次，</text>
+<text class="ts" x="170" y="186" text-anchor="middle" font-size="10" fill="#6b675e">哪怕异常从不发生</text>
+<text class="t" x="490" y="48" text-anchor="middle" font-size="12" fill="#2b2a26">3.11 起</text>
+<rect class="bx" x="390" y="60" width="200" height="26" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="490" y="77" text-anchor="middle" font-size="10" fill="#6b675e">NOP（对齐占位，仅此而已）</text>
+<rect class="bx-q" x="390" y="92" width="200" height="26" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="490" y="109" text-anchor="middle" font-size="10" fill="#6b675e">try body：与裸代码同指令流</text>
+<rect class="bx-gone" x="390" y="124" width="200" height="26" rx="3" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<text class="ts" x="490" y="141" text-anchor="middle" font-size="10" fill="#6b675e">co_exceptiontable：躺在旁边</text>
+<text class="ts" x="490" y="170" text-anchor="middle" font-size="10" fill="#6b675e">不执行的代码不花钱：</text>
+<text class="ts" x="490" y="186" text-anchor="middle" font-size="10" fill="#6b675e">出事时才拿偏移来查</text>
+<text class="ts" x="20" y="218" font-size="12" fill="#6b675e">与 C++ 的 .eh_frame 同题同解：成本从「每次都付」改成「出事时多付一点」</text>
+</svg>
+</figure>
+
 ## 十二个字节，四个数字一组
 
 表住在哪、长什么样？`co_exceptiontable`，code object 的一个字节串字段。还是那个 `f`，把它整个拿出来：
@@ -85,6 +112,50 @@ start=2  end=10 target=11 depth=0 lasti=False   → L1 to L2 -> L3 [0]
 start=11 end=24 target=27 depth=1 lasti=True    → L3 to L4 -> L6 [1] lasti
 start=26 end=27 target=27 depth=1 lasti=True    → L5 to L6 -> L6 [1] lasti
 ```
+
+第一组字节的位级解剖：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 276" role="img" aria-label="varint 编码解剖：首字节 0x82 的最高位 1 标记 entry 开始，次高位是续字节标志，低 6 位是数据；四个字节解出 start=2、size=8、target=11、depth 与 lasti 打包为 0，对应区间 [2,10) 跳到偏移 11" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="excAs2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">0x82 = 1000 0010：一个字节三种身份</text>
+<rect class="bx-sick" x="60" y="44" width="44" height="34" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="82" y="66" text-anchor="middle" font-size="11" fill="#b03a2e">1</text>
+<rect class="bx" x="104" y="44" width="44" height="34" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="126" y="66" text-anchor="middle" font-size="11" fill="#6b675e">0</text>
+<rect class="bx-q" x="148" y="44" width="44" height="34" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="170" y="66" text-anchor="middle" font-size="11" fill="#6b675e">0</text>
+<rect class="bx-q" x="192" y="44" width="44" height="34" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="214" y="66" text-anchor="middle" font-size="11" fill="#6b675e">0</text>
+<rect class="bx-q" x="236" y="44" width="44" height="34" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="258" y="66" text-anchor="middle" font-size="11" fill="#6b675e">0</text>
+<rect class="bx-q" x="280" y="44" width="44" height="34" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="302" y="66" text-anchor="middle" font-size="11" fill="#6b675e">0</text>
+<rect class="bx-q" x="324" y="44" width="44" height="34" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="346" y="66" text-anchor="middle" font-size="11" fill="#6b675e">1</text>
+<rect class="bx-q" x="368" y="44" width="44" height="34" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="390" y="66" text-anchor="middle" font-size="11" fill="#6b675e">0</text>
+<text class="ts" x="82" y="96" text-anchor="middle" font-size="10" fill="#6b675e">MSB：entry 开头</text>
+<text class="ts" x="126" y="112" text-anchor="middle" font-size="10" fill="#6b675e">续位 0x40</text>
+<path class="fl" d="M148 84 L148 90 L412 90 L412 84" fill="none" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="280" y="106" text-anchor="middle" font-size="10" fill="#6b675e">6 个数据位 = 000010 → start = 2</text>
+<rect class="bx" x="20" y="126" width="140" height="34" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="90" y="147" text-anchor="middle" font-size="10" fill="#6b675e">0x82 → start=2</text>
+<rect class="bx" x="170" y="126" width="140" height="34" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="240" y="147" text-anchor="middle" font-size="10" fill="#6b675e">0x08 → size=8</text>
+<rect class="bx" x="320" y="126" width="140" height="34" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="390" y="147" text-anchor="middle" font-size="10" fill="#6b675e">0x0b → target=11</text>
+<rect class="bx" x="470" y="126" width="170" height="34" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="555" y="147" text-anchor="middle" font-size="10" fill="#6b675e">0x00 → depth=0 · lasti=F</text>
+<line class="fl" x1="330" y1="160" x2="330" y2="176" stroke="#6b675e" stroke-width="1.4" marker-end="url(#excAs2)"/>
+<rect class="bx-q" x="130" y="180" width="400" height="34" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="tc" x="330" y="201" text-anchor="middle" font-size="11" fill="#b03a2e">entry：[2, 10) → 11，即 dis 的「L1 to L2 -> L3 [0]」</text>
+<text class="ts" x="20" y="240" font-size="12" fill="#6b675e">MSB 必置位是查找的钥匙：任意位置往回扫到第一个 MSB 字节就找到 entry 边界，二分照常做</text>
+<text class="ts" x="20" y="260" font-size="12" fill="#6b675e">≤40 字节的小表直接线性扫；depth 管清栈清到几层，lasti 管 RERAISE 能不能归位</text>
+</svg>
+</figure>
 
 注意后两条覆盖的是 handler 自己的字节：except body 里再出异常（比如 `CHECK_EXC_MATCH` 不匹配时 `RERAISE`），交给外层 handler。L6 是编译器生成的兜底块（`COPY 3 / POP_EXCEPT / RERAISE 1`，负责把栈上的 except 状态收拾干净再抛）。
 
@@ -162,9 +233,75 @@ def outer():
 
 三个事件把文档里的流程逐字演了出来：inner 查表落空、帧栈清空、向上冒泡；outer 在 CALL 的偏移上查表命中，跳进 L3 的 `PUSH_EXC_INFO`。顺带一提，实验里有个小坑：回调不能对 PY_UNWIND 返回 DISABLE，这个事件按 PEP 669 的设计不允许工具关闭，调试器依赖它保证语义完整。
 
+展开循环的全路：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 284" role="img" aria-label="异常展开循环：exception_unwind 拿当前指令偏移查表；查到 handler 就按 depth 弹栈、按需压 lasti、压异常值、跳 handler 继续；查不到就清空本帧栈走 exit_unwind，冒泡到调用者帧，调用者拿 CALL 指令的偏移查自己的表，一层层向上" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="excAs3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">exception_unwind：查表、清栈、冒泡</text>
+<rect class="bx-sick" x="20" y="36" width="220" height="32" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="130" y="56" text-anchor="middle" font-size="11" fill="#b03a2e">异常发生 · exception_unwind</text>
+<line class="fl" x1="130" y1="68" x2="130" y2="80" stroke="#6b675e" stroke-width="1.4" marker-end="url(#excAs3)"/>
+<rect class="bx" x="20" y="84" width="220" height="32" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="130" y="104" text-anchor="middle" font-size="11" fill="#6b675e">get_exception_handler：拿 offset 查表</text>
+<line class="fl" x1="240" y1="100" x2="286" y2="100" stroke="#6b675e" stroke-width="1.4" marker-end="url(#excAs3)"/>
+<text class="ts" x="263" y="90" text-anchor="middle" font-size="10" fill="#6b675e">查到</text>
+<rect class="bx-q" x="290" y="84" width="200" height="32" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="390" y="104" text-anchor="middle" font-size="11" fill="#6b675e">按 depth 弹栈到指定深度</text>
+<line class="fl" x1="390" y1="116" x2="390" y2="128" stroke="#6b675e" stroke-width="1.4" marker-end="url(#excAs3)"/>
+<rect class="bx-q" x="290" y="132" width="200" height="32" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="390" y="152" text-anchor="middle" font-size="11" fill="#6b675e">按需压 lasti，再压异常值</text>
+<line class="fl" x1="390" y1="164" x2="390" y2="176" stroke="#6b675e" stroke-width="1.4" marker-end="url(#excAs3)"/>
+<rect class="bx-q" x="290" y="180" width="200" height="32" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="tc" x="390" y="200" text-anchor="middle" font-size="11" fill="#b03a2e">跳到 handler 继续执行</text>
+<line class="fl" x1="130" y1="116" x2="130" y2="140" stroke="#6b675e" stroke-width="1.4" marker-end="url(#excAs3)"/>
+<text class="ts" x="138" y="134" font-size="10" fill="#6b675e">查不到</text>
+<rect class="bx" x="20" y="144" width="220" height="32" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="130" y="164" text-anchor="middle" font-size="11" fill="#6b675e">清空本帧栈 · exit_unwind</text>
+<line class="fl" x1="130" y1="176" x2="130" y2="188" stroke="#6b675e" stroke-width="1.4" marker-end="url(#excAs3)"/>
+<rect class="bx" x="20" y="192" width="220" height="32" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="130" y="212" text-anchor="middle" font-size="11" fill="#6b675e">冒泡：求值循环返回 NULL</text>
+<path class="fl" d="M20 208 L8 208 L8 100 L16 100" fill="none" stroke="#6b675e" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#excAs3)"/>
+<text class="ts" x="20" y="240" font-size="10" fill="#6b675e">调用者拿 CALL 指令的偏移查自己的表，一层层向上，直到有人接住或顶层打 traceback</text>
+<rect class="bx-gone" x="290" y="228" width="350" height="48" rx="4" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<text class="ts" x="300" y="246" font-size="10" fill="#6b675e">sys.monitoring 实测：('inner',16) RAISE → PY_UNWIND 查表落空</text>
+<text class="ts" x="300" y="262" font-size="10" fill="#6b675e">('outer',12) PY_UNWIND：CALL 命中 → 跳 L3 → 「接住了」</text>
+</svg>
+</figure>
+
 ## 表是怎么生成的：编译器的三步走
 
 回头看编译这一侧。InternalDocs 讲得清楚，中间码里 `SETUP_FINALLY` 伪指令还在（`Python/codegen.c` 里 try 的编译就生成它），到 `Python/assemble.c` 落字节码的阶段才被抽走换算成表：`assemble_exception_table()` 扫一遍指令序列，把连续的、指向同一 handler 的指令合并成一段区间，写成 varint entry。这正是 dis 输出里三条而非六条的原因：相邻同 handler 的区间被合并了。
+
+合并的动作：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 196" role="img" aria-label="assemble 阶段的区间合并：八条指令按 handler 归属分成三段，连续指向同一 handler 的指令合并成一个 varint entry，所以 dis 输出三条记录而非六条；SETUP_FINALLY 伪指令在这个阶段被抽走换算成表" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">连续、同 handler 的指令合并成一个 entry</text>
+<rect class="bx" x="30" y="44" width="68" height="30" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<rect class="bx" x="105" y="44" width="68" height="30" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<rect class="bx" x="180" y="44" width="68" height="30" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<rect class="bx-sick" x="255" y="44" width="68" height="30" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/>
+<rect class="bx-sick" x="330" y="44" width="68" height="30" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/>
+<rect class="bx-sick" x="405" y="44" width="68" height="30" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/>
+<rect class="bx-q" x="480" y="44" width="68" height="30" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<rect class="bx-q" x="555" y="44" width="68" height="30" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="330" y="38" text-anchor="middle" font-size="10" fill="#6b675e">指令序列（颜色 = handler 归属）</text>
+<path class="fl" d="M30 80 L30 88 L248 88 L248 80" fill="none" stroke="#6b675e" stroke-width="1.2"/>
+<path class="fl" d="M255 80 L255 88 L473 88 L473 80" fill="none" stroke="#6b675e" stroke-width="1.2"/>
+<path class="fl" d="M480 80 L480 88 L623 88 L623 80" fill="none" stroke="#6b675e" stroke-width="1.2"/>
+<rect class="bx" x="30" y="96" width="218" height="28" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="139" y="114" text-anchor="middle" font-size="10" fill="#6b675e">entry 1：try body → handler</text>
+<rect class="bx" x="255" y="96" width="218" height="28" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="364" y="114" text-anchor="middle" font-size="10" fill="#6b675e">entry 2：handler 自身 → 外层兜底</text>
+<rect class="bx" x="480" y="96" width="143" height="28" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="551" y="114" text-anchor="middle" font-size="10" fill="#6b675e">entry 3：兜底块</text>
+<text class="ts" x="20" y="152" font-size="12" fill="#6b675e">三条 entry 而非六条：相邻同 handler 的区间被合并；交替 try 的代码合并不了，表会变大</text>
+<text class="ts" x="20" y="174" font-size="12" fill="#6b675e">SETUP_FINALLY 只活到编译中间态：落字节码前被抽走，换算成这张表</text>
+</svg>
+</figure>
 
 合并的痕迹在嵌套 try 里最直观：
 
