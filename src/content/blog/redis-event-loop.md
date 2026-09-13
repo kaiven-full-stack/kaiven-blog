@@ -69,19 +69,36 @@ OK
 
 Redis 的事件循环实现在 `ae.c`。`aeMain()` 不断调用 `aeProcessEvents()`，一轮大致经历：
 
-```text
-beforeSleep
-    ↓
-epoll / kqueue / select 等待就绪事件
-    ↓
-afterSleep
-    ↓
-处理可读、可写的文件事件
-    ↓
-处理到期的时间事件
-    ↓
-进入下一轮
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 298" role="img" aria-label="ae 事件循环的环形日程：beforeSleep 收尾后进入 epoll 等待就绪事件，醒来经过 afterSleep，处理可读可写的文件事件（命令执行就发生在这段），再处理到期的时间事件 serverCron，然后进入下一轮；整个环由主线程一个人走完" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="red1As1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">aeProcessEvents() 的一轮：五站环形，单人走完</text>
+<rect class="bx" x="270" y="36" width="150" height="40" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="345" y="52" text-anchor="middle" font-size="12" fill="#2b2a26">beforeSleep</text>
+<text class="ts" x="345" y="68" text-anchor="middle" font-size="10" fill="#6b675e">发出回复、写 AOF</text>
+<rect class="bx-q" x="462" y="100" width="170" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="547" y="118" text-anchor="middle" font-size="12" fill="#2b2a26">epoll 等待就绪</text>
+<text class="ts" x="547" y="136" text-anchor="middle" font-size="10" fill="#6b675e">收一份就绪 fd 名单</text>
+<rect class="bx" x="450" y="204" width="140" height="36" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="520" y="226" text-anchor="middle" font-size="12" fill="#2b2a26">afterSleep</text>
+<rect class="bx-q" x="150" y="200" width="190" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="245" y="218" text-anchor="middle" font-size="12" fill="#2b2a26">处理文件事件</text>
+<text class="tc" x="245" y="236" text-anchor="middle" font-size="10" fill="#b03a2e">命令执行发生在这段</text>
+<rect class="bx" x="30" y="100" width="180" height="48" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="120" y="118" text-anchor="middle" font-size="12" fill="#2b2a26">处理时间事件</text>
+<text class="ts" x="120" y="136" text-anchor="middle" font-size="10" fill="#6b675e">serverCron：过期、统计、复制</text>
+<line class="fl" x1="420" y1="62" x2="470" y2="96" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red1As1)"/>
+<line class="fl" x1="555" y1="144" x2="535" y2="200" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red1As1)"/>
+<line class="fl" x1="450" y1="222" x2="344" y2="222" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red1As1)"/>
+<line class="fl" x1="160" y1="200" x2="128" y2="152" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red1As1)"/>
+<line class="fl" x1="200" y1="100" x2="266" y2="70" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red1As1)"/>
+<text class="ts" x="345" y="150" text-anchor="middle" font-size="12" fill="#6b675e">事件循环</text>
+<text class="ts" x="345" y="168" text-anchor="middle" font-size="12" fill="#6b675e">就是主线程本人</text>
+<text class="ts" x="20" y="284" font-size="12" fill="#6b675e">环上没有并行车道：每一站都由主线程亲自走完，才轮到下一站</text>
+</svg>
+</figure>
 
 在 Linux 上，底层通常是 epoll。它能同时观察大量连接，告诉 Redis 哪些 socket 已经可读、哪些已经可写。但 epoll 只交一份就绪名单，不替 Redis 执行名单里的命令。
 
@@ -95,15 +112,33 @@ Redis 的时间事件也不等于另一个定时线程。7.4.11 中真正注册�
 
 从客户端发出 `GET k1` 到收到回复，主要路径可以压缩成七步：
 
-```text
-1. 内核收下 TCP 数据
-2. epoll 报告连接可读
-3. readQueryFromClient 读取输入
-4. processInputBuffer 解析 RESP
-5. processCommand 完成检查
-6. call 调用具体命令函数
-7. addReply 组装回复，稍后 writeToClient 写回
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 220" role="img" aria-label="一条 GET 的七步梯子：内核收下 TCP 数据，epoll 报告可读，readQueryFromClient 读取输入，processInputBuffer 解析 RESP，processCommand 完成认证 ACL 淘汰等检查，call 调用命令实现真正碰键空间，addReply 组装回复再由 writeToClient 写回" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="red1As2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">从发出 GET k1 到收到回复的七道门</text>
+<line class="fl" x1="70" y1="40" x2="70" y2="196" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red1As2)"/>
+<rect class="bx" x="90" y="36" width="420" height="20" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="100" y="50" font-size="11" fill="#6b675e">① 内核收下 TCP 数据</text>
+<rect class="bx" x="90" y="58" width="420" height="20" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="100" y="72" font-size="11" fill="#6b675e">② epoll 报告连接可读</text>
+<rect class="bx" x="90" y="80" width="420" height="20" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="100" y="94" font-size="11" fill="#6b675e">③ readQueryFromClient 读取输入</text>
+<rect class="bx" x="90" y="102" width="420" height="20" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="100" y="116" font-size="11" fill="#6b675e">④ processInputBuffer 解析 RESP</text>
+<rect class="bx" x="90" y="124" width="420" height="20" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="100" y="138" font-size="11" fill="#6b675e">⑤ processCommand：认证、ACL、淘汰、忙脚本……一排检查</text>
+<rect class="bx-sick" x="90" y="146" width="420" height="20" rx="3" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="100" y="160" font-size="11" fill="#b03a2e">⑥ call：调用命令实现，真正碰键空间的一段</text>
+<rect class="bx" x="90" y="168" width="420" height="20" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="100" y="182" font-size="11" fill="#6b675e">⑦ addReply 组装回复，writeToClient 写回</text>
+<text class="ts" x="530" y="50" font-size="10" fill="#6b675e">内核与 epoll</text>
+<text class="ts" x="530" y="116" font-size="10" fill="#6b675e">主线程</text>
+<text class="tc" x="530" y="160" font-size="10" fill="#b03a2e">最不能并行</text>
+<text class="ts" x="20" y="212" font-size="12" fill="#6b675e">SLOWLOG 计时的只有第 ⑥ 段：门外排队的时长不进日志</text>
+</svg>
+</figure>
 
 `processCommand()` 远不只是查一张命令表。认证、ACL、Cluster 重定向、内存淘汰、只读副本限制、持久化错误、加载状态和忙脚本检查，都可能在真正执行前发生。通过检查以后，`call()` 才同步调用命令实现。
 
@@ -170,6 +205,35 @@ GET #5  等待约  795ms
 
 五条 `GET` 的服务端执行只需微秒级，却都在 Lua 结束的同一毫秒附近得到回复。越晚到的等待越短，所有人的放行点却相同，这是队头阻塞最清楚的签名。
 
+发出点和放行点摆上同一条时间轴：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 268" role="img" aria-label="队头阻塞甘特图：EVAL 忙循环从 0 占到 2798 毫秒；五条 GET 分别在 100、500、1000、1500、2000 毫秒发出，各自等待 2695 到 795 毫秒不等，全部在 2798 毫秒的同一放行点获释，形成一道整齐的阶梯" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">一张椅子，六个人：发出时刻不同，放行时刻相同</text>
+<rect class="bx-sick" x="70" y="44" width="540" height="18" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="340" y="57" text-anchor="middle" font-size="11" fill="#b03a2e">EVAL 忙循环：占住执行席位 2798ms</text>
+<rect class="bx" x="89" y="70" width="521" height="16" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="97" y="82" font-size="10" fill="#6b675e">#1 +100ms 发出 · 等 2695ms</text>
+<rect class="bx" x="166" y="92" width="444" height="16" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="174" y="104" font-size="10" fill="#6b675e">#2 +500ms 发出 · 等 2295ms</text>
+<rect class="bx" x="263" y="114" width="347" height="16" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="271" y="126" font-size="10" fill="#6b675e">#3 +1000ms 发出 · 等 1795ms</text>
+<rect class="bx" x="359" y="136" width="251" height="16" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="367" y="148" font-size="10" fill="#6b675e">#4 +1500ms · 等 1295ms</text>
+<rect class="bx" x="456" y="158" width="154" height="16" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="464" y="170" font-size="10" fill="#6b675e">#5 +2000ms · 等 795ms</text>
+<line class="flk" x1="610" y1="38" x2="610" y2="184" stroke="#2b2a26" stroke-width="2"/>
+<text class="tc" x="604" y="34" text-anchor="end" font-size="11" fill="#b03a2e">+2798ms：同一毫秒放行</text>
+<line class="axis" x1="70" y1="200" x2="620" y2="200" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="70" y="218" text-anchor="middle" font-size="11" fill="#6b675e">0</text>
+<text class="ts" x="205" y="218" text-anchor="middle" font-size="11" fill="#6b675e">700</text>
+<text class="ts" x="340" y="218" text-anchor="middle" font-size="11" fill="#6b675e">1400</text>
+<text class="ts" x="475" y="218" text-anchor="middle" font-size="11" fill="#6b675e">2100</text>
+<text class="ts" x="610" y="218" text-anchor="middle" font-size="11" fill="#6b675e">2800ms</text>
+<text class="ts" x="20" y="248" font-size="12" fill="#6b675e">阶梯的形状就是队头阻塞：每条灰杠都是干等，服务端执行只占末尾一瞬</text>
+</svg>
+</figure>
+
 具体毫秒数由机器和调度决定，不应写进容量承诺。但形状不会变：主线程一旦进入命令实现，普通客户端不能从旁边另开一扇门。
 
 Redis 对长脚本有一项特殊缓解。`busy-reply-threshold` 默认 5000 毫秒；脚本超过阈值后，会周期性调用 `processEventsWhileBlocked()`，让 `SCRIPT KILL`、`SHUTDOWN NOSAVE` 等允许在忙状态执行的命令获得处理机会，同时对大多数其他命令返回 `BUSY`。这不是把脚本迁到后台，更不是到了五秒自动杀掉脚本。超时以前仍然黑屏；超时以后只是开了一扇紧急处置窗口。
@@ -212,11 +276,29 @@ Redis 6.0 引入可选 I/O 线程。7.4.11 中 `io-threads` 默认是 1，也就
 
 可以画成两条并行车道，最后汇入同一个柜台：
 
-```text
-I/O thread 1 ── 读包、解析 ──┐
-I/O thread 2 ── 读包、解析 ──┼── 主线程逐条执行命令
-I/O thread 3 ── 读包、解析 ──┘
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 244" role="img" aria-label="I/O 线程并行车道：三个 I/O 工作线程各自读包解析 RESP，把完整命令标为待执行，三条车道汇入同一个主线程柜台逐条执行命令；执行席位不随线程数增加" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="red1As4" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">io-threads 4：三条车道并行收发，柜台仍然只有一个</text>
+<rect class="bx" x="30" y="50" width="230" height="36" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="145" y="72" text-anchor="middle" font-size="11" fill="#6b675e">I/O thread 1 · 读包、解析 RESP</text>
+<rect class="bx" x="30" y="100" width="230" height="36" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="145" y="122" text-anchor="middle" font-size="11" fill="#6b675e">I/O thread 2 · 读包、解析 RESP</text>
+<rect class="bx" x="30" y="150" width="230" height="36" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="145" y="172" text-anchor="middle" font-size="11" fill="#6b675e">I/O thread 3 · 读包、解析 RESP</text>
+<line class="fl" x1="260" y1="68" x2="416" y2="106" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red1As4)"/>
+<line class="fl" x1="260" y1="118" x2="416" y2="118" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red1As4)"/>
+<line class="fl" x1="260" y1="168" x2="416" y2="130" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red1As4)"/>
+<text class="ts" x="338" y="98" text-anchor="middle" font-size="10" fill="#6b675e">命令解析完，标为待执行</text>
+<rect class="bx-sick" x="420" y="88" width="210" height="60" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="t" x="525" y="112" text-anchor="middle" font-size="13" fill="#2b2a26">主线程柜台</text>
+<text class="ts" x="525" y="132" text-anchor="middle" font-size="11" fill="#6b675e">逐条执行命令，唯一席位</text>
+<text class="ts" x="20" y="214" font-size="12" fill="#6b675e">车道再宽，柜台只有一个：执行席位不随线程数增加</text>
+<text class="ts" x="20" y="234" font-size="12" fill="#6b675e">写回方向同理：writeToClient 可以并行，命令函数不行</text>
+</svg>
+</figure>
 
 我用 `io-threads 4` 和 `io-threads-do-reads yes` 重建测试容器，再跑同一段 Lua 与三个 `GET` 探针。结果仍是一道阶梯：三条 `GET` 都在脚本结束附近返回。
 
@@ -245,6 +327,31 @@ I/O 线程也不是一直忙。待写客户端不足一定数量时，Redis 会�
 
 `UNLINK` 没有消灭释放成本，只把它从主线程移到了另一条时间线上。
 
+两条时间线并排：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 240" role="img" aria-label="DEL 与 UNLINK 的甘特对照：DEL 在主线程同步释放两百万成员耗约 228 毫秒，同期 GET 等到删除结束；UNLINK 主线程只花约 22 微秒摘键立即回复，值对象交给 bio lazyfree 线程在后台约 300 毫秒内逐步释放，同期 GET 未见阻塞" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">同一只两百万成员的 Set（约 92MB），两种删法</text>
+<text class="t" x="20" y="58" font-size="12" fill="#2b2a26">DEL</text>
+<rect class="bx-sick" x="110" y="44" width="228" height="18" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="346" y="58" font-size="11" fill="#b03a2e">主线程同步释放 ≈228ms</text>
+<text class="ts" x="110" y="80" font-size="10" fill="#6b675e">同期 GET：等到删除结束才获释</text>
+<text class="t" x="20" y="112" font-size="12" fill="#2b2a26">UNLINK</text>
+<rect class="bar" x="110" y="100" width="4" height="18" fill="#2b2a26"/>
+<text class="ts" x="122" y="114" font-size="11" fill="#6b675e">主线程摘键 ≈22μs，立刻回复</text>
+<rect class="bx" x="114" y="126" width="300" height="18" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="122" y="140" font-size="11" fill="#6b675e">bio lazyfree 线程：后台逐步释放 ≈300ms</text>
+<text class="ts" x="424" y="140" font-size="10" fill="#6b675e">同期 GET：未见同类阻塞</text>
+<line class="axis" x1="110" y1="170" x2="500" y2="170" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="110" y="188" text-anchor="middle" font-size="10" fill="#6b675e">0</text>
+<text class="ts" x="210" y="188" text-anchor="middle" font-size="10" fill="#6b675e">100</text>
+<text class="ts" x="310" y="188" text-anchor="middle" font-size="10" fill="#6b675e">200</text>
+<text class="ts" x="410" y="188" text-anchor="middle" font-size="10" fill="#6b675e">300ms</text>
+<text class="ts" x="20" y="214" font-size="12" fill="#6b675e">228ms 里执行席位被删除独占；22μs 之后席位就让给了下一条命令</text>
+<text class="ts" x="20" y="232" font-size="12" fill="#6b675e">内存曲线也跟着换时间线：回复先到，占用后降</text>
+</svg>
+</figure>
+
 ## 后台线程能搬走什么，不能搬走什么
 
 bio 的三名工人适合处理可以延后、也不再需要碰活跃键空间的任务。
@@ -272,10 +379,28 @@ RDB 子进程落盘：约 1.6s
 
 在最初十几毫秒的 `fork` 窗口内，两个 `GET` 探针都延迟到主线程恢复后返回；落盘开始以后，后续 `GET` 恢复正常。于是“后台保存”应拆成两段：
 
-```text
-主线程 fork：短暂但同步
-子进程写盘：耗时更长，但与父进程并发
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 208" role="img" aria-label="BGSAVE 两段泳道：主线程先同步 fork 约 14 毫秒（画幅放大），期间两个 GET 探针被延迟；fork 返回后主线程恢复服务，子进程在另一条泳道上并发写 RDB 约 1.6 秒，此后的 GET 正常" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">BGSAVE 的两段：前台 14ms，后台 1.6s（横轴非线性，fork 段放大）</text>
+<text class="t" x="20" y="62" font-size="12" fill="#2b2a26">主线程</text>
+<rect class="bx-sick" x="110" y="48" width="60" height="20" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="140" y="62" text-anchor="middle" font-size="10" fill="#b03a2e">fork 14ms</text>
+<rect class="bx-q" x="170" y="48" width="440" height="20" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="390" y="62" text-anchor="middle" font-size="10" fill="#6b675e">恢复服务：后续 GET 正常</text>
+<text class="t" x="20" y="112" font-size="12" fill="#2b2a26">子进程</text>
+<rect class="bx-gone" x="110" y="98" width="60" height="20" rx="2" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<text class="ts" x="140" y="112" text-anchor="middle" font-size="10" fill="#6b675e">还不存在</text>
+<rect class="bx" x="170" y="98" width="440" height="20" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="390" y="112" text-anchor="middle" font-size="10" fill="#6b675e">遍历内存、编码、写 RDB ≈1.6s（与父进程并发）</text>
+<line class="flc" x1="140" y1="30" x2="140" y2="136" stroke="#b03a2e" stroke-width="1.4" stroke-dasharray="4 3"/>
+<text class="tc" x="146" y="90" font-size="10" fill="#b03a2e">窗口内两个 GET 探针被延迟到 fork 返回后</text>
+<text class="ts" x="110" y="152" font-size="11" fill="#6b675e">0</text>
+<text class="ts" x="170" y="152" font-size="11" fill="#6b675e">14ms</text>
+<text class="ts" x="610" y="152" text-anchor="end" font-size="11" fill="#6b675e">≈1.6s</text>
+<text class="ts" x="20" y="180" font-size="12" fill="#6b675e">latest_fork_usec 量的是第一段；COW 的账挂在第二段：父进程写越猛，复制页越多</text>
+<text class="ts" x="20" y="198" font-size="12" fill="#6b675e">实例 627MB 时 fork 用了 14374μs：停顿随实例大小水涨船高</text>
+</svg>
+</figure>
 
 写时复制又引入第二份成本。子进程存活期间，父进程若修改某个共享内存页，操作系统要复制该页；写流量越大，额外内存与复制开销越高。透明大页还可能放大复制粒度，因此 Redis 7.4 默认尝试禁用 THP，并在延迟诊断中给出相应警告。
 
