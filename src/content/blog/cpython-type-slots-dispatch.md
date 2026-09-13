@@ -60,18 +60,36 @@ tp_itemsize     每个变长项多大
 
 这一篇关心的是同一类型对象上的另一组协议：
 
-```text
-PyTypeObject
-    ├── tp_as_number
-    │     ├── nb_add
-    │     ├── nb_subtract
-    │     └── ...
-    ├── tp_as_sequence
-    │     ├── sq_concat
-    │     └── ...
-    ├── tp_dealloc
-    └── 其他操作入口
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 196" role="img" aria-label="PyTypeObject 协议树：tp_as_number 下有 nb_add、nb_subtract 等数值槽，tp_as_sequence 下有 sq_concat 等序列槽，另有 tp_dealloc 析构入口与其他操作入口；本文的加号走 nb_add 一支" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<rect class="bx" x="240" y="20" width="180" height="34" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="t" x="330" y="42" text-anchor="middle" font-size="11.5" fill="#2b2a26">PyTypeObject</text>
+<line class="fl" x1="330" y1="54" x2="125" y2="84" stroke="#6b675e" stroke-width="1.2"/>
+<line class="fl" x1="330" y1="54" x2="330" y2="84" stroke="#6b675e" stroke-width="1.2"/>
+<line class="fl" x1="330" y1="54" x2="540" y2="84" stroke="#6b675e" stroke-width="1.2"/>
+<rect class="bx-q" x="40" y="86" width="170" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="125" y="106" text-anchor="middle" font-size="10.5" fill="#2b2a26">tp_as_number</text>
+<rect class="bx-q" x="245" y="86" width="170" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="330" y="106" text-anchor="middle" font-size="10.5" fill="#2b2a26">tp_as_sequence</text>
+<rect class="bx-q" x="450" y="86" width="180" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="540" y="106" text-anchor="middle" font-size="10.5" fill="#2b2a26">tp_dealloc · 其他入口</text>
+<line class="fl" x1="125" y1="116" x2="65" y2="138" stroke="#6b675e" stroke-width="1.1"/>
+<line class="fl" x1="125" y1="116" x2="165" y2="138" stroke="#6b675e" stroke-width="1.1"/>
+<line class="fl" x1="125" y1="116" x2="226" y2="138" stroke="#6b675e" stroke-width="1.1"/>
+<rect class="bx-sick" x="20" y="140" width="90" height="26" rx="3" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.3"/>
+<text class="tc" x="65" y="157" text-anchor="middle" font-size="10" fill="#b03a2e">nb_add</text>
+<rect class="bx-q" x="118" y="140" width="94" height="26" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="165" y="157" text-anchor="middle" font-size="9.5" fill="#6b675e">nb_subtract</text>
+<text class="ts" x="226" y="158" font-size="10" fill="#a29d90">…</text>
+<line class="fl" x1="330" y1="116" x2="295" y2="138" stroke="#6b675e" stroke-width="1.1"/>
+<line class="fl" x1="330" y1="116" x2="375" y2="138" stroke="#6b675e" stroke-width="1.1"/>
+<rect class="bx-q" x="250" y="140" width="90" height="26" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="295" y="157" text-anchor="middle" font-size="9.5" fill="#6b675e">sq_concat</text>
+<text class="ts" x="375" y="158" font-size="10" fill="#a29d90">…</text>
+<text class="ts" x="450" y="152" font-size="9.5" fill="#6b675e">对象回收时，类型决定怎样清理</text>
+<text class="ts" x="122" y="186" font-size="10" fill="#b03a2e">红色一支就是本文加号的落点</text>
+</svg>
+</figure>
 
 `tp_dealloc` 在引用计数篇里已经出现过：对象被回收时，类型决定怎样清理。`nb_add` 则站在另一端：对象还活着，一枚 `+` 到来时，类型决定自己如何参与加法协议。
 
@@ -116,13 +134,22 @@ RETURN_VALUE
 
 当前通用实现可以概括成：
 
-```text
-BINARY_OP(oparg = NB_ADD)
-    ↓
-_PyEval_BinaryOps[NB_ADD]
-    ↓
-PyNumber_Add(left, right)
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 190" role="img" aria-label="从字节码到加法入口：BINARY_OP 带 oparg NB_ADD 查 _PyEval_BinaryOps 函数表，选出 PyNumber_Add(left, right)" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="tsdA2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-q" x="190" y="20" width="280" height="36" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="ts" x="330" y="43" text-anchor="middle" font-size="11" fill="#2b2a26">BINARY_OP(oparg = NB_ADD)</text>
+<line class="fl" x1="330" y1="56" x2="330" y2="72" stroke="#6b675e" stroke-width="1.3" marker-end="url(#tsdA2)"/>
+<rect class="bx-q" x="190" y="76" width="280" height="36" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="330" y="99" text-anchor="middle" font-size="11" fill="#2b2a26">_PyEval_BinaryOps[NB_ADD]</text>
+<line class="fl" x1="330" y1="112" x2="330" y2="128" stroke="#6b675e" stroke-width="1.3" marker-end="url(#tsdA2)"/>
+<rect class="bx" x="190" y="132" width="280" height="36" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="330" y="155" text-anchor="middle" font-size="11" fill="#2b2a26">PyNumber_Add(left, right)</text>
+<text class="ts" x="486" y="99" font-size="10" fill="#6b675e">按 oparg 查函数表</text>
+</svg>
+</figure>
 
 `_PyEval_BinaryOps` 是一张函数表。`NB_ADD` 对应 `PyNumber_Add`，`NB_SUBTRACT` 对应减法入口，原地加法则有自己的 `NB_INPLACE_ADD` 与 `PyNumber_InPlaceAdd`。
 
@@ -136,17 +163,59 @@ PyNumber_Add(left, right)
 
 当前调用链是：
 
-```text
-PyNumber_Add(left, right)
-    ↓
-binary_op1(left, right, nb_add, "+")
-    ↓
-左右数值槽协商
-    ↓ 都拒绝
-检查左操作数的 sq_concat
-    ↓ 仍没有入口
-TypeError
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 462" role="img" aria-label="加法分派全流程：PyNumber_Add 调 binary_op1；若右类型是左类型严格子类且槽实现不同则右槽先答；否则左槽先答，返回 NotImplemented 再轮到右槽；两侧都拒绝时检查左类型的 sq_concat，有则序列拼接，没有才 TypeError；任何一侧接手即得出结果" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="tsdA3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-q" x="190" y="20" width="280" height="34" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="ts" x="330" y="42" text-anchor="middle" font-size="11" fill="#2b2a26">PyNumber_Add(left, right)</text>
+<line class="fl" x1="330" y1="54" x2="330" y2="70" stroke="#6b675e" stroke-width="1.3" marker-end="url(#tsdA3)"/>
+<rect class="bx-q" x="170" y="74" width="320" height="34" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="330" y="96" text-anchor="middle" font-size="10.5" fill="#2b2a26">binary_op1(left, right, nb_add, "+")</text>
+<line class="fl" x1="330" y1="108" x2="330" y2="122" stroke="#6b675e" stroke-width="1.3" marker-end="url(#tsdA3)"/>
+<polygon class="bx" points="330,126 470,158 330,190 190,158" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="330" y="154" text-anchor="middle" font-size="9.5" fill="#2b2a26">右类型是左的严格子类</text>
+<text class="ts" x="330" y="169" text-anchor="middle" font-size="9.5" fill="#2b2a26">且槽实现不同？</text>
+<line class="fl" x1="470" y1="158" x2="506" y2="158" stroke="#6b675e" stroke-width="1.3" marker-end="url(#tsdA3)"/>
+<text class="ts" x="486" y="150" text-anchor="middle" font-size="9.5" fill="#6b675e">是</text>
+<rect class="bx-q" x="510" y="138" width="130" height="40" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="575" y="155" text-anchor="middle" font-size="10" fill="#2b2a26">右槽先答</text>
+<text class="ts" x="575" y="170" text-anchor="middle" font-size="9" fill="#6b675e">反向实现优先</text>
+<line class="fl" x1="330" y1="190" x2="330" y2="206" stroke="#6b675e" stroke-width="1.3" marker-end="url(#tsdA3)"/>
+<text class="ts" x="340" y="202" font-size="9.5" fill="#6b675e">否</text>
+<rect class="bx-q" x="190" y="210" width="280" height="36" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="330" y="225" text-anchor="middle" font-size="10.5" fill="#2b2a26">左槽先答</text>
+<text class="ts" x="330" y="240" text-anchor="middle" font-size="9" fill="#6b675e">Python 类经通用 wrapper 找 __add__</text>
+<line class="fl" x1="470" y1="228" x2="506" y2="232" stroke="#6b675e" stroke-width="1.2" marker-end="url(#tsdA3)"/>
+<text class="ts" x="488" y="220" text-anchor="middle" font-size="9" fill="#6b675e">接手</text>
+<line class="fl" x1="330" y1="246" x2="330" y2="266" stroke="#6b675e" stroke-width="1.3" marker-end="url(#tsdA3)"/>
+<text class="ts" x="340" y="262" font-size="9.5" fill="#6b675e">返回 NotImplemented</text>
+<rect class="bx-q" x="190" y="270" width="280" height="36" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="330" y="285" text-anchor="middle" font-size="10.5" fill="#2b2a26">轮到右槽</text>
+<text class="ts" x="330" y="300" text-anchor="middle" font-size="9" fill="#6b675e">wrapper 内再选 __radd__</text>
+<line class="fl" x1="470" y1="288" x2="506" y2="270" stroke="#6b675e" stroke-width="1.2" marker-end="url(#tsdA3)"/>
+<text class="ts" x="492" y="292" text-anchor="middle" font-size="9" fill="#6b675e">接手</text>
+<rect class="bx" x="510" y="212" width="130" height="62" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="575" y="238" text-anchor="middle" font-size="10" fill="#2b2a26">结果得出</text>
+<text class="ts" x="575" y="256" text-anchor="middle" font-size="9" fill="#6b675e">协商结束</text>
+<line class="fl" x1="575" y1="178" x2="575" y2="208" stroke="#6b675e" stroke-width="1.2" marker-end="url(#tsdA3)"/>
+<line class="fl" x1="330" y1="306" x2="330" y2="324" stroke="#6b675e" stroke-width="1.3" marker-end="url(#tsdA3)"/>
+<text class="ts" x="340" y="320" font-size="9.5" fill="#6b675e">两侧都拒绝</text>
+<polygon class="bx" points="330,328 460,358 330,388 200,358" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="330" y="354" text-anchor="middle" font-size="9.5" fill="#2b2a26">左类型有</text>
+<text class="ts" x="330" y="369" text-anchor="middle" font-size="9.5" fill="#2b2a26">sq_concat？</text>
+<line class="fl" x1="460" y1="358" x2="506" y2="358" stroke="#6b675e" stroke-width="1.3" marker-end="url(#tsdA3)"/>
+<text class="ts" x="482" y="350" text-anchor="middle" font-size="9.5" fill="#6b675e">有</text>
+<rect class="bx-q" x="510" y="336" width="130" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="575" y="354" text-anchor="middle" font-size="10" fill="#2b2a26">序列拼接</text>
+<text class="ts" x="575" y="370" text-anchor="middle" font-size="9" fill="#6b675e">list / str 的入口</text>
+<line class="fl" x1="330" y1="388" x2="330" y2="406" stroke="#6b675e" stroke-width="1.3" marker-end="url(#tsdA3)"/>
+<text class="ts" x="340" y="402" font-size="9.5" fill="#6b675e">没有</text>
+<rect class="bx-sick" x="240" y="410" width="180" height="36" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.3"/>
+<text class="tc" x="330" y="433" text-anchor="middle" font-size="11" fill="#b03a2e">TypeError</text>
+</svg>
+</figure>
 
 也就是说，`PyNumber_Add()` 不是直接取 `left.__add__`。它先从左右类型的 `tp_as_number` 中读取目标槽，再按二元协议决定顺序。
 
@@ -243,11 +312,22 @@ TypeError: unsupported operand type(s) for +: 'Left' and 'Right'
 
 因此要区分三件事：
 
-```text
-return NotImplemented      当前一侧转交，协议继续尝试另一侧
-raise NotImplementedError  当前执行直接失败
-最终 TypeError             两侧都不处理，协议层报错
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 186" role="img" aria-label="三种返回值对照：return NotImplemented 是转交信号，协议继续尝试另一侧；raise NotImplementedError 是普通异常，当前执行直接失败并向上传播；最终 TypeError 由两侧都拒绝且无后备时的协议层生成" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<rect class="bx-q" x="20" y="20" width="620" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="36" y="47" font-size="11" fill="#2b2a26">return NotImplemented</text>
+<line class="axis" x1="270" y1="26" x2="270" y2="58" stroke="#a29d90" stroke-width="1"/>
+<text class="ts" x="288" y="47" font-size="10.5" fill="#6b675e">转交信号：协议继续尝试另一侧</text>
+<rect class="bx-sick" x="20" y="72" width="620" height="44" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="ts" x="36" y="99" font-size="11" fill="#b03a2e">raise NotImplementedError</text>
+<line class="axis" x1="270" y1="78" x2="270" y2="110" stroke="#a29d90" stroke-width="1"/>
+<text class="ts" x="288" y="99" font-size="10.5" fill="#6b675e">普通异常：当前执行直接失败，向上传播</text>
+<rect class="bx" x="20" y="124" width="620" height="44" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="36" y="151" font-size="11" fill="#2b2a26">最终 TypeError</text>
+<line class="axis" x1="270" y1="130" x2="270" y2="162" stroke="#a29d90" stroke-width="1"/>
+<text class="ts" x="288" y="151" font-size="10.5" fill="#6b675e">两侧都拒绝且无后备：协议层生成面向用户的错误</text>
+</svg>
+</figure>
 
 3.14 还有一条版本变化：`bool(NotImplemented)` 现在直接抛 `TypeError`；3.12.13 会给出 `DeprecationWarning` 后返回 `True`。它本来就不该被当作普通布尔结果判断，正确做法是返回它，让操作分派层识别这只单例。
 
@@ -399,6 +479,39 @@ value.__add__ = lambda other: "instance-add"
 
 隐式运算却从对象的运行时类型进入。当前 `_PyObject_LookupSpecial()` 的核心是沿 `Py_TYPE(value)` 查找特殊方法，再把描述符绑定到实例；它不是普通的 `PyObject_GetAttr(value, name)`。因此实例字典中的 `__add__` 不参与 `+` 的隐式协议。
 
+开场那两行结果，就是两条查找路径的产物：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 268" role="img" aria-label="两条查找路径：显式 value.__add__(value) 走普通属性查找，实例字典可以影射类上的同名方法，拿到 instance-add；隐式 value + value 经 BINARY_OP 调 _PyObject_LookupSpecial，只从 Py_TYPE(value) 的类型上查找 __add__，拿到 class-add，实例字典不被咨询" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="tsdA5" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="t" x="20" y="28" font-size="11.5" fill="#2b2a26">显式：value.__add__(value)</text>
+<rect class="bx-q" x="20" y="40" width="180" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="110" y="66" text-anchor="middle" font-size="10.5" fill="#2b2a26">普通属性查找</text>
+<line class="fl" x1="200" y1="62" x2="232" y2="62" stroke="#6b675e" stroke-width="1.3" marker-end="url(#tsdA5)"/>
+<rect class="bx-q" x="236" y="40" width="180" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="326" y="58" text-anchor="middle" font-size="10" fill="#2b2a26">实例字典影射类方法</text>
+<text class="ts" x="326" y="74" text-anchor="middle" font-size="9.5" fill="#6b675e">先实例、后类</text>
+<line class="fl" x1="416" y1="62" x2="448" y2="62" stroke="#6b675e" stroke-width="1.3" marker-end="url(#tsdA5)"/>
+<rect class="bx" x="452" y="40" width="180" height="44" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="542" y="66" text-anchor="middle" font-size="10.5" fill="#2b2a26">得到 instance-add</text>
+<text class="t" x="20" y="128" font-size="11.5" fill="#2b2a26">隐式：value + value</text>
+<rect class="bx-q" x="20" y="140" width="180" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="110" y="166" text-anchor="middle" font-size="10.5" fill="#2b2a26">BINARY_OP</text>
+<line class="fl" x1="200" y1="162" x2="232" y2="162" stroke="#6b675e" stroke-width="1.3" marker-end="url(#tsdA5)"/>
+<rect class="bx-q" x="236" y="140" width="180" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="326" y="158" text-anchor="middle" font-size="9.5" fill="#2b2a26">_PyObject_LookupSpecial</text>
+<text class="ts" x="326" y="174" text-anchor="middle" font-size="9.5" fill="#6b675e">只从 Py_TYPE(value) 找</text>
+<line class="fl" x1="416" y1="162" x2="448" y2="162" stroke="#6b675e" stroke-width="1.3" marker-end="url(#tsdA5)"/>
+<rect class="bx" x="452" y="140" width="180" height="44" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="542" y="166" text-anchor="middle" font-size="10.5" fill="#2b2a26">得到 class-add</text>
+<rect class="bx-gone" x="236" y="206" width="180" height="40" rx="4" fill="#ece9e2" stroke="#a29d90" stroke-width="1.2" stroke-dasharray="5 3"/>
+<text class="ts" x="326" y="222" text-anchor="middle" font-size="9.5" fill="#6b675e">实例字典里的 __add__</text>
+<text class="tc" x="326" y="238" text-anchor="middle" font-size="9.5" fill="#b03a2e">隐式协议不咨询它</text>
+</svg>
+</figure>
+
 `len()` 也有同样边界：
 
 ```python
@@ -462,6 +575,35 @@ del Value.__add__
 ```
 
 同一只早已存在的 `value` 会立即跟随类变化。特殊方法没有在实例创建时复制进每个对象。
+
+这份「立即跟随」走的链路：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 178" role="img" aria-label="类型槽更新链路：修改类上的特殊方法属性经 type_setattro 识别出特殊槽，调用 update_slot 与 update_one_slot 沿当前 MRO 重算该槽，修改还会传播到没有自行覆盖这个名字的子类分支" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="tsdA6" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-q" x="20" y="26" width="190" height="46" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="115" y="46" text-anchor="middle" font-size="10" fill="#2b2a26">Value.__add__ = …</text>
+<text class="ts" x="115" y="62" text-anchor="middle" font-size="9" fill="#6b675e">改类上的特殊方法</text>
+<line class="fl" x1="210" y1="49" x2="238" y2="49" stroke="#6b675e" stroke-width="1.3" marker-end="url(#tsdA6)"/>
+<rect class="bx-q" x="242" y="26" width="180" height="46" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="332" y="46" text-anchor="middle" font-size="10" fill="#2b2a26">type_setattro</text>
+<text class="ts" x="332" y="62" text-anchor="middle" font-size="9" fill="#6b675e">识别出特殊槽</text>
+<line class="fl" x1="422" y1="49" x2="450" y2="49" stroke="#6b675e" stroke-width="1.3" marker-end="url(#tsdA6)"/>
+<rect class="bx-q" x="454" y="26" width="186" height="46" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="547" y="46" text-anchor="middle" font-size="10" fill="#2b2a26">update_slot()</text>
+<text class="ts" x="547" y="62" text-anchor="middle" font-size="9" fill="#6b675e">update_one_slot()</text>
+<line class="fl" x1="547" y1="72" x2="547" y2="100" stroke="#6b675e" stroke-width="1.3" marker-end="url(#tsdA6)"/>
+<rect class="bx" x="414" y="104" width="226" height="46" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="527" y="124" text-anchor="middle" font-size="10" fill="#2b2a26">沿当前 MRO 重算该槽</text>
+<text class="ts" x="527" y="140" text-anchor="middle" font-size="9" fill="#6b675e">删除时也走这里：看 MRO 还有没有实现</text>
+<line class="fl" x1="414" y1="127" x2="386" y2="127" stroke="#6b675e" stroke-width="1.3" marker-end="url(#tsdA6)"/>
+<rect class="bx-q" x="146" y="104" width="236" height="46" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="264" y="124" text-anchor="middle" font-size="10" fill="#2b2a26">传播到未覆盖的子类分支</text>
+<text class="ts" x="264" y="140" text-anchor="middle" font-size="9" fill="#6b675e">已有实例下一次运算即用新槽</text>
+</svg>
+</figure>
 
 当前 CPython 中，类属性更新先经过 `type_setattro`。若名字对应特殊槽，运行时调用 `update_slot()` / `update_one_slot()`，沿当前 MRO 重新计算该槽；修改还会传播到没有自行覆盖这个名字的子类分支。
 
