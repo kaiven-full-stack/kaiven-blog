@@ -37,6 +37,37 @@ digit = [12345, 0, 0, 1024]
 
 digit[0] 是 12345（低 30 位放不下 2 的任何高次幂），中间两个 digit 是 0，digit[3] = 1024：2**100 = 2**90 × 2**10，第 4 个 digit（覆盖第 90–119 比特）里存的就是 2**10。按四个 digit 重构：12345 + 0 + 0 + 1024×2**90，分毫不差。
 
+这个数字在内存里的样子：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 216" role="img" aria-label="PyLongObject 布局：lv_tag 一个字打包位数与符号，后面跟着 digit 数组；2**100+12345 存成 4 个 digit：12345、0、0、1024，各自乘 2 的 0、30、60、90 次幂加权求和，sizeof 等于 24 字节头部加 4 乘 4 字节" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">v = 2**100 + 12345：四个 digit 的加权和</text>
+<rect class="bx-q" x="30" y="40" width="600" height="92" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<rect class="bx-sick" x="50" y="56" width="110" height="44" rx="3" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="ts" x="105" y="74" text-anchor="middle" font-size="10" fill="#6b675e">lv_tag</text>
+<text class="ts" x="105" y="90" text-anchor="middle" font-size="10" fill="#6b675e">位数 4 · 符号 +</text>
+<rect class="bx" x="180" y="56" width="100" height="44" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="230" y="76" text-anchor="middle" font-size="12" fill="#2b2a26">12345</text>
+<text class="ts" x="230" y="92" text-anchor="middle" font-size="9" fill="#6b675e">digit[0]</text>
+<rect class="bx" x="290" y="56" width="100" height="44" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="340" y="76" text-anchor="middle" font-size="12" fill="#2b2a26">0</text>
+<text class="ts" x="340" y="92" text-anchor="middle" font-size="9" fill="#6b675e">digit[1]</text>
+<rect class="bx" x="400" y="56" width="100" height="44" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="450" y="76" text-anchor="middle" font-size="12" fill="#2b2a26">0</text>
+<text class="ts" x="450" y="92" text-anchor="middle" font-size="9" fill="#6b675e">digit[2]</text>
+<rect class="bx" x="510" y="56" width="100" height="44" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="560" y="76" text-anchor="middle" font-size="12" fill="#2b2a26">1024</text>
+<text class="ts" x="560" y="92" text-anchor="middle" font-size="9" fill="#6b675e">digit[3]</text>
+<text class="ts" x="230" y="122" text-anchor="middle" font-size="10" fill="#6b675e">×2⁰</text>
+<text class="ts" x="340" y="122" text-anchor="middle" font-size="10" fill="#6b675e">×2³⁰</text>
+<text class="ts" x="450" y="122" text-anchor="middle" font-size="10" fill="#6b675e">×2⁶⁰</text>
+<text class="ts" x="560" y="122" text-anchor="middle" font-size="10" fill="#6b675e">×2⁹⁰</text>
+<text class="tc" x="30" y="158" font-size="12" fill="#b03a2e">v = 12345 + 0 + 0 + 1024×2⁹⁰：重构分毫不差</text>
+<text class="ts" x="30" y="180" font-size="12" fill="#6b675e">sizeof = 24 字节头部 + 4 digit × 4 = 40 字节：每 30 比特上一级台阶</text>
+<text class="ts" x="30" y="200" font-size="12" fill="#6b675e">digit 只用 32 位里的 30 位：留 2 位余量，进位链在 twodigits（u64）里全程不溢出</text>
+</svg>
+</figure>
+
 每个 digit 用 30 位而不是满打满算的 32 位，是给进位留余量。两个 digit 相加最大可到 2**31，相乘最大 2**60，都要装进更大的临时类型（`twodigits` = uint64_t）里完成进位；空出 2 个比特，进位运算就永远不会溢出临时变量。这是手写多精度算术的经典取舍：每个 digit 牺牲一点存储密度，换来加法乘法的进位链全程无溢出。
 
 于是 sizeof 的阶梯每 30 比特一级：
@@ -53,6 +84,26 @@ digit[0] 是 12345（低 30 位放不下 2 的任何高次幂），中间两个 
 3.12 之前 sign 和 ob_size 是两个分开的字段；3.12 起合并成一个 `lv_tag`：低 2 位存符号（正、负、零），高位存位数。这个改动来自 free-threading 的需要：引用计数篇和 free-threading 篇讲过，多字段的原地更新需要多把锁，打包成一个字就能用单条原子指令维护。
 
 顺带的好处是 `_PyLong_IsNonNegativeCompact` 这类判断：一个比较就能同时回答「是几位的、正的还是负的」，热路径上的分支更少。GIL 时代的结构布局，已经在为无 GIL 的时代做准备。
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 184" role="img" aria-label="lv_tag 打包前后对照：3.12 之前 sign 与 ob_size 是两个独立字段，多字段原地更新需要多把锁；3.12 起合并成一个字，低 2 位存符号、高位存位数，单条原子指令即可维护" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">3.12 的布局改造：两个字段并进一个字</text>
+<text class="ts" x="20" y="56" font-size="11" fill="#6b675e">3.12 之前</text>
+<rect class="bx" x="110" y="42" width="100" height="30" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="160" y="61" text-anchor="middle" font-size="10" fill="#6b675e">sign</text>
+<rect class="bx" x="210" y="42" width="170" height="30" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="295" y="61" text-anchor="middle" font-size="10" fill="#6b675e">ob_size（位数）</text>
+<text class="ts" x="400" y="61" font-size="11" fill="#6b675e">两个字：原地更新要多把锁</text>
+<text class="ts" x="20" y="108" font-size="11" fill="#6b675e">3.12 起</text>
+<rect class="bx-sick" x="110" y="94" width="60" height="30" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="140" y="113" text-anchor="middle" font-size="10" fill="#b03a2e">低 2 位</text>
+<rect class="bx-q" x="170" y="94" width="320" height="30" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="330" y="113" text-anchor="middle" font-size="10" fill="#6b675e">高位：位数（digit 数）</text>
+<text class="ts" x="510" y="113" font-size="11" fill="#6b675e">一个字：单条原子指令</text>
+<text class="ts" x="20" y="152" font-size="12" fill="#6b675e">符号三态（正、负、零）占低 2 位；一个比较同时答出「几位、什么符号」</text>
+<text class="ts" x="20" y="172" font-size="12" fill="#6b675e">free-threading 的需求先写进了布局：多字段一致性从此不需要锁</text>
+</svg>
+</figure>
 
 ## -5 到 256：常驻的小整数
 
@@ -80,6 +131,28 @@ fresh(-6)  is fresh(-6)    # False
 
 缓存还解释了上一篇 list 留下的一个数字：百万元素的 list 如果装的是 0..256 的小整数，元素本体几乎不占内存，它们共享这 257 个缓存对象。`list(range(1000000))` 的真实内存远小于「百万 × 28 字节」的直觉，原因就在这里。
 
+缓存的边界：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 216" role="img" aria-label="小整数缓存数轴：-5 到 256 共 262 个对象在解释器启动时造好永不释放，fresh(256) is fresh(256) 为 True 因为拿到同一个缓存对象；边界外 fresh(257) 与 fresh(-6) 每次各造新对象，is 比较为 False" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">-5 到 256：262 个常驻对象，启动时造好、永不释放</text>
+<rect class="bx-gone" x="40" y="48" width="100" height="30" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<text class="ts" x="90" y="67" text-anchor="middle" font-size="10" fill="#6b675e">… -6：每次新造</text>
+<rect class="bx-q" x="140" y="48" width="380" height="30" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="330" y="67" text-anchor="middle" font-size="11" fill="#6b675e">缓存区：-5 … 256（_PY_NSMALLNEGINTS=5 + _PY_NSMALLPOSINTS=257）</text>
+<rect class="bx-gone" x="520" y="48" width="100" height="30" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<text class="ts" x="570" y="67" text-anchor="middle" font-size="10" fill="#6b675e">257 …：每次新造</text>
+<text class="ts" x="140" y="96" text-anchor="middle" font-size="10" fill="#6b675e">-5</text>
+<text class="ts" x="520" y="96" text-anchor="middle" font-size="10" fill="#6b675e">256</text>
+<text class="ts" x="40" y="126" font-size="11" fill="#6b675e">fresh(256) is fresh(256)　→</text>
+<text class="tc" x="280" y="126" font-size="11" fill="#b03a2e">True：两次拿到同一个缓存对象</text>
+<text class="ts" x="40" y="150" font-size="11" fill="#6b675e">fresh(257) is fresh(257)　→</text>
+<text class="tc" x="280" y="150" font-size="11" fill="#b03a2e">False：各造各的，两个对象</text>
+<text class="ts" x="20" y="182" font-size="12" fill="#6b675e">验证要用 int(str(n)) 绕开编译期常量折叠；is 只该判 None 与哨兵，永不判整数</text>
+<text class="ts" x="20" y="202" font-size="12" fill="#6b675e">256 行得通、257 出错的 is 比较，在测试环境的小数值里根本不复现</text>
+</svg>
+</figure>
+
 ## 小整数的快路径
 
 缓存解决的是「创建贵」，还有「运算贵」要解决。两个 int 相加，如果都只有一个 digit，CPython 不走通用大数例程，走的是特化快路径：`x_add`/`x_mul` 之外有一层单 digit 的快捷分支，加法就是一条 C 加法指令加一次进位判断。字节码篇和特化篇讲过的 `BINARY_OP_ADD_INT`，落到底层就是这条快路径。
@@ -98,6 +171,42 @@ fresh(-6)  is fresh(-6)    # False
 
 拆分在 digit 层面进行：Karatsuba 要求等长的两半，30 比特的 digit 正好提供整齐的切分单位。当年为进位留下的 2 比特余量，在这里又派上一次用场。
 
+成本曲线与平方律参照线：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 252" role="img" aria-label="大数平方成本双对数曲线：3k 比特 0.44 毫秒、30k 比特 19.8 毫秒符合平方律的 45 倍；300k 比特 726 毫秒、3M 比特 29 秒只有 37 到 40 倍，曲线落到平方律参照线下方，因为 Karatsuba 把复杂度降到约 n 的 1.585 次方" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">平方 ×100 次耗时：横轴比特数、纵轴毫秒，均为对数刻度</text>
+<line class="grid" x1="70" y1="187" x2="610" y2="187" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 4"/>
+<line class="grid" x1="70" y1="155" x2="610" y2="155" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 4"/>
+<line class="grid" x1="70" y1="123" x2="610" y2="123" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 4"/>
+<line class="grid" x1="70" y1="91" x2="610" y2="91" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 4"/>
+<line class="grid" x1="70" y1="59" x2="610" y2="59" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 4"/>
+<line class="axis" x1="70" y1="200" x2="70" y2="40" stroke="#6b675e" stroke-width="1.2"/>
+<line class="axis" x1="70" y1="200" x2="620" y2="200" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="62" y="191" text-anchor="end" font-size="10" fill="#6b675e">1ms</text>
+<text class="ts" x="62" y="159" text-anchor="end" font-size="10" fill="#6b675e">10ms</text>
+<text class="ts" x="62" y="127" text-anchor="end" font-size="10" fill="#6b675e">100ms</text>
+<text class="ts" x="62" y="95" text-anchor="end" font-size="10" fill="#6b675e">1s</text>
+<text class="ts" x="62" y="63" text-anchor="end" font-size="10" fill="#6b675e">10s</text>
+<line class="flc" x1="83" y1="188" x2="505" y2="28" stroke="#b03a2e" stroke-width="1.4" stroke-dasharray="5 4"/>
+<text class="tc" x="300" y="86" font-size="10" fill="#b03a2e">平方律参照线：位数 ×10 → 耗时 ×100</text>
+<polyline class="curve-k" points="83,188 252,146 421,96 590,45" fill="none" stroke="#2b2a26" stroke-width="2"/>
+<circle class="fill-c" cx="83" cy="188" r="3.5" fill="#b03a2e"/>
+<circle class="fill-c" cx="252" cy="146" r="3.5" fill="#b03a2e"/>
+<circle class="fill-c" cx="421" cy="96" r="3.5" fill="#b03a2e"/>
+<circle class="fill-c" cx="590" cy="45" r="3.5" fill="#b03a2e"/>
+<text class="ts" x="83" y="176" text-anchor="middle" font-size="10" fill="#6b675e">3k · 0.44ms</text>
+<text class="ts" x="252" y="134" text-anchor="middle" font-size="10" fill="#6b675e">30k · 19.8ms（×45）</text>
+<text class="ts" x="421" y="118" text-anchor="middle" font-size="10" fill="#6b675e">300k · 726ms（×37）</text>
+<text class="ts" x="590" y="67" text-anchor="middle" font-size="10" fill="#6b675e">3M · 29s（×40）</text>
+<text class="ts" x="83" y="218" text-anchor="middle" font-size="10" fill="#6b675e">3k</text>
+<text class="ts" x="252" y="218" text-anchor="middle" font-size="10" fill="#6b675e">30k</text>
+<text class="ts" x="421" y="218" text-anchor="middle" font-size="10" fill="#6b675e">300k</text>
+<text class="ts" x="590" y="218" text-anchor="middle" font-size="10" fill="#6b675e">3M 比特</text>
+<text class="ts" x="20" y="242" font-size="12" fill="#6b675e">实测线始终在参照线下方：30k 处 ×45（严格平方该是 ×100），300k 后降到 ×37–40，Karatsuba 接管</text>
+</svg>
+</figure>
+
 ## 与 Zig 的对照
 
 把两个系列放在一起看。
@@ -106,11 +215,22 @@ Zig 的立场是溢出属于程序错误。`a + b` 默认在安全模式下 pani
 
 CPython 的立场是溢出不存在，所以也无需处理。定宽加法器之上盖了一层 digit 数组，加法链条溢出一位就进位到下一个 digit。两边的成本都能算清：
 
-```text
-Zig u64 加法：1 条指令
-CPython 小 int 加法：1 条指令 + 对象头维护 + 缓存查找
-CPython 大 int 加法：O(位数) 的逐 digit 进位链
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 188" role="img" aria-label="三种整数加法的成本阶梯：Zig u64 加法一条指令；CPython 小 int 加法一条指令加对象头维护加缓存查找；CPython 大 int 加法是 O 位数的逐 digit 进位链" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">同一件事的三种账单（条长示意）</text>
+<text class="ts" x="20" y="58" font-size="11" fill="#6b675e">Zig u64 加法</text>
+<rect class="bar" x="180" y="44" width="60" height="18" fill="#2b2a26"/>
+<text class="ts" x="248" y="58" font-size="11" fill="#6b675e">1 条指令：定宽加法器直接用</text>
+<text class="ts" x="20" y="94" font-size="11" fill="#6b675e">CPython 小 int</text>
+<rect class="bar" x="180" y="80" width="240" height="18" fill="#6b675e"/>
+<text class="ts" x="428" y="94" font-size="11" fill="#6b675e">1 条指令 + 对象头维护 + 缓存查找</text>
+<text class="ts" x="20" y="130" font-size="11" fill="#6b675e">CPython 大 int</text>
+<rect class="bar" x="180" y="116" width="440" height="18" fill="#b03a2e"/>
+<text class="onbar" x="190" y="130" font-size="10" fill="#f6f3ec">O(位数) 的逐 digit 进位链</text>
+<text class="ts" x="20" y="162" font-size="12" fill="#6b675e">Zig：不让所有整数为大数付税，溢出显式处理；CPython：大数免费，每笔运算付对象税</text>
+<text class="ts" x="20" y="182" font-size="12" fill="#6b675e">两种立场各自适合自己的场景：系统软件数每一条指令，业务原型受不了意外溢出</text>
+</svg>
+</figure>
 
 选择背后是对使用场景的判断：系统语言假设你在写操作系统和协议栈，每一位都要计入成本；脚本语言假设你在写业务逻辑和算法原型，`2**64` 溢出一个 hash 计算是不可接受的意外。两种答案各自适合自己的场景。
 
