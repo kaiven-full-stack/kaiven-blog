@@ -24,6 +24,34 @@ tags: [Linux, 内核, 内存管理]
 
 值得强调的顺序问题：**杀进程是内核最后才做的事**。第一、二级的存在就是为了永远别走到第三级：丢缓存、换冷页、拖慢分配，都是比杀进程便宜的选项。OOM killer 的触发条件不是「内存满了」这么简单，是「便宜的选项全用完了」。
 
+四级排成一段楼梯：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 274" role="img" aria-label="内存短缺的四级响应楼梯：第一级水位回收由 kswapd 后台丢缓存进程几乎无感；第二级 direct reclaim 把申请者自己拉去回收分配延迟暴涨；第三级全局 OOM 才开始杀进程；第四级 memcg OOM 是独立触发线，容器配额吃光只在组内选人，宿主机无损" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">越往右越狠：便宜的选项先用完</text>
+<rect class="bx" x="40" y="170" width="140" height="60" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="110" y="192" text-anchor="middle" font-size="12" fill="#2b2a26">一级 · 水位回收</text>
+<text class="ts" x="110" y="210" text-anchor="middle" font-size="10" fill="#6b675e">kswapd 后台丢缓存，进程无感</text>
+<rect class="bx" x="190" y="130" width="140" height="100" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="260" y="152" text-anchor="middle" font-size="12" fill="#2b2a26">二级 · direct reclaim</text>
+<text class="ts" x="260" y="172" text-anchor="middle" font-size="10" fill="#6b675e">申请者自己被拉去回收</text>
+<text class="ts" x="260" y="188" text-anchor="middle" font-size="10" fill="#6b675e">分配延迟暴涨，进程没死</text>
+<rect class="bx-sick" x="340" y="90" width="140" height="140" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="t" x="410" y="112" text-anchor="middle" font-size="12" fill="#2b2a26">三级 · 全局 OOM</text>
+<text class="ts" x="410" y="132" text-anchor="middle" font-size="10" fill="#6b675e">回收也挤不出水了</text>
+<text class="ts" x="410" y="148" text-anchor="middle" font-size="10" fill="#6b675e">out_of_memory() 开始选人</text>
+<text class="tc" x="410" y="170" text-anchor="middle" font-size="11" fill="#b03a2e">到这才拔刀</text>
+<line class="axis" x1="492" y1="60" x2="492" y2="230" stroke="#6b675e" stroke-width="1" stroke-dasharray="4 3"/>
+<text class="ts" x="498" y="56" font-size="11" fill="#6b675e">另一条触发线</text>
+<rect class="bx-sick" x="510" y="90" width="140" height="140" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4" stroke-dasharray="6 3"/>
+<text class="t" x="580" y="112" text-anchor="middle" font-size="12" fill="#2b2a26">四级 · memcg OOM</text>
+<text class="ts" x="580" y="132" text-anchor="middle" font-size="10" fill="#6b675e">容器 memory.max 顶到头</text>
+<text class="ts" x="580" y="148" text-anchor="middle" font-size="10" fill="#6b675e">只在这个组里选人</text>
+<text class="ts" x="580" y="164" text-anchor="middle" font-size="10" fill="#6b675e">宿主机其他进程无损</text>
+<text class="ts" x="20" y="256" font-size="12" fill="#6b675e">第四级不走左边的楼梯：宿主机内存再富余，配额吃光照样处决</text>
+</svg>
+</figure>
+
 ## oom_badness：打分公式
 
 走到第三级，问题变成：杀谁。v7.2 `mm/oom_kill.c` 的 `oom_badness()` 给出打分公式，简化后是：
@@ -47,6 +75,29 @@ points += adj;                                         /* adj 直接加成分 */
 
 **`oom_score_adj` 的参与方式是直接加成分。** ±1000 的范围按 `totalpages/1000` 折算成页数直接加在点上，不参与乘法。本机 15.5GiB 内存下，1 个 adj 点 ≈ 15.5MiB 占用的分。所以 `+200` 的 adj 相当于白送约 3GiB 的占用分，对占几百 MiB 的桌面进程是压倒性的；而 `+1000` 意味着无条件必杀（分数直接溢出为最大），`-1000` 意味着连候选名单都进不了。
 
+分数拼成一条杠：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 204" role="img" aria-label="oom_badness 分数构成条形图：基线三段是 RSS 真实占用、swap 换出条目、页表页数，加成段是 oom_score_adj 乘以 totalpages/1000；本机 +200 的加成约等于白送 3GiB 占用；-1000 连候选都不进，+1000 分数溢出必杀" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">oom_badness：基线分 + 直接加成分（单位都折算成页数）</text>
+<text class="ts" x="135" y="46" text-anchor="middle" font-size="11" fill="#6b675e">RSS</text>
+<text class="ts" x="265" y="46" text-anchor="middle" font-size="11" fill="#6b675e">swap</text>
+<text class="ts" x="317" y="46" text-anchor="middle" font-size="11" fill="#6b675e">页表</text>
+<rect class="bx-q" x="40" y="52" width="190" height="40" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<rect class="bx" x="230" y="52" width="70" height="40" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<rect class="bx" x="300" y="52" width="35" height="40" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<rect class="bx-sick" x="335" y="52" width="125" height="40" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="ts" x="40" y="112" font-size="12" fill="#6b675e">基线三段：吃了多少算多少，天然偏向杀大户</text>
+<text class="tc" x="335" y="112" font-size="12" fill="#b03a2e">adj × totalpages/1000</text>
+<text class="tc" x="335" y="132" font-size="11" fill="#b03a2e">本机 +200 ≈ 白送 3GiB 占用的分</text>
+<rect class="bx-gone" x="40" y="148" width="200" height="34" rx="4" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<text class="ts" x="140" y="169" text-anchor="middle" font-size="11" fill="#6b675e">adj=-1000：连候选都不进</text>
+<rect class="bx-sick" x="260" y="148" width="200" height="34" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="360" y="169" text-anchor="middle" font-size="11" fill="#b03a2e">adj=+1000：分数溢出，必杀</text>
+<text class="ts" x="480" y="169" font-size="11" fill="#6b675e">人读的是折算后的 oom_score</text>
+</svg>
+</figure>
+
 **分数换算成 `/proc/<pid>/oom_score`（0~1000 的整数）供人读。** 写 `oom_score_adj` 是进程唯一的自保/自荐通道。内核不提供「别杀我但也不保证」之外更细的语义，粗粒度正是设计：紧急时刻不需要精细权衡，需要的是明确顺位。
 
 ### 本机实测：桌面早已排好牺牲顺位
@@ -63,6 +114,29 @@ zsh（我的终端） oom_score=800  oom_score_adj=+200
 
 （注意打分的相对性：800 分在「整个会话都是 +200」的背景下互相抵消，会话内部仍按真实占用排先后，plasmashell 的 810 比 kwin 的 800 高，因为它真的多吃了几十 MiB。**adj 决定组间顺位，基线分决定组内顺位**，两层叠加才是完整顺序。）
 
+这张顺位表画出来：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 216" role="img" aria-label="本机牺牲顺位两组对照：左边用户会话组 kwin、plasmashell、zsh 的 oom_score_adj 统一是 +200，oom_score 800 上下，先走；右边系统服务组 adj 是 0 或负值，靠后站；组内仍按真实占用排先后" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="kern7As3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">本机（KDE）实测：两组、两层</text>
+<rect class="bx-sick" x="60" y="52" width="250" height="96" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="t" x="185" y="76" text-anchor="middle" font-size="13" fill="#2b2a26">用户会话 · adj=+200</text>
+<text class="ts" x="185" y="98" text-anchor="middle" font-size="11" fill="#6b675e">plasmashell 810 · kwin 800 · zsh 800</text>
+<text class="ts" x="185" y="116" text-anchor="middle" font-size="11" fill="#6b675e">挂了能重启的，先走</text>
+<text class="ts" x="185" y="134" text-anchor="middle" font-size="11" fill="#6b675e">组内 810 &gt; 800：按真实占用排</text>
+<rect class="bx-q" x="370" y="52" width="250" height="96" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="495" y="76" text-anchor="middle" font-size="13" fill="#2b2a26">系统服务 · adj=0 或负</text>
+<text class="ts" x="495" y="98" text-anchor="middle" font-size="11" fill="#6b675e">关键守护进程靠后站</text>
+<text class="ts" x="495" y="116" text-anchor="middle" font-size="11" fill="#6b675e">持 -1000 的连候选名单都不进</text>
+<line class="axis" x1="40" y1="170" x2="620" y2="170" stroke="#6b675e" stroke-width="1.2" marker-end="url(#kern7As3)"/>
+<text class="ts" x="330" y="190" text-anchor="middle" font-size="11" fill="#6b675e">牺牲顺位：排前面的先走</text>
+<text class="ts" x="20" y="210" font-size="12" fill="#6b675e">全部来自 /proc/&lt;pid&gt;/oom_score 的无特权读数，任何一台机器都能自己查</text>
+</svg>
+</figure>
+
 ## overcommit：承诺的边界
 
 打分之前还有一道更早的闸：分配被允许吗。`/proc/sys/vm/overcommit_memory` 三种模式：
@@ -72,6 +146,33 @@ zsh（我的终端） oom_score=800  oom_score_adj=+200
 - **2（strict）**：承诺总量硬上限 = swap + `overcommit_ratio%` × RAM（本机 ratio=50），超限的 malloc 直接失败。数据库、要强隔离的服务偏好它，**失败发生在 malloc 而不是三天后的凌晨四点**。
 
 三档没有免费午餐：0 可能误拒、1 把矛盾推迟到 OOM、2 让程序必须处理 malloc 失败。选择本质是「你想在哪里收到坏消息」。
+
+三档的坏消息落点：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 240" role="img" aria-label="overcommit 三档时间线对照：模式 0 启发式可能在 malloc 当场误拒正常 fork；模式 1 always 从不拒绝，坏消息推迟到某天 OOM 兜底；模式 2 strict 超过 swap 加比例上限时 malloc 当场失败。红叉的位置就是坏消息的落点" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="kern7As4" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">横轴：从 malloc 那一刻到很久以后；红叉 = 坏消息落点</text>
+<text class="ts" x="20" y="68" font-size="12" fill="#6b675e">0 启发式</text>
+<line class="axis" x1="110" y1="64" x2="620" y2="64" stroke="#6b675e" stroke-width="1.2" marker-end="url(#kern7As4)"/>
+<text class="tc" x="180" y="70" font-size="14" fill="#b03a2e">✕</text>
+<text class="tc" x="198" y="70" font-size="11" fill="#b03a2e">可能当场误拒：正常的 fork 也被挡</text>
+<text class="ts" x="110" y="46" font-size="10" fill="#6b675e">malloc 当场</text>
+<text class="ts" x="20" y="128" font-size="12" fill="#6b675e">1 always</text>
+<line class="axis" x1="110" y1="124" x2="620" y2="124" stroke="#6b675e" stroke-width="1.2" marker-end="url(#kern7As4)"/>
+<text class="ts" x="126" y="110" font-size="11" fill="#6b675e">来者不拒，地址空间随便画</text>
+<text class="tc" x="548" y="110" text-anchor="end" font-size="11" fill="#b03a2e">矛盾推迟：真不够时 OOM 兜底</text>
+<text class="tc" x="560" y="130" font-size="14" fill="#b03a2e">✕</text>
+<text class="ts" x="20" y="188" font-size="12" fill="#6b675e">2 strict</text>
+<line class="axis" x1="110" y1="184" x2="620" y2="184" stroke="#6b675e" stroke-width="1.2" marker-end="url(#kern7As4)"/>
+<text class="tc" x="180" y="190" font-size="14" fill="#b03a2e">✕</text>
+<text class="tc" x="198" y="190" font-size="11" fill="#b03a2e">超过硬上限，malloc 当场失败</text>
+<text class="ts" x="430" y="190" font-size="11" fill="#6b675e">上限 = swap + ratio% × RAM</text>
+<text class="ts" x="20" y="224" font-size="12" fill="#6b675e">三行只差红叉的位置：坏消息当场挨，还是推迟挨</text>
+</svg>
+</figure>
 
 ## 两套淘汰：内核与应用
 
