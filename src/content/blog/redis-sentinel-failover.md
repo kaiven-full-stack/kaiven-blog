@@ -18,15 +18,34 @@ tags: [Redis, 数据库]
 
 基础拓扑是：
 
-```text
-        sentinel-1     sentinel-2     sentinel-3
-             \             |             /
-              \            |            /
-               ▼           ▼           ▼
-                         master
-                        /      \
-                 replica-1   replica-2
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 264" role="img" aria-label="实验拓扑：三只 sentinel 在上方各自独立监控同一名字 mymaster，quorum 为 2；下方 master 带两只副本；sentinel 每秒 PING、每十秒 INFO、每两秒在 hello 频道互通" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="red12As1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">一主、两副本、三哨兵：quorum = 2</text>
+<rect class="bx" x="60" y="44" width="130" height="40" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="125" y="68" text-anchor="middle" font-size="12" fill="#6b675e">sentinel-1</text>
+<rect class="bx" x="265" y="44" width="130" height="40" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="330" y="68" text-anchor="middle" font-size="12" fill="#6b675e">sentinel-2</text>
+<rect class="bx" x="470" y="44" width="130" height="40" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="535" y="68" text-anchor="middle" font-size="12" fill="#6b675e">sentinel-3</text>
+<line class="fl" x1="125" y1="84" x2="290" y2="136" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red12As1)"/>
+<line class="fl" x1="330" y1="84" x2="330" y2="136" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red12As1)"/>
+<line class="fl" x1="535" y1="84" x2="370" y2="136" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red12As1)"/>
+<text class="ts" x="430" y="106" font-size="10" fill="#6b675e">每秒 PING · 每 10s INFO · 每 2s hello 互通</text>
+<rect class="bx-q" x="270" y="140" width="120" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="330" y="166" text-anchor="middle" font-size="13" fill="#2b2a26">master</text>
+<line class="fl" x1="300" y1="184" x2="240" y2="210" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red12As1)"/>
+<line class="fl" x1="360" y1="184" x2="420" y2="210" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red12As1)"/>
+<text class="ts" x="330" y="204" text-anchor="middle" font-size="10" fill="#6b675e">复制流</text>
+<rect class="bx" x="150" y="212" width="130" height="36" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="215" y="234" text-anchor="middle" font-size="12" fill="#6b675e">replica-1</text>
+<rect class="bx" x="380" y="212" width="130" height="36" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="445" y="234" text-anchor="middle" font-size="12" fill="#6b675e">replica-2</text>
+<text class="ts" x="20" y="258" font-size="12" fill="#6b675e">三只哨兵各自维护连接、计时器与拓扑视图：没有中央指挥，独立判断靠独立故障域</text>
+</svg>
+</figure>
 
 三份 Sentinel 配置都监控同一个名字：
 
@@ -89,18 +108,37 @@ SDOWN 可以作用于主库、副本或其他 Sentinel；ODOWN 与自动故障�
 
 一只 Sentinel 已经本地 SDOWN 主库后，会统计自己与其他 Sentinel 的下线判断。数量达到该主库配置的 quorum，它就把主库标为 objective down，也就是 ODOWN。
 
-```text
-本地无有效回复达到阈值
-          │
-          ▼
-       +sdown
-          │  向其他 Sentinel 询问
-          ▼
-同意主库下线的数量 >= quorum
-          │
-          ▼
-       +odown
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 186" role="img" aria-label="SDOWN 到 ODOWN 的五步链：本地无有效回复达到阈值，标记 +sdown；通过 is-master-down-by-addr 逐个询问同伴，报告只在约五秒内新鲜；同意下线的数量达到 quorum 才标 +odown，源码称之为 weak quorum" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="red12As2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">从「我没听到回音」到「大家确认下线」</text>
+<rect class="bx" x="20" y="52" width="110" height="70" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="75" y="80" text-anchor="middle" font-size="10" fill="#6b675e">本地无有效回复</text>
+<text class="ts" x="75" y="96" text-anchor="middle" font-size="10" fill="#6b675e">达到阈值</text>
+<line class="fl" x1="130" y1="87" x2="143" y2="87" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red12As2)"/>
+<rect class="bx-sick" x="145" y="52" width="110" height="70" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="200" y="80" text-anchor="middle" font-size="12" fill="#b03a2e">+sdown</text>
+<text class="ts" x="200" y="100" text-anchor="middle" font-size="10" fill="#6b675e">只属于本地这一只</text>
+<line class="fl" x1="255" y1="87" x2="268" y2="87" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red12As2)"/>
+<rect class="bx" x="270" y="52" width="110" height="70" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="325" y="76" text-anchor="middle" font-size="10" fill="#6b675e">逐个询问同伴</text>
+<text class="ts" x="325" y="92" text-anchor="middle" font-size="10" fill="#6b675e">is-master-down-</text>
+<text class="ts" x="325" y="106" text-anchor="middle" font-size="10" fill="#6b675e">by-addr</text>
+<line class="fl" x1="380" y1="87" x2="393" y2="87" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red12As2)"/>
+<rect class="bx" x="395" y="52" width="110" height="70" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="450" y="80" text-anchor="middle" font-size="10" fill="#6b675e">同意下线的数量</text>
+<text class="ts" x="450" y="96" text-anchor="middle" font-size="10" fill="#6b675e">≥ quorum？</text>
+<line class="fl" x1="505" y1="87" x2="518" y2="87" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red12As2)"/>
+<rect class="bx-q" x="520" y="52" width="120" height="70" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="580" y="80" text-anchor="middle" font-size="12" fill="#2b2a26">+odown</text>
+<text class="ts" x="580" y="100" text-anchor="middle" font-size="10" fill="#6b675e">weak quorum</text>
+<text class="ts" x="20" y="150" font-size="12" fill="#6b675e">同伴的下线报告只在约五秒内新鲜：陈旧的不计数</text>
+<text class="ts" x="20" y="172" font-size="12" fill="#6b675e">SDOWN 可以标副本或另一只哨兵；自动故障转移只认被监控的主库</text>
+</svg>
+</figure>
+</figure>
 
 本地 Sentinel 自己若处于 SDOWN，会计入这份数量；其他 Sentinel 的下线报告只在有限时间内有效，当前源码约五秒后就视为陈旧。源码甚至直接把 ODOWN 称作 weak quorum：它不承诺所有同意者在完全相同的一瞬间持有完全相同的状态，只要求当前收集到足够新鲜的判断。
 
@@ -118,17 +156,58 @@ majority = floor(number_of_known_sentinels / 2) + 1
 
 候选 leader 还必须同时满足票数不少于 quorum。对三只 Sentinel、quorum=2 的常见部署，两道门碰巧都是 2，所以很容易被误以为它们是同一规则。换成五只 Sentinel、quorum=2，差异就出现了：两份下线判断足以形成 ODOWN，三票才足以授权 leader。
 
+两道门分开画：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 236" role="img" aria-label="quorum 与 majority 两道门对照：三只哨兵 quorum=2 时，ODOWN 门要 2 份下线判断，leader 门要多数派 2 票，两门碰巧相等；五只哨兵 quorum=2 时，ODOWN 门仍是 2 份，leader 门却要 3 票，分母是已知全体哨兵而不是当前还可达的那些" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">门一：ODOWN（quorum 份下线判断）　门二：leader（全体多数票）</text>
+<rect class="bx" x="20" y="40" width="300" height="150" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="170" y="62" text-anchor="middle" font-size="12" fill="#2b2a26">3 只哨兵 · quorum=2</text>
+<rect class="bx-q" x="45" y="74" width="26" height="20" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<rect class="bx-q" x="79" y="74" width="26" height="20" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<rect class="bx-q" x="113" y="74" width="26" height="20" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="45" y="118" font-size="10" fill="#6b675e">门一 ODOWN：≥2 份</text>
+<rect class="bar" x="45" y="124" width="160" height="8" fill="#6b675e"/>
+<text class="ts" x="45" y="150" font-size="10" fill="#6b675e">门二 leader：≥ floor(3/2)+1 = 2 票</text>
+<rect class="bar" x="45" y="156" width="160" height="8" fill="#b03a2e"/>
+<text class="tc" x="45" y="182" font-size="10" fill="#b03a2e">两道门碰巧同数：最易被误读成一条规则</text>
+<rect class="bx" x="340" y="40" width="300" height="150" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="490" y="62" text-anchor="middle" font-size="12" fill="#2b2a26">5 只哨兵 · quorum=2</text>
+<rect class="bx-q" x="365" y="74" width="26" height="20" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<rect class="bx-q" x="399" y="74" width="26" height="20" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<rect class="bx-q" x="433" y="74" width="26" height="20" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<rect class="bx-q" x="467" y="74" width="26" height="20" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<rect class="bx-q" x="501" y="74" width="26" height="20" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="365" y="118" font-size="10" fill="#6b675e">门一 ODOWN：≥2 份就够</text>
+<rect class="bar" x="365" y="124" width="100" height="8" fill="#6b675e"/>
+<text class="ts" x="365" y="150" font-size="10" fill="#6b675e">门二 leader：≥ floor(5/2)+1 = 3 票</text>
+<rect class="bar" x="365" y="156" width="150" height="8" fill="#b03a2e"/>
+<text class="tc" x="365" y="182" font-size="10" fill="#b03a2e">2 份能 ODOWN，3 票才能授权</text>
+<text class="ts" x="20" y="216" font-size="12" fill="#6b675e">门二的分母是「已知全体哨兵」：断联的仍留在分母里，防止少数派各自切主</text>
+</svg>
+</figure>
+
 每次故障转移使用新的 epoch。每只 Sentinel 在一个 epoch 中只投一票，通常投给最先向它请求并符合条件的候选者。票数通过 `is-master-down-by-addr` 回复传播。获胜者需要获得多数派与 quorum 的双重认可。
 
-```text
-Sentinel A                           Sentinel B
-    │  is-master-down-by-addr           │
-    │  <master> <epoch> <A-runid>       │
-    ├──────────────────────────────────>│
-    │                                   ├─ 本 epoch 尚未投票
-    │  down=1, leader=A, epoch=N        │
-    │<──────────────────────────────────┤
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 196" role="img" aria-label="选票往来时序：Sentinel A 用 is-master-down-by-addr 带上 epoch 和自己的 runid 询问 B；B 本 epoch 尚未投票就把票投给 A，回复 down=1、leader=A、epoch=N；每只哨兵一个 epoch 只投一票" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="red12As4" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">同一条命令，既问下线也收选票</text>
+<rect class="bx-q" x="60" y="40" width="120" height="32" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="120" y="60" text-anchor="middle" font-size="12" fill="#6b675e">Sentinel A</text>
+<rect class="bx-q" x="460" y="40" width="120" height="32" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="520" y="60" text-anchor="middle" font-size="12" fill="#6b675e">Sentinel B</text>
+<line class="grid" x1="120" y1="72" x2="120" y2="156" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 3"/>
+<line class="grid" x1="520" y1="72" x2="520" y2="156" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 3"/>
+<line class="fl" x1="120" y1="96" x2="516" y2="96" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red12As4)"/>
+<text class="ts" x="320" y="88" text-anchor="middle" font-size="11" fill="#6b675e">is-master-down-by-addr &lt;master&gt; &lt;epoch&gt; &lt;A-runid&gt;</text>
+<line class="fl" x1="520" y1="140" x2="124" y2="140" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red12As4)"/>
+<text class="ts" x="320" y="132" text-anchor="middle" font-size="11" fill="#6b675e">down=1 · leader=A · epoch=N（本 epoch 尚未投票，票给最先来问的）</text>
+<text class="ts" x="20" y="184" font-size="12" fill="#6b675e">同一条命令在 SDOWN 阶段也出现过：一条通道，两个阶段的用途</text>
+</svg>
+</figure>
 
 这是一项受多数派选举思想启发的单用途协议，但不应简单写成“Sentinel 使用 Raft”。它没有 Raft 的复制日志和 commit index；选票授权的是谁来执行一次故障转移，不是提交一条一致性日志。故障可以各自看见，执行故障转移的人只能选出一位。
 
@@ -180,19 +259,44 @@ ODOWN 到 leader 当选只花了约 84 毫秒。这是本次隔离机器的观�
 
 leader 当选以后，故障转移才进入真正的状态机：
 
-```text
-WAIT_START
-    ↓
-SELECT_SLAVE
-    ↓
-SEND_SLAVEOF_NOONE
-    ↓
-WAIT_PROMOTION
-    ↓
-RECONF_SLAVES
-    ↓
-UPDATE_CONFIG
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 330" role="img" aria-label="leader 当选后的故障转移状态机：WAIT_START、SELECT_SLAVE、SEND_SLAVEOF_NOONE、WAIT_PROMOTION、RECONF_SLAVES、UPDATE_CONFIG 六段依序推进，每段有独立事件与超时；选不出合格副本走 abort-no-good-slave，提升迟迟不被 INFO 确认走 abort-slave-timeout，中止后等重试窗口进入新 epoch" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="red12As5" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">leader 当选以后：一段有确认、有超时、有回退的状态机</text>
+<rect class="bx-q" x="190" y="36" width="190" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="285" y="56" text-anchor="middle" font-size="12" fill="#2b2a26">WAIT_START</text>
+<text class="ts" x="180" y="56" text-anchor="end" font-size="10" fill="#6b675e">等新 epoch 开始</text>
+<line class="fl" x1="285" y1="66" x2="285" y2="80" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red12As5)"/>
+<rect class="bx-q" x="190" y="82" width="190" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="285" y="102" text-anchor="middle" font-size="12" fill="#2b2a26">SELECT_SLAVE</text>
+<text class="ts" x="180" y="102" text-anchor="end" font-size="10" fill="#6b675e">资格审查 + 三层排序</text>
+<rect class="bx-sick" x="410" y="82" width="230" height="30" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="525" y="102" text-anchor="middle" font-size="10" fill="#b03a2e">-failover-abort-no-good-slave</text>
+<line class="flc" x1="380" y1="97" x2="406" y2="97" stroke="#b03a2e" stroke-width="1.2" stroke-dasharray="4 3"/>
+<line class="fl" x1="285" y1="112" x2="285" y2="126" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red12As5)"/>
+<rect class="bx-q" x="190" y="128" width="190" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="285" y="148" text-anchor="middle" font-size="11" fill="#2b2a26">SEND_SLAVEOF_NOONE</text>
+<text class="ts" x="180" y="148" text-anchor="end" font-size="10" fill="#6b675e">提升命令发出</text>
+<line class="fl" x1="285" y1="158" x2="285" y2="172" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red12As5)"/>
+<rect class="bx-q" x="190" y="174" width="190" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="285" y="194" text-anchor="middle" font-size="12" fill="#2b2a26">WAIT_PROMOTION</text>
+<text class="ts" x="180" y="194" text-anchor="end" font-size="10" fill="#6b675e">轮询 INFO 等角色确认</text>
+<rect class="bx-sick" x="410" y="174" width="230" height="30" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="525" y="194" text-anchor="middle" font-size="10" fill="#b03a2e">-failover-abort-slave-timeout</text>
+<line class="flc" x1="380" y1="189" x2="406" y2="189" stroke="#b03a2e" stroke-width="1.2" stroke-dasharray="4 3"/>
+<line class="fl" x1="285" y1="204" x2="285" y2="218" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red12As5)"/>
+<rect class="bx-q" x="190" y="220" width="190" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="285" y="240" text-anchor="middle" font-size="12" fill="#2b2a26">RECONF_SLAVES</text>
+<text class="ts" x="180" y="240" text-anchor="end" font-size="10" fill="#6b675e">重挂其余副本 · parallel-syncs</text>
+<line class="fl" x1="285" y1="250" x2="285" y2="264" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red12As5)"/>
+<rect class="bx-q" x="190" y="266" width="190" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="285" y="286" text-anchor="middle" font-size="12" fill="#2b2a26">UPDATE_CONFIG</text>
+<text class="ts" x="180" y="286" text-anchor="end" font-size="10" fill="#6b675e">公告 +switch-master</text>
+<text class="ts" x="20" y="320" font-size="12" fill="#6b675e">中止不跳段：等重试窗口，进入新的 epoch；failover-timeout 分管各段，不是一只总闸</text>
+</svg>
+</figure>
 
 每一段都有对应事件和失败出口。选不出 leader 会产生 `-failover-abort-not-elected`；没有合格副本是 `-failover-abort-no-good-slave`；提升命令迟迟没有在 `INFO` 中被确认，则可能以 `-failover-abort-slave-timeout` 结束。中止以后不会在原流程中随意跳过一段，而是等待重试窗口，再进入新的 epoch 或选举。
 
@@ -212,11 +316,28 @@ UPDATE_CONFIG
 
 剩余副本按三层规则排序：
 
-```text
-1. replica-priority 数字更小者优先
-2. priority 相同，复制 offset 更大者优先
-3. offset 仍相同，run ID 字典序更小者优先
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 254" role="img" aria-label="接班漏斗：先过资格审查排除 SDOWN、断连、INFO 太旧、priority 为 0、断链过久的副本；幸存者进三层排序漏斗，第一层 replica-priority 数字小者优先，同分才看第二层复制 offset 更大者，仍同分才看第三层 run ID 字典序" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="red12As6" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">先资格审查，再三层排序：每层打平才轮到下一层</text>
+<rect class="bx-gone" x="20" y="40" width="620" height="34" rx="4" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<text class="ts" x="330" y="61" text-anchor="middle" font-size="11" fill="#6b675e">资格审查：SDOWN/ODOWN · 命令连接断开 · INFO 太旧 · replica-priority=0 · 与旧主断链过久</text>
+<line class="fl" x1="330" y1="74" x2="330" y2="90" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red12As6)"/>
+<rect class="bx-sick" x="60" y="94" width="540" height="34" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="330" y="115" text-anchor="middle" font-size="12" fill="#b03a2e">① replica-priority：数字更小者优先（0 = 永不晋升）</text>
+<line class="fl" x1="330" y1="128" x2="330" y2="142" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red12As6)"/>
+<text class="ts" x="340" y="140" font-size="10" fill="#6b675e">打平才往下看</text>
+<rect class="bx" x="100" y="146" width="460" height="34" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="330" y="167" text-anchor="middle" font-size="12" fill="#6b675e">② 复制 offset：更大者优先（数据更新）</text>
+<line class="fl" x1="330" y1="180" x2="330" y2="194" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red12As6)"/>
+<text class="ts" x="340" y="192" font-size="10" fill="#6b675e">仍打平才到底</text>
+<rect class="bx" x="140" y="198" width="380" height="34" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="330" y="219" text-anchor="middle" font-size="12" fill="#6b675e">③ run ID：字典序更小者，给出确定结果</text>
+<text class="ts" x="20" y="246" font-size="12" fill="#6b675e">实验实测：两候选 offset 55247391 对 55246828，priority 相同，大者当选</text>
+</svg>
+</figure>
 
 “Sentinel 总会选择数据最新的副本”因此不准确。复制进度只在 priority 相同时参与比较。运维可以用 priority 表达拓扑偏好，例如让同机房副本优先或永不晋升；代价是更高优先级的副本可能比另一只稍旧。
 
@@ -263,15 +384,34 @@ OK
 
 另一侧 Sentinel 达成多数、提升新主。网络恢复以后，Sentinel 把旧主加入新主的副本列表，随后发送 `SLAVEOF <new-master>`。旧主加载新主的数据集，那笔只存在于少数派的 `split:brain` 写入消失。
 
-```text
-旧主一侧                           多数派一侧
-客户端 ── SET 成功                 Sentinel × 3
-       │                               │
-       ▼                               ├─ ODOWN / 选举
-     旧主                              ▼
-                                      新主
-       └──── 网络恢复 ──> 旧主被降级并重同步，孤立写入被覆盖
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 268" role="img" aria-label="脑裂两侧对照：网络分区左边，客户端仍能连上旧主，SET split:brain 返回 OK，旧主不知道自己已下野；右边多数派完成 ODOWN、选举并提升新主；网络恢复后旧主收到 SLAVEOF new-master 被降级重同步，那笔孤立写入被覆盖消失" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="red12As7" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">分区两侧，各自认为的世界</text>
+<line class="grid" x1="330" y1="40" x2="330" y2="200" stroke="#a29d90" stroke-width="1.4" stroke-dasharray="6 4"/>
+<text class="tc" x="330" y="36" text-anchor="middle" font-size="11" fill="#b03a2e">网络分区</text>
+<rect class="bx" x="30" y="50" width="120" height="32" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="90" y="70" text-anchor="middle" font-size="11" fill="#6b675e">客户端</text>
+<line class="fl" x1="90" y1="82" x2="90" y2="126" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red12As7)"/>
+<text class="ts" x="98" y="108" font-size="10" fill="#6b675e">SET split:brain → OK</text>
+<rect class="bx-sick" x="20" y="130" width="160" height="48" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="t" x="100" y="150" text-anchor="middle" font-size="12" fill="#2b2a26">旧主（少数派侧）</text>
+<text class="ts" x="100" y="168" text-anchor="middle" font-size="10" fill="#6b675e">仍认为自己是 master</text>
+<rect class="bx" x="380" y="50" width="220" height="32" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="490" y="70" text-anchor="middle" font-size="11" fill="#6b675e">Sentinel × 3（多数派侧）</text>
+<line class="fl" x1="490" y1="82" x2="490" y2="126" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red12As7)"/>
+<text class="ts" x="498" y="108" font-size="10" fill="#6b675e">ODOWN → 选举 → 提升</text>
+<rect class="bx-q" x="420" y="130" width="160" height="48" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="500" y="150" text-anchor="middle" font-size="12" fill="#2b2a26">新主</text>
+<text class="ts" x="500" y="168" text-anchor="middle" font-size="10" fill="#6b675e">被多数派认可的历史</text>
+<line class="fl" x1="180" y1="154" x2="416" y2="154" stroke="#6b675e" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#red12As7)"/>
+<text class="ts" x="298" y="196" text-anchor="middle" font-size="11" fill="#6b675e">网络恢复：旧主收到 SLAVEOF new-master，降级重同步</text>
+<text class="tc" x="298" y="216" text-anchor="middle" font-size="11" fill="#b03a2e">那笔 split:brain 写入被覆盖消失</text>
+<text class="ts" x="20" y="246" font-size="12" fill="#6b675e">min-replicas-to-write 1 + max-lag 8：把「分区期间无限收写」收窄到 lag 窗口内</text>
+</svg>
+</figure>
 
 这与 Sentinel 选没选对主库无关，边界在异步复制本身。故障转移解决的是在多数派一侧恢复一个被认可的主库，不会合并两侧分叉的数据历史。
 
