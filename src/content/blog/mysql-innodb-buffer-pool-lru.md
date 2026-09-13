@@ -12,6 +12,33 @@ tags: [MySQL, 数据库, 存储引擎]
 
 朴素 LRU（最近最少使用）人人都懂：新页进队首，被访问就挪回队首，队尾淘汰。它有个致命软肋：**一次全表扫描等于一场洗劫**。1000 万行的 big10m 有 6.4 万个叶子页，扫描会把它们鱼贯塞进 128MiB 的池子（8192 页），每页只被碰一次、之后再无访问，却把常驻热页从队尾一路挤出去。扫描结束，缓存空了，热点查询集体撞磁盘。
 
+洗劫的过程：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 204" role="img" aria-label="朴素 LRU 被全表扫描洗劫：扫描前队首住着常驻热页；6.4 万个只被碰一次的扫描页鱼贯塞进 8192 页的池子，把热页从队尾逐个挤出局，扫描结束后缓存里全是马上要死的页" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">朴素 LRU：新页进队首，淘汰出队尾</text>
+<text class="ts" x="20" y="52" font-size="11" fill="#6b675e">扫描前</text>
+<rect class="bx-sick" x="80" y="58" width="56" height="26" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="ts" x="108" y="75" text-anchor="middle" font-size="9" fill="#6b675e">热页</text>
+<rect class="bx-sick" x="140" y="58" width="56" height="26" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="ts" x="168" y="75" text-anchor="middle" font-size="9" fill="#6b675e">热页</text>
+<rect class="bx-sick" x="200" y="58" width="56" height="26" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="ts" x="228" y="75" text-anchor="middle" font-size="9" fill="#6b675e">热页</text>
+<rect class="bx" x="260" y="58" width="340" height="26" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="430" y="75" text-anchor="middle" font-size="10" fill="#6b675e">…常规访问的页，按最近使用排序…</text>
+<text class="ts" x="80" y="52" font-size="10" fill="#6b675e">队首（最新）</text>
+<text class="ts" x="600" y="52" text-anchor="end" font-size="10" fill="#6b675e">队尾（先淘汰）</text>
+<text class="ts" x="20" y="116" font-size="11" fill="#6b675e">扫描后</text>
+<rect class="bx" x="80" y="122" width="440" height="26" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="300" y="139" text-anchor="middle" font-size="10" fill="#6b675e">扫描页 · 扫描页 · 扫描页（每页只被碰一次）…</text>
+<rect class="bx-gone" x="524" y="122" width="76" height="26" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<text class="ts" x="562" y="139" text-anchor="middle" font-size="9" fill="#6b675e">热页出局</text>
+<text class="tc" x="608" y="139" font-size="12" fill="#b03a2e">✕</text>
+<text class="ts" x="20" y="176" font-size="12" fill="#6b675e">6.4 万个扫描页塞进 8192 页的池子：热点查询在扫描结束后集体撞磁盘</text>
+<text class="ts" x="20" y="196" font-size="12" fill="#6b675e">InnoDB 的对策：把这条链劈成 young/old 两段，新页不走队首</text>
+</svg>
+</figure>
+
 InnoDB 的对策是把这条链劈成两段：**young/old 子链 + 中点插入**。听起来简单，但每条规则都值得抠。比如你以为「隔 1 秒重访一个 old 页，它该升 young 了吧」？在 8.4 里大概率不会，而且原因就写在 `buf_page_peek_if_too_old` 开头那几行里。本篇照旧用 docker 里的 MySQL 8.4.11 逐条实测，所有数字当场跑出来，源码逐行对上。
 
 ## 一条链劈两段：young/old 子链
@@ -24,6 +51,32 @@ InnoDB 的对策是把这条链劈成两段：**young/old 子链 + 中点插入*
 
 - **磁盘读入的页，一律插进 old 子链的头部（中点）**。源码 `buf_page_init_for_read` 里就一行：`buf_LRU_add_block(bpage, true /* to old blocks */)`。新页从磁盘进来，不管多重要，先站中点，它身后是整个 old 子链当炮灰。
 - **B+ 树分裂新建的页，直接插队首（young）**：`buf_LRU_add_block(&block->page, false)`。新页是刚写出来的，大概率马上还要被写，没必要让它去过 old 子链的安检。
+
+这条链的全景：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 226" role="img" aria-label="InnoDB 的 LRU 变体：一条链劈成两段，队首侧 young 子链占八分之五，队尾侧 old 子链占八分之三；磁盘读入的新页一律插在中点（old 子链头部），B+ 树分裂新建的页直插队首，淘汰从队尾开始；边界指针带容差滑动，old 区超长就把靠上的几页批量翻成 young" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="my7As2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">young/old 两段链：中点插入，队尾淘汰</text>
+<text class="ts" x="80" y="48" text-anchor="middle" font-size="11" fill="#6b675e">B+ 树分裂新建页：直插队首</text>
+<line class="fl" x1="80" y1="54" x2="80" y2="72" stroke="#6b675e" stroke-width="1.6" marker-end="url(#my7As2)"/>
+<text class="tc" x="420" y="48" text-anchor="middle" font-size="11" fill="#b03a2e">磁盘读入的新页：一律插中点</text>
+<line class="flc" x1="420" y1="54" x2="420" y2="72" stroke="#b03a2e" stroke-width="1.6" marker-end="url(#my7As2)"/>
+<rect class="bx-q" x="40" y="76" width="370" height="40" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="225" y="101" text-anchor="middle" font-size="13" fill="#2b2a26">young 子链 · 5/8</text>
+<rect class="bx" x="410" y="76" width="210" height="40" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="515" y="101" text-anchor="middle" font-size="13" fill="#2b2a26">old 子链 · 3/8</text>
+<line class="flc" x1="410" y1="68" x2="410" y2="124" stroke="#b03a2e" stroke-width="2"/>
+<text class="ts" x="40" y="68" font-size="10" fill="#6b675e">队首（最新）</text>
+<text class="ts" x="620" y="68" text-anchor="end" font-size="10" fill="#6b675e">队尾（淘汰从这端）</text>
+<text class="ts" x="410" y="140" text-anchor="middle" font-size="10" fill="#6b675e">中点：innodb_old_blocks_pct=37 定接缝</text>
+<text class="ts" x="40" y="164" font-size="12" fill="#6b675e">边界是条会滑动的带：old 超长就向队首让一步，把最靠上的几页批量翻成 young</text>
+<text class="ts" x="40" y="186" font-size="12" fill="#6b675e">扫描洪水全被圈在 old 段：新页先站中点，身后是整个 old 子链当炮灰</text>
+<text class="ts" x="40" y="208" font-size="12" fill="#6b675e">观测纪律：边界 ±20 页内的 IS_OLD 翻动来自指针滑动，不是访问晋升</text>
+</svg>
+</figure>
 
 实测把这条规则拍得清清楚楚。冷启动后先点查一次 `id=700000`（读入根 4、中间页 40、叶子页 2437），再查三个相距很远的主键（100000、400000、900000），树上各层的落点：
 
@@ -86,6 +139,42 @@ if (m_mode != Page_fetch::PEEK_IF_IN_POOL && m_mode != Page_fetch::SCAN) {
 
 枚举注释也直白：*"Same as NORMAL, but hint that the fetch is part of a large scan. Try not to flood the buffer pool with pages that may not be accessed again any time soon."* 但这里有个反直觉的事实：全库 grep 下来，`Page_fetch::SCAN` 的使用者**只有 row0pread.cc（并行读取器，8.0.14 的并行聚簇索引扫描）**。普通 `SELECT *` 的全表扫描（row0sel.cc 走 `Page_fetch::NORMAL`）**不享受这个标记**。也就是说，**单线程顺序扫描的防污染，全靠 midpoint + 时间窗这两道闸硬扛**，SCAN 标记只是并行扫描的额外保险。你以为的「扫描模式」在 8.4 里其实不覆盖最常见的场景。
 
+三道闸串成一条路：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 336" role="img" aria-label="old 页升 young 的三道闸流程：第一道问淘汰是否已开始，freed_page_clock 为 0 的预热期一律不挪页且不走计数器；第二道问时间窗，首次访问起须满 1000 毫秒，access_time 只在首次访问置位；第三道问访问模式，SCAN 标记跳过晋升但它只覆盖并行读取。三关全过才挪到队首" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="my7As3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">old 页想升 young：三道闸，每道都能独立否决</text>
+<rect class="bx-q" x="170" y="36" width="300" height="34" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="320" y="57" text-anchor="middle" font-size="12" fill="#6b675e">old 页又被访问了</text>
+<line class="fl" x1="320" y1="70" x2="320" y2="84" stroke="#6b675e" stroke-width="1.5" marker-end="url(#my7As3)"/>
+<rect class="bx" x="150" y="88" width="340" height="48" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="320" y="108" text-anchor="middle" font-size="12" fill="#2b2a26">闸一 · 淘汰开始了吗</text>
+<text class="ts" x="320" y="126" text-anchor="middle" font-size="10" fill="#6b675e">freed_page_clock == 0：预热期一律不挪页</text>
+<line class="fl" x1="320" y1="136" x2="320" y2="148" stroke="#6b675e" stroke-width="1.5" marker-end="url(#my7As3)"/>
+<rect class="bx" x="150" y="152" width="340" height="48" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="320" y="172" text-anchor="middle" font-size="12" fill="#2b2a26">闸二 · 时间窗满了吗</text>
+<text class="ts" x="320" y="190" text-anchor="middle" font-size="10" fill="#6b675e">首次访问起 ≥ innodb_old_blocks_time（默认 1000ms）</text>
+<line class="fl" x1="320" y1="200" x2="320" y2="212" stroke="#6b675e" stroke-width="1.5" marker-end="url(#my7As3)"/>
+<rect class="bx" x="150" y="216" width="340" height="48" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="320" y="236" text-anchor="middle" font-size="12" fill="#2b2a26">闸三 · 不是 SCAN 模式吧</text>
+<text class="ts" x="320" y="254" text-anchor="middle" font-size="10" fill="#6b675e">SCAN 标记跳过晋升：8.4 只覆盖并行读取器</text>
+<line class="fl" x1="320" y1="264" x2="320" y2="276" stroke="#6b675e" stroke-width="1.5" marker-end="url(#my7As3)"/>
+<rect class="bx-q" x="220" y="280" width="200" height="34" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="tc" x="320" y="301" text-anchor="middle" font-size="12" fill="#b03a2e">升 young：挪到队首</text>
+<rect class="bx-sick" x="510" y="152" width="135" height="76" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="577" y="176" text-anchor="middle" font-size="12" fill="#b03a2e">拒绝</text>
+<text class="ts" x="577" y="196" text-anchor="middle" font-size="9" fill="#6b675e">闸一：连计数器都不走</text>
+<text class="ts" x="577" y="212" text-anchor="middle" font-size="9" fill="#6b675e">闸二/三：not young +1</text>
+<line class="flc" x1="490" y1="112" x2="530" y2="148" stroke="#b03a2e" stroke-width="1.2" stroke-dasharray="4 3"/>
+<line class="flc" x1="490" y1="176" x2="506" y2="180" stroke="#b03a2e" stroke-width="1.2" stroke-dasharray="4 3"/>
+<line class="flc" x1="490" y1="240" x2="530" y2="216" stroke="#b03a2e" stroke-width="1.2" stroke-dasharray="4 3"/>
+<text class="ts" x="20" y="332" font-size="12" fill="#6b675e">实测：洪水期重访 0 个升 young（拒 127662 次）；隔 3 秒同一批访问放行 8 个，位置 543 → 8184 队首</text>
+</svg>
+</figure>
+
 ### 三道闸的实测
 
 把三道闸串成一次完整实验。冷启动 → 先访问 users 表 4 个热页（400000/700000/900000/100000 的叶子页）→ 全表扫描 big10m 把池子灌满并触发淘汰 → 立刻重访 4 个热页 → 隔 3 秒再重访：
@@ -115,6 +204,22 @@ if (m_mode != Page_fetch::PEEK_IF_IN_POOL && m_mode != Page_fetch::SCAN) {
 
 拧到 0 时扫描页里的「双次访问者」（顺序读 + 预读回访）全部升 young，56078 页挤进 young 区，**扫描把热页冲走的经典事故就是这么制造的**。默认 1000ms 时同一个扫描，升 young 数恰好是 0。这一个旋钮的开关，就是「LRU 被扫描冲垮」的有与无。
 
+一个旋钮的两种世界：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 168" role="img" aria-label="old_blocks_time 旋钮对照条形图：拧到 0 毫秒时同一次千万行全表扫描让 56078 个扫描页升 young，把热页冲走；保持默认 1000 毫秒时升 young 数为 0，127589 次请求全部被时间窗拒绝，洪水圈死在 old 区" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">同一次 1000 万行扫描，只差一个旋钮：made young 的次数</text>
+<text class="ts" x="20" y="62" font-size="12" fill="#6b675e">0ms</text>
+<rect class="bar" x="110" y="48" width="440" height="20" fill="#2b2a26"/>
+<text class="onbar" x="120" y="63" font-size="11" fill="#f6f3ec">56078 页升 young：双次访问者全部放行</text>
+<text class="tc" x="560" y="63" font-size="11" fill="#b03a2e">洗劫</text>
+<text class="ts" x="20" y="106" font-size="12" fill="#6b675e">1000ms</text>
+<rect class="bar" x="110" y="92" width="4" height="20" fill="#2b2a26"/>
+<text class="tc" x="122" y="107" font-size="11" fill="#b03a2e">0 页升 young：127589 次请求全被时间窗拒绝，洪水圈死在 old 区</text>
+<text class="ts" x="20" y="146" font-size="12" fill="#6b675e">「LRU 被扫描冲垮」的有与无，就压在这一个默认值上</text>
+</svg>
+</figure>
+
 顺带一提「扫描速度」：读 6.5 万物理页用了 26 秒（2581 reads/s）。瓶颈不在磁盘（NVMe），在**淘汰跟不上流入**：每秒约 2500 页流入、同样要逐页从队尾淘汰腾位子。表大于内存的扫描，慢在换页不在读盘。
 
 ## 还第一篇的债：表大于内存时的回表
@@ -136,6 +241,23 @@ SELECT SUM(LENGTH(pad))      FROM ks JOIN big_k FORCE INDEX (idx_k) ON k ...  --
 
 第一篇在内存放得下时量到的是「耗时 4 倍、页读 1717 倍」；表大于内存后变成「**耗时 80 倍、物理读 ∞ 倍（0 → 377）**」。377 次物理读里：idx_k 树 3 页焐在池里没掉，300 次回表拆成约 300 个聚簇叶页 + 树上层若干次重读（页刚进池又被页赶走，同一棵树的中间层被反复拉入又逐出）。**预言兑现：4 倍变 40 倍量级（实测 80 倍）。因为「耗时 4 倍」里藏的全部是逻辑读，物理读一露头就是另一个数量级的单价。**
 
+两笔账摆在一起：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 188" role="img" aria-label="表大于内存时覆盖与回表的对照：覆盖 COUNT 耗时 0.72 毫秒、物理读 0 次；回表取 pad 耗时 57.1 毫秒、物理读 377 次，每行均摊 1.26 页；80 倍时差里藏的全是物理读的单价" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">同一批 300 个散列 k，只换 SELECT 的列（池子 128MiB ≈ 表的 7%）</text>
+<text class="ts" x="20" y="62" font-size="12" fill="#6b675e">覆盖 COUNT(*)</text>
+<rect class="bar" x="150" y="48" width="6" height="20" fill="#2b2a26"/>
+<text class="ts" x="164" y="63" font-size="11" fill="#6b675e">0.72ms · 物理读 0 次：idx_k 三页焐在池里</text>
+<text class="ts" x="20" y="106" font-size="12" fill="#6b675e">回表取 pad</text>
+<rect class="bar" x="150" y="92" width="468" height="20" fill="#2b2a26"/>
+<text class="onbar" x="160" y="107" font-size="11" fill="#f6f3ec">57.1ms · 物理读 377 次 · 每行均摊 1.26 页</text>
+<text class="tc" x="150" y="136" font-size="12" fill="#b03a2e">80 倍时差：逻辑读里藏着的成本，物理读一露头就换了单价</text>
+<text class="ts" x="20" y="162" font-size="12" fill="#6b675e">回表拉进来的聚簇叶页全落在 old 区头部：一次访问凑不满时间窗，连升 young 的资格都拿不到</text>
+<text class="ts" x="20" y="180" font-size="12" fill="#6b675e">覆盖索引的成本，从此用物理读算，不用耗时算</text>
+</svg>
+</figure>
+
 还有个细账：回表拉进来的 300 多个聚簇叶页，事后查 `IS_OLD`，**350 个是 YES**。它们随回表流进来，落点是 old 子链头部，因为只有一次访问、凑不满时间窗，静静等着被下一波访问淘汰。**这解释了「随机回表为什么是缓存杀手」的机制闭环：不仅页是冷的，连升 young 的资格都拿不到。** 反过来，覆盖查询焐热的 idx_k 页（探测三轮后）全部站在 young 区：热索引的「热」，是时间窗一点点攒出来的。
 
 ## 8.4 的两个新默认：change buffer 与自适应哈希
@@ -154,6 +276,34 @@ change buffer 解决的是**写二级索引的随机读**：往 idx_k 插一个�
 百倍差距，教科书式收益。读回 5 个刚写入的 k 值，后台合并风暴跟着启动：`merged insert 19998`，但物理读只涨了约 1600。**合并是「同页多笔修改一次性落页 + 已在池里的页不重读」**：2 万条排队修改摊到数千个目标索引页、其中大半还留在池里，所以总账 ~1800 次物理读对 none 组的 20472 次，同时插入快了近 20 倍。变更缓冲的本质不是消灭读，是**推迟 + 合并 + 去重**，把随机写的成本折成批发的。
 
 那为什么 8.4 反而把它默认关了？因为代价同样真实：**合并把修改落回页的时刻，该页必须被读入、修改、刷出，合并风暴会跟业务 IO 抢带宽**；SSD 的随机写又已经足够快（none 组 4.35 秒完成 2 万次随机读入，HDD 时代这是分钟级的事）。受益场景（HDD、索引远大于内存、写多读少）在今天的硬件上越来越窄，Oracle 干脆把默认值从 `all` 翻成 `none`，把选择权还给用户。（9.x 里它已被正式弃用，8.4 LTS 是它最后一代可选功能。）另有一个硬限制值得一提：**唯一索引不能缓冲**。插入唯一键必须立刻读页查重，冲突判断没法推迟，所以 idx_k 若是 UNIQUE，上面的实验根本不会发生。
+
+两种默认的两条路：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 254" role="img" aria-label="change buffer 开关的两条路：目标索引页不在池里时，none（8.4 默认）当场读盘，2 万行散列插入产生 20472 次物理读、耗时 4.35 秒；all 把修改先记进 change buffer 只花约 200 次读、0.23 秒，等目标页因别的查询进池时把同页多笔修改一次性合并，merged insert 19998" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="my7As6" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">插 2 万行散列 k，目标索引页不在池里</text>
+<rect class="bx-q" x="180" y="36" width="300" height="34" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="330" y="57" text-anchor="middle" font-size="12" fill="#6b675e">change buffering 开关</text>
+<line class="fl" x1="270" y1="70" x2="160" y2="96" stroke="#6b675e" stroke-width="1.5" marker-end="url(#my7As6)"/>
+<line class="fl" x1="390" y1="70" x2="500" y2="96" stroke="#6b675e" stroke-width="1.5" marker-end="url(#my7As6)"/>
+<rect class="bx-sick" x="20" y="100" width="290" height="76" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="t" x="165" y="122" text-anchor="middle" font-size="12" fill="#2b2a26">none（8.4 默认）</text>
+<text class="ts" x="165" y="142" text-anchor="middle" font-size="11" fill="#6b675e">每行当场读盘：随机读一分不省</text>
+<text class="tc" x="165" y="162" text-anchor="middle" font-size="11" fill="#b03a2e">20472 次物理读 · 4.35s</text>
+<rect class="bx" x="350" y="100" width="290" height="76" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="495" y="122" text-anchor="middle" font-size="12" fill="#2b2a26">all</text>
+<text class="ts" x="495" y="142" text-anchor="middle" font-size="11" fill="#6b675e">先记进 change buffer，不读盘</text>
+<text class="tc" x="495" y="162" text-anchor="middle" font-size="11" fill="#b03a2e">~200 次读 · 0.23s · 2 万条排队</text>
+<line class="fl" x1="495" y1="176" x2="495" y2="194" stroke="#6b675e" stroke-width="1.5" marker-end="url(#my7As6)"/>
+<rect class="bx-q" x="330" y="198" width="330" height="34" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="495" y="219" text-anchor="middle" font-size="11" fill="#6b675e">合并：页因别的查询进池时，同页多笔一次落（merged 19998）</text>
+<text class="ts" x="20" y="219" font-size="12" fill="#6b675e">本质是推迟 + 合并 + 去重：</text>
+<text class="ts" x="20" y="237" font-size="12" fill="#6b675e">把随机写的成本折成批发</text>
+</svg>
+</figure>
 
 ### 自适应哈希（AHI）：默认从 ON 改成 OFF
 
