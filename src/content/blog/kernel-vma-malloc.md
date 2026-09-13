@@ -26,6 +26,33 @@ pagemap     present=0，该页不存在。
 
 **通道二：mmap。** 每次调用独立映射一段匿名内存，用完 `munmap` 整段归还。第二篇结尾说过 pymalloc 的 arena 层用的就是它，`malloc` 的大块分配走的是同一条路。
 
+一台调度机，两个出口：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 254" role="img" aria-label="malloc 是 glibc 里的调度机：请求与阈值比较，小的走 brk 通道把 heap VMA 的终点往前推并优先复用空闲 chunk，大的走 mmap 通道独立映射一段、munmap 整段归还" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="kern5As1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-q" x="230" y="32" width="200" height="40" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="330" y="57" text-anchor="middle" font-size="13" fill="#2b2a26">malloc(n) 的请求</text>
+<line class="fl" x1="330" y1="72" x2="330" y2="92" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern5As1)"/>
+<rect class="bx" x="230" y="96" width="200" height="44" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="330" y="114" text-anchor="middle" font-size="13" fill="#2b2a26">glibc 调度机</text>
+<text class="ts" x="330" y="132" text-anchor="middle" font-size="11" fill="#6b675e">拿 chunk 尺寸和阈值比</text>
+<line class="fl" x1="280" y1="140" x2="170" y2="162" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern5As1)"/>
+<text class="ts" x="196" y="146" text-anchor="middle" font-size="11" fill="#6b675e">阈值以下</text>
+<line class="fl" x1="380" y1="140" x2="490" y2="162" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern5As1)"/>
+<text class="ts" x="464" y="146" text-anchor="middle" font-size="11" fill="#6b675e">阈值以上</text>
+<rect class="bx" x="30" y="166" width="270" height="58" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="165" y="188" text-anchor="middle" font-size="13" fill="#2b2a26">通道一 · brk 扩堆</text>
+<text class="ts" x="165" y="208" text-anchor="middle" font-size="11" fill="#6b675e">推 [heap] 的终点，优先复用空闲 chunk</text>
+<rect class="bx" x="360" y="166" width="270" height="58" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="495" y="188" text-anchor="middle" font-size="13" fill="#2b2a26">通道二 · mmap 独立段</text>
+<text class="ts" x="495" y="208" text-anchor="middle" font-size="11" fill="#6b675e">新映射一段，munmap 整段归还</text>
+<text class="ts" x="20" y="244" font-size="12" fill="#6b675e">多数请求连出口都到不了：tcache 和分箱在 glibc 内部就把它们消化了</text>
+</svg>
+</figure>
+
 哪个请求走哪条通道？glibc 的默认阈值是 **128KiB**（`M_MMAP_THRESHOLD`）：小于阈值的请求从堆上切，优先复用空闲 chunk，不够就 brk 扩堆；大于阈值的直接 mmap。实测（分配 64K~2M 七档，看返回地址落在 `[heap]` 区间还是独立段）：
 
 ```text
@@ -60,7 +87,88 @@ malloc 2048KiB → HEAP   ← 上一轮走 MMAP
 
 原因是 glibc 的**动态阈值**：释放一个 mmap 来的大块时，分配器把阈值抬到刚释放的块大小（上限 32MiB，`DEFAULT_MMAP_THRESHOLD_MAX`）。逻辑是纯经验的：刚刚那个尺寸 mmap 来又 mmap 走，说明这个尺码常见，改走堆、靠 arena 化复用更划算。副作用同样实测可见：释放 2MiB 块之后，阈值抬到 2MiB 档，之后**所有** 2MiB 以内的请求都涌向 heap，哪怕程序接下来一万次分配都只要一次 2MiB。第三轮实验里 1000 个 64KiB 把 heap 顶到 62.5MiB，就是阈值抬升后堆通道敞开吃进的例子。
 
+两轮七档摆在一起：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 204" role="img" aria-label="七档分配的两轮对照：第一轮 64K 到 129K 走 HEAP、160K 以上走 MMAP；中间释放过一次 2MiB 的 mmap 块后，第二轮八档全部改走 HEAP，连 2048K 都不例外" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">同一段代码跑两轮，中间只隔了一次 free(2MiB)</text>
+<text class="ts" x="90" y="48" text-anchor="middle" font-size="11" fill="#6b675e">64K</text>
+<text class="ts" x="160" y="48" text-anchor="middle" font-size="11" fill="#6b675e">100K</text>
+<text class="ts" x="230" y="48" text-anchor="middle" font-size="11" fill="#6b675e">127K</text>
+<text class="ts" x="300" y="48" text-anchor="middle" font-size="11" fill="#6b675e">129K</text>
+<text class="ts" x="370" y="48" text-anchor="middle" font-size="11" fill="#6b675e">160K</text>
+<text class="ts" x="440" y="48" text-anchor="middle" font-size="11" fill="#6b675e">256K</text>
+<text class="ts" x="510" y="48" text-anchor="middle" font-size="11" fill="#6b675e">1024K</text>
+<text class="ts" x="580" y="48" text-anchor="middle" font-size="11" fill="#6b675e">2048K</text>
+<text class="ts" x="20" y="78" font-size="12" fill="#6b675e">第一轮</text>
+<rect class="bx-q" x="60" y="60" width="60" height="30" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="90" y="79" text-anchor="middle" font-size="10" fill="#6b675e">HEAP</text>
+<rect class="bx-q" x="130" y="60" width="60" height="30" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="160" y="79" text-anchor="middle" font-size="10" fill="#6b675e">HEAP</text>
+<rect class="bx-q" x="200" y="60" width="60" height="30" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="230" y="79" text-anchor="middle" font-size="10" fill="#6b675e">HEAP</text>
+<rect class="bx-q" x="270" y="60" width="60" height="30" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="300" y="79" text-anchor="middle" font-size="10" fill="#6b675e">HEAP</text>
+<rect class="bx-sick" x="340" y="60" width="60" height="30" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="370" y="79" text-anchor="middle" font-size="10" fill="#b03a2e">MMAP</text>
+<rect class="bx-sick" x="410" y="60" width="60" height="30" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="440" y="79" text-anchor="middle" font-size="10" fill="#b03a2e">MMAP</text>
+<rect class="bx-sick" x="480" y="60" width="60" height="30" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="510" y="79" text-anchor="middle" font-size="10" fill="#b03a2e">MMAP</text>
+<rect class="bx-sick" x="550" y="60" width="60" height="30" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="580" y="79" text-anchor="middle" font-size="10" fill="#b03a2e">MMAP</text>
+<text class="ts" x="20" y="126" font-size="12" fill="#6b675e">第二轮</text>
+<rect class="bx-q" x="60" y="108" width="60" height="30" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="90" y="127" text-anchor="middle" font-size="10" fill="#6b675e">HEAP</text>
+<rect class="bx-q" x="130" y="108" width="60" height="30" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="160" y="127" text-anchor="middle" font-size="10" fill="#6b675e">HEAP</text>
+<rect class="bx-q" x="200" y="108" width="60" height="30" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="230" y="127" text-anchor="middle" font-size="10" fill="#6b675e">HEAP</text>
+<rect class="bx-q" x="270" y="108" width="60" height="30" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="300" y="127" text-anchor="middle" font-size="10" fill="#6b675e">HEAP</text>
+<rect class="bx-q" x="340" y="108" width="60" height="30" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="370" y="127" text-anchor="middle" font-size="10" fill="#6b675e">HEAP</text>
+<rect class="bx-q" x="410" y="108" width="60" height="30" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="440" y="127" text-anchor="middle" font-size="10" fill="#6b675e">HEAP</text>
+<rect class="bx-q" x="480" y="108" width="60" height="30" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="510" y="127" text-anchor="middle" font-size="10" fill="#6b675e">HEAP</text>
+<rect class="bx-q" x="550" y="108" width="60" height="30" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="580" y="127" text-anchor="middle" font-size="10" fill="#6b675e">HEAP</text>
+<text class="ts" x="20" y="166" font-size="12" fill="#6b675e">free 掉一个 2MiB 的 mmap 块，阈值就地抬到 2MiB：后四档全部变卦</text>
+<text class="ts" x="20" y="188" font-size="12" fill="#6b675e">上限 32MiB：再大的块释放多少次，阈值也停在那里</text>
+</svg>
+</figure>
+
 glibc 的堆和 pymalloc 用的机制高度相似：内部同样按尺寸分箱（fastbins/smallbins/largebins）、同样有 tcache（每线程缓存，free 的 chunk 先进缓存不下沉）、同样把释放的 chunk 留作复用而不是归还。`malloc_trim(0)` 才是把堆顶空余还给内核的显式动作。CPython 那篇里「显式调用 malloc_trim 后大对象场景 RSS 才回落」的现象，机制就在这里：trim 之前，那些页在 glibc 手里打转；trim 之后，brk 收缩，VMA 变短，未触碰的尾页连同页表一起消失。而 trim 只能还**堆顶**的连续空区，堆中间的洞（第三篇钉子实验的用户态版本）谁也还不掉，除非整块是 mmap 来的。
+
+trim 能还的和还不了的：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 194" role="img" aria-label="malloc_trim 前后对照：堆由在用段、中间的洞、在用段和堆顶空余组成；trim 之后 brk 收缩，堆顶空余整段归还内核，中间的洞因为不连着堆顶，谁也还不掉" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="kern5As5" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">trim 前：一条 [heap] VMA 的内部地形</text>
+<rect class="bar" x="30" y="40" width="120" height="40" fill="#2b2a26"/>
+<text class="onbar" x="90" y="64" text-anchor="middle" font-size="11" fill="#f6f3ec">在用</text>
+<rect class="bx-gone" x="150" y="40" width="100" height="40" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<text class="ts" x="200" y="64" text-anchor="middle" font-size="11" fill="#6b675e">洞</text>
+<rect class="bar" x="250" y="40" width="150" height="40" fill="#2b2a26"/>
+<text class="onbar" x="325" y="64" text-anchor="middle" font-size="11" fill="#f6f3ec">在用</text>
+<rect class="bx" x="400" y="40" width="230" height="40" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="515" y="64" text-anchor="middle" font-size="11" fill="#6b675e">堆顶空余</text>
+<line class="fl" x1="615" y1="84" x2="615" y2="106" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern5As5)"/>
+<text class="ts" x="605" y="100" text-anchor="end" font-size="11" fill="#6b675e">malloc_trim(0)</text>
+<text class="ts" x="20" y="100" font-size="12" fill="#6b675e">trim 后：brk 收缩，VMA 变短</text>
+<rect class="bar" x="30" y="112" width="120" height="40" fill="#2b2a26"/>
+<rect class="bx-gone" x="150" y="112" width="100" height="40" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<rect class="bar" x="250" y="112" width="150" height="40" fill="#2b2a26"/>
+<rect class="bx-gone" x="400" y="112" width="230" height="40" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<text class="ts" x="515" y="136" text-anchor="middle" font-size="11" fill="#6b675e">已归还</text>
+<text class="tc" x="200" y="172" text-anchor="middle" font-size="12" fill="#b03a2e">洞还赖着：它不连着堆顶</text>
+<text class="ts" x="20" y="190" font-size="12" fill="#6b675e">这就是 arena 化的全部动机：一段一空就整段 munmap，不给洞留位置</text>
+</svg>
+</figure>
 
 ## VMA：内核怎么登记地址区间
 
@@ -97,6 +205,53 @@ E2: 后半 1MiB madvise(DONTFORK)     maps 25 → 27   （+2，madvise 也分裂
 F: 两个不相邻的独立 1MiB             不变，各占一条
 ```
 
+六段实验画成地址段：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 298" role="img" aria-label="六段 VMA 实验的地址段示意：A 一整块可读写占一条；B 中间改只读，一条分裂成三条；C 改回可读写，三条重新合并成一条；D 中段 munmap 挖洞，洞两侧各断一次；E2 后半段 madvise 后权限没变但 flags 不同，照样分裂成两条；F 两个不相邻的独立段各占一条不合并" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="110" y="32" font-size="12" fill="#6b675e">实验区的地址空间（A–E2 为同一段 4MiB 的六个瞬间）</text>
+<text class="ts" x="640" y="32" text-anchor="end" font-size="12" fill="#6b675e">maps 增减</text>
+<text class="ts" x="20" y="69" font-size="12" fill="#6b675e">A</text>
+<rect class="bx-q" x="110" y="52" width="460" height="26" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="340" y="69" text-anchor="middle" font-size="11" fill="#6b675e">一整块 rw</text>
+<text class="tc" x="640" y="69" text-anchor="end" font-size="12" fill="#b03a2e">+1</text>
+<text class="ts" x="20" y="109" font-size="12" fill="#6b675e">B</text>
+<rect class="bx-q" x="110" y="92" width="172" height="26" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="196" y="109" text-anchor="middle" font-size="11" fill="#6b675e">rw</text>
+<rect class="bx-sick" x="282" y="92" width="116" height="26" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="340" y="109" text-anchor="middle" font-size="11" fill="#b03a2e">ro</text>
+<rect class="bx-q" x="398" y="92" width="172" height="26" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="484" y="109" text-anchor="middle" font-size="11" fill="#6b675e">rw</text>
+<text class="tc" x="640" y="109" text-anchor="end" font-size="12" fill="#b03a2e">+2</text>
+<text class="ts" x="20" y="149" font-size="12" fill="#6b675e">C</text>
+<rect class="bx-q" x="110" y="132" width="460" height="26" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="340" y="149" text-anchor="middle" font-size="11" fill="#6b675e">改回 rw：三条当场长拢回一条</text>
+<text class="tc" x="640" y="149" text-anchor="end" font-size="12" fill="#b03a2e">−2</text>
+<text class="ts" x="20" y="189" font-size="12" fill="#6b675e">D</text>
+<rect class="bx-q" x="110" y="172" width="230" height="26" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="225" y="189" text-anchor="middle" font-size="11" fill="#6b675e">rw</text>
+<rect class="bx-gone" x="340" y="172" width="58" height="26" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<text class="ts" x="369" y="189" text-anchor="middle" font-size="11" fill="#6b675e">洞</text>
+<rect class="bx-q" x="398" y="172" width="172" height="26" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="484" y="189" text-anchor="middle" font-size="11" fill="#6b675e">rw</text>
+<text class="tc" x="640" y="189" text-anchor="end" font-size="12" fill="#b03a2e">+1</text>
+<text class="ts" x="20" y="229" font-size="12" fill="#6b675e">E2</text>
+<rect class="bx-q" x="110" y="212" width="345" height="26" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="282" y="229" text-anchor="middle" font-size="11" fill="#6b675e">rw</text>
+<rect class="bx" x="455" y="212" width="115" height="26" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4" stroke-dasharray="5 3"/>
+<text class="ts" x="512" y="229" text-anchor="middle" font-size="10" fill="#6b675e">rw·DONTFORK</text>
+<text class="tc" x="640" y="229" text-anchor="end" font-size="12" fill="#b03a2e">+2</text>
+<text class="ts" x="20" y="269" font-size="12" fill="#6b675e">F</text>
+<rect class="bx-q" x="110" y="252" width="115" height="26" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="167" y="269" text-anchor="middle" font-size="11" fill="#6b675e">1MiB</text>
+<text class="ts" x="340" y="269" text-anchor="middle" font-size="11" fill="#6b675e">不相邻</text>
+<rect class="bx-q" x="455" y="252" width="115" height="26" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="512" y="269" text-anchor="middle" font-size="11" fill="#6b675e">1MiB</text>
+<text class="tc" x="640" y="269" text-anchor="end" font-size="12" fill="#b03a2e">0</text>
+<text class="ts" x="20" y="292" font-size="12" fill="#6b675e">B、C 一对：分裂不是永久的，属性改回同质，下一次操作顺手就合回去</text>
+</svg>
+</figure>
+
 四条规律，逐一说：
 
 **B（mprotect 分裂）**：权限边界就是 VMA 边界。改一段的权限，内核把一条 VMA 拆成「前-rw / 中-ro / 后-rw」三条。这就是第一篇护栏实验的原理：PROT_NONE 的护栏页制造了权限差，实验区与邻居的 VMA 断开，smaps 才能给出干净的读数。
@@ -117,14 +272,33 @@ F: 两个不相邻的独立 1MiB             不变，各占一条
 
 现在可以把开头那三行 `malloc(64)` 的日志解释全了。从用户态到内核，这块内存分三层欠着：
 
-```text
-第 1 层  glibc：tcache 里恰好有个空闲 chunk → 直接切给你，不进内核
-         （内核视角：什么都没发生）
-第 2 层  brk/mmap：chunk 不够 → 扩 VMA，地址空间登记在册
-         （内核视角：VMA 变了，页表没动，物理内存没动）
-第 3 层  缺页：你写 *p 那一刻 → 缺页异常，分配物理页，页表填上
-         （内核视角：现在才知道这一页，第一/二篇的全部故事）
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 274" role="img" aria-label="malloc 到物理页的三层延迟：第一层 glibc 的 tcache 里有空闲 chunk 就直接切给你，内核视角什么都没发生；第二层 chunk 不够才走 brk 或 mmap 扩 VMA，地址空间登记在册但页表没动；第三层第一次写的那一刻缺页，分配物理页填页表，内核这时才知道这一页" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="kern5As4" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-q" x="30" y="36" width="420" height="56" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="50" y="58" font-size="13" fill="#2b2a26">第 1 层 · glibc 缓存</text>
+<text class="ts" x="50" y="78" font-size="11" fill="#6b675e">tcache 里有空闲 chunk：直接切给你，不进内核</text>
+<text class="tc" x="470" y="58" font-size="12" fill="#b03a2e">内核视角：</text>
+<text class="tc" x="470" y="78" font-size="12" fill="#b03a2e">什么都没发生</text>
+<line class="fl" x1="240" y1="92" x2="240" y2="112" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern5As4)"/>
+<text class="ts" x="252" y="107" font-size="11" fill="#6b675e">chunk 不够了</text>
+<rect class="bx" x="30" y="116" width="420" height="56" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="50" y="138" font-size="13" fill="#2b2a26">第 2 层 · brk / mmap</text>
+<text class="ts" x="50" y="158" font-size="11" fill="#6b675e">扩 VMA：地址空间登记在册，页表没动</text>
+<text class="ts" x="470" y="138" font-size="12" fill="#6b675e">内核视角：</text>
+<text class="ts" x="470" y="158" font-size="12" fill="#6b675e">账上多了一行，家底没动</text>
+<line class="fl" x1="240" y1="172" x2="240" y2="192" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern5As4)"/>
+<text class="ts" x="252" y="187" font-size="11" fill="#6b675e">第一次写 *p</text>
+<rect class="bx-sick" x="30" y="196" width="420" height="56" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="t" x="50" y="218" font-size="13" fill="#2b2a26">第 3 层 · 缺页</text>
+<text class="ts" x="50" y="238" font-size="11" fill="#6b675e">分配物理页、填页表：真实家底到这一刻才动</text>
+<text class="tc" x="470" y="218" font-size="12" fill="#b03a2e">内核视角：</text>
+<text class="tc" x="470" y="238" font-size="12" fill="#b03a2e">现在才知道这一页</text>
+<text class="ts" x="20" y="268" font-size="12" fill="#6b675e">开头三行日志正好对应三层：拿到地址（第 1 层）、堆没变（没到第 2 层）、页不存在（没到第 3 层）</text>
+</svg>
+</figure>
 
 `malloc` 的「快」是把成本推给了未来：glibc 的缓存吃掉绝大多数调用的成本（第 1 层常驻），VMA 扩展几乎免费（第 2 层只有偶尔的 brk），物理内存按触碰逐页到账（第 3 层是缺页）。**三层欠账对应三种浪费**：tcache 里过期不还的 chunk（RSS 高位）、VMA 破碎（maps 膨胀）、触碰过的页的页表与物理页（真实的占用开销）。CPython 那篇的「对象死亡 ≠ RSS 下降」横跨这三层：对象死了进第 1 层的缓存，arena 空了仍在第 2 层的 VMA 里，只有整体 munmap 才同时清掉 2 和 3。
 
