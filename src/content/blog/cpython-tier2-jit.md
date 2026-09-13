@@ -53,13 +53,31 @@ def work(n):
 
 进入源码前先立好标尺，这三个词经常被混用：
 
-```text
-Tier 2      一层执行机制的总称：热点代码离开 Tier 1，进入新的执行形态
-micro-op    Tier 2 内部的指令单位（源码写作 uop），比字节码更细，
-            guard、栈操作、帧管理都被拆成独立小步
-executor    Tier 2 的执行体：一段 micro-op 序列加上它的出口表。
-            可由 uop 解释器执行，也可由 JIT 编译成机器码执行
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 236" role="img" aria-label="三个名字的关系：Tier 2 是一层执行机制的总称，其中的执行体 executor 由 micro-op 序列加出口表构成；同一只 executor 有两种引擎，uop 解释器直接执行，或经 JIT 的 copy-and-patch 拼成机器码执行" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="t2A1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<line class="fl" x1="30" y1="127" x2="100" y2="127" stroke="#6b675e" stroke-width="1.4" marker-end="url(#t2A1)"/>
+<text class="ts" x="64" y="116" text-anchor="middle" font-size="10.5" fill="#6b675e">热循环</text>
+<rect class="bx" x="106" y="34" width="524" height="186" rx="6" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="t" x="368" y="58" text-anchor="middle" font-size="12" fill="#2b2a26">Tier 2 · 热点代码离开 Tier 1 后的执行形态</text>
+<rect class="bx-q" x="128" y="72" width="252" height="128" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="t" x="254" y="94" text-anchor="middle" font-size="11.5" fill="#2b2a26">executor（执行体）</text>
+<text class="ts" x="254" y="116" text-anchor="middle" font-size="10" fill="#6b675e">micro-op 序列 · 比字节码更细</text>
+<text class="ts" x="254" y="133" text-anchor="middle" font-size="10" fill="#6b675e">guard、栈操作、帧管理各一条</text>
+<text class="ts" x="254" y="156" text-anchor="middle" font-size="10" fill="#6b675e">+ 出口表</text>
+<text class="ts" x="254" y="173" text-anchor="middle" font-size="10" fill="#6b675e">_DEOPT · _EXIT_TRACE · _ERROR_POP_N</text>
+<line class="fl" x1="380" y1="106" x2="416" y2="94" stroke="#6b675e" stroke-width="1.3" marker-end="url(#t2A1)"/>
+<line class="fl" x1="380" y1="150" x2="416" y2="162" stroke="#6b675e" stroke-width="1.3" marker-end="url(#t2A1)"/>
+<rect class="bx" x="420" y="72" width="190" height="46" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="515" y="91" text-anchor="middle" font-size="10.5" fill="#2b2a26">引擎一：uop 解释器</text>
+<text class="ts" x="515" y="108" text-anchor="middle" font-size="9.5" fill="#6b675e">直接执行 trace · 无机器码</text>
+<rect class="bx" x="420" y="140" width="190" height="46" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="515" y="159" text-anchor="middle" font-size="10.5" fill="#2b2a26">引擎二：JIT 机器码</text>
+<text class="ts" x="515" y="176" text-anchor="middle" font-size="9.5" fill="#6b675e">copy-and-patch 模板拼接</text>
+</svg>
+</figure>
 
 所以 JIT 不是 Tier 2 的同义词。`--enable-experimental-jit=interpreter` 构建里，Tier 2 完整存在、trace 照常构建，只是 trace 由一个专门的 micro-op 解释器执行，没有任何机器码生成。这个模式是理解和调试 Tier 2 的最好入口：机器码只是同一份 trace 的另一种可执行形式。
 
@@ -166,6 +184,36 @@ True
 
 尾部是出口表。`_JUMP_TO_TOP` 闭环回到序列开头，实现“循环不再经过 Tier 1 分派”。`_DEOPT`、`_EXIT_TRACE`、`_ERROR_POP_N` 是预留的逃生口：guard 失败去 Tier 1，异常抛出去错误处理。它们平时不被顺序执行，挂在表尾等跳跃。
 
+31 条分成三段看：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 280" role="img" aria-label="31 条 micro-op 的三段分区：入场手续 uop 0 到 4；压扁的循环体 uop 5 到 22，末尾 _JUMP_TO_TOP 闭环回到序列开头；出口表 uop 23 到 30，guard 失败或异常时跳入，顺序执行永远不会走到" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="t2A2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-q" x="60" y="40" width="250" height="54" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="t" x="76" y="62" font-size="11.5" fill="#2b2a26">入场手续 · uop 0–4</text>
+<text class="ts" x="76" y="82" font-size="9.5" fill="#6b675e">_START_EXECUTOR · _MAKE_WARM · _SET_IP…</text>
+<rect class="bx" x="60" y="110" width="250" height="76" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="t" x="76" y="132" font-size="11.5" fill="#2b2a26">压扁的循环体 · uop 5–22</text>
+<text class="ts" x="76" y="152" font-size="9.5" fill="#6b675e">迭代拆三条：_ITER_CHECK_RANGE →</text>
+<text class="ts" x="76" y="166" font-size="9.5" fill="#6b675e">_GUARD_NOT_EXHAUSTED → _ITER_NEXT_RANGE</text>
+<text class="ts" x="76" y="180" font-size="9.5" fill="#6b675e">加法带 guard：_GUARD_NOS_INT → _BINARY_OP_ADD_INT</text>
+<rect class="bx-sick" x="60" y="202" width="250" height="54" rx="5" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="t" x="76" y="224" font-size="11.5" fill="#b03a2e">出口表 · uop 23–30</text>
+<text class="ts" x="76" y="244" font-size="9.5" fill="#6b675e">_DEOPT · _EXIT_TRACE · _ERROR_POP_N</text>
+<line class="fl" x1="185" y1="186" x2="185" y2="198" stroke="#b03a2e" stroke-width="1.3" marker-end="url(#t2A2)"/>
+<text class="tc" x="196" y="198" font-size="9.5" fill="#b03a2e">guard 失手 / 异常才跳入</text>
+<path class="flc" d="M 310 160 C 392 160 392 66 316 66" fill="none" stroke="#b03a2e" stroke-width="1.4" marker-end="url(#t2A2)"/>
+<text class="tc" x="368" y="118" font-size="10" fill="#b03a2e">_JUMP_TO_TOP</text>
+<text class="tc" x="368" y="133" font-size="9.5" fill="#b03a2e">uop 22 → 序列开头</text>
+<text class="ts" x="452" y="62" font-size="10.5" fill="#6b675e">共 31 条</text>
+<text class="ts" x="452" y="79" font-size="10.5" fill="#6b675e">3.16 JIT 构建实测</text>
+<text class="ts" x="452" y="216" font-size="10.5" fill="#6b675e">出口条目自带落点：uop 24 → 27</text>
+<text class="ts" x="452" y="233" font-size="10.5" fill="#6b675e">uop 28 → 16（_ERROR_POP_N 的 target）</text>
+</svg>
+</figure>
+
 ## 两代架构：静态投影与追踪录制
 
 trace 是怎么来的？这里 3.14 与 3.16 是两代答案，值得分别看清。
@@ -193,6 +241,40 @@ trace 是怎么来的？这里 3.14 与 3.16 是两代答案，值得分别看�
 停止录制的时机由 3.16 引入的 fitness 预算决定：初始 `FITNESS_INITIAL`，每条指令按占用槽位扣费，分支按偏离度扣费，帧深度也扣费。fitness 跌到当前指令的“出口质量”（exit quality）阈值之下就停止录制。出口质量本身分了级：回到循环顶（最好）、落到别的 executor 上（次好）、一般位置（最差）。所以 trace 倾向于恰好停在能无缝衔接的地方。
 
 两代对比一句话：3.14 读地图画路线，3.16 跟着车走一遍再画路线。共同点是都只录一条线性路径，岔路全部交给 side exit。
+
+两条流水线的内部：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 262" role="img" aria-label="两代 trace 构建对照：3.14.7 静态投影不执行代码，在字节码上符号推演，分支读内联缓存的历史计数器选大概率一边，confidence 预算从 1000 按分支折减、跌破 333 放弃；3.16.0a0 追踪录制，每条字节码执行完由 TRACE_RECORD 翻译成 uop 追加进缓冲区，fitness 预算按槽位与帧深度扣费，出口质量分三级决定停在哪" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<rect class="bx-q" x="20" y="34" width="300" height="212" rx="6" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="t" x="170" y="58" text-anchor="middle" font-size="12" fill="#2b2a26">3.14.7 · 静态投影</text>
+<text class="ts" x="38" y="82" font-size="10.5" fill="#6b675e">不跑代码，在字节码数组上逐条推演</text>
+<text class="ts" x="38" y="100" font-size="10.5" fill="#6b675e">遇分支：读 Tier 1 内联缓存的历史计数器</text>
+<text class="ts" x="38" y="118" font-size="10.5" fill="#6b675e">哪边命中率高，就投影哪边</text>
+<text class="ts" x="38" y="136" font-size="10.5" fill="#6b675e">遇 CALL：func_version 反查被调 code object</text>
+<text class="ts" x="38" y="154" font-size="10.5" fill="#6b675e">整段投影进来（递归 / 换版本则放弃）</text>
+<text class="ts" x="38" y="180" font-size="10" fill="#6b675e">confidence 预算：初值 1000</text>
+<rect class="bx" x="38" y="188" width="260" height="12" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<rect class="fill-c" x="38" y="188" width="87" height="12" rx="2" fill="#b03a2e"/>
+<line class="flc" x1="125" y1="184" x2="125" y2="204" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="132" y="222" font-size="9.5" fill="#b03a2e">跌破 333 放弃整条 trace</text>
+<text class="ts" x="38" y="238" font-size="9.5" fill="#6b675e">每个分支按命中率折减预算</text>
+<rect class="bx" x="340" y="34" width="300" height="212" rx="6" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="t" x="490" y="58" text-anchor="middle" font-size="12" fill="#2b2a26">3.16.0a0 · 追踪录制</text>
+<text class="ts" x="358" y="82" font-size="10.5" fill="#6b675e">_JIT 触发后换上 tracing mode 的调度表</text>
+<text class="ts" x="358" y="100" font-size="10.5" fill="#6b675e">每条字节码执行完 → TRACE_RECORD</text>
+<text class="ts" x="358" y="118" font-size="10.5" fill="#6b675e">执行一条，录一条，追加进缓冲区</text>
+<text class="ts" x="358" y="136" font-size="10.5" fill="#6b675e">经过的 adaptive 指令被强制重新特化</text>
+<text class="ts" x="358" y="154" font-size="10.5" fill="#6b675e">不逃逸值（如常量）抓成裸指针备用</text>
+<text class="ts" x="358" y="180" font-size="10" fill="#6b675e">fitness 预算：槽位、分支偏离、帧深度都扣费</text>
+<rect class="bx-q" x="358" y="190" width="264" height="18" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="366" y="203" font-size="9.5" fill="#2b2a26">出口质量：回循环顶（最好）</text>
+<rect class="bx-q" x="358" y="210" width="220" height="18" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="366" y="223" font-size="9.5" fill="#2b2a26">落到别的 executor（次好）</text>
+<rect class="bx-q" x="358" y="230" width="176" height="18" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="366" y="243" font-size="9.5" fill="#2b2a26">一般位置（最差）</text>
+</svg>
+</figure>
 
 ## trace 级优化：跨指令的分析
 
@@ -292,11 +374,33 @@ exit ...080 -> 1 uop 的 executor: [_COLD_EXIT]
 
 所以 side exit 的生命周期是渐进的：
 
-```text
-建 trace 时       出口 -> cold executor（共享单例）
-走冷了            每次经过都回 Tier 1，温度计倒数
-走热了            出口位置长出新 trace，出口重新绑定
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 196" role="img" aria-label="side exit 三阶段：建 trace 时出口绑定到共享的 cold executor 占位；走冷时每次经过都回 Tier 1，温度计数器从初值一路倒数；走热后从出口位置录出新 trace，出口重新绑定，此后在两只 executor 之间直接跳转" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="t2A4" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="22" font-size="12" fill="#6b675e">一只 side exit 的三个阶段</text>
+<rect class="bx-q" x="20" y="36" width="196" height="140" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="t" x="118" y="60" text-anchor="middle" font-size="11.5" fill="#2b2a26">建 trace 时</text>
+<text class="ts" x="118" y="86" text-anchor="middle" font-size="10" fill="#6b675e">出口先绑到 cold executor</text>
+<text class="ts" x="118" y="110" text-anchor="middle" font-size="10" fill="#6b675e">全体冷出口共用的占位</text>
+<text class="ts" x="118" y="134" text-anchor="middle" font-size="10" fill="#6b675e">出口不能是裸跳转：</text>
+<text class="ts" x="118" y="150" text-anchor="middle" font-size="10" fill="#6b675e">热了以后要被 patch</text>
+<line class="fl" x1="216" y1="106" x2="230" y2="106" stroke="#6b675e" stroke-width="1.4" marker-end="url(#t2A4)"/>
+<rect class="bx-q" x="232" y="36" width="196" height="140" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="t" x="330" y="60" text-anchor="middle" font-size="11.5" fill="#2b2a26">走冷了</text>
+<text class="ts" x="330" y="86" text-anchor="middle" font-size="10" fill="#6b675e">每次经过都回 Tier 1</text>
+<text class="ts" x="330" y="110" text-anchor="middle" font-size="10" fill="#6b675e">温度计数器一路倒数</text>
+<text class="ts" x="330" y="134" text-anchor="middle" font-size="10" fill="#6b675e">初值 4095（3.14.7）</text>
+<line class="fl" x1="428" y1="106" x2="442" y2="106" stroke="#6b675e" stroke-width="1.4" marker-end="url(#t2A4)"/>
+<rect class="bx-sick" x="444" y="36" width="196" height="140" rx="5" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="t" x="542" y="60" text-anchor="middle" font-size="11.5" fill="#b03a2e">走热了</text>
+<text class="ts" x="542" y="86" text-anchor="middle" font-size="10" fill="#6b675e">数到触发点：就地录出新 trace</text>
+<text class="ts" x="542" y="110" text-anchor="middle" font-size="10" fill="#6b675e">出口重新绑定（chain depth +1）</text>
+<text class="ts" x="542" y="134" text-anchor="middle" font-size="10" fill="#6b675e">此后 executor 之间直接跳</text>
+<text class="ts" x="542" y="150" text-anchor="middle" font-size="10" fill="#6b675e">不再穿过 Tier 1</text>
+</svg>
+</figure>
 
 一个分支密集的负载能看到整张图成形：
 
@@ -329,6 +433,38 @@ offset 150 的 executor 有一条出口不再指向冷存根，而是直接缝�
 
 随着程序运行，热点路径逐渐连成一张 executor 图：边是出口，节点是各自线性的 trace（外加那只共享的 cold executor）。3.16 的 `tier2_engine.md` 把这称为 executor graph，并明确了设计意图：绝大多数控制流转移应该发生在这张图内部，跨 Tier 的往返只属于冷路径。
 
+`branched` 跑完后的那张图：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 254" role="img" aria-label="executor 图实例：executor @82 有 68 条 uop，七个出口中六个指向共享 cold executor、一个直连挂在别的 code object 上的 18 条 uop executor；executor @150 有 49 条 uop，一个出口直接缝到 @82、六个指向 cold executor" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="t2A5" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+<marker id="t2A5c" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-c" d="M0 0 L8 4 L0 8 Z" fill="#b03a2e"/></marker>
+</defs>
+<rect class="bx" x="40" y="50" width="160" height="56" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="t" x="120" y="72" text-anchor="middle" font-size="11.5" fill="#2b2a26">executor @ 82</text>
+<text class="ts" x="120" y="92" text-anchor="middle" font-size="10" fill="#6b675e">68 uops · 外层回边</text>
+<rect class="bx" x="40" y="160" width="160" height="56" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="t" x="120" y="182" text-anchor="middle" font-size="11.5" fill="#2b2a26">executor @ 150</text>
+<text class="ts" x="120" y="202" text-anchor="middle" font-size="10" fill="#6b675e">49 uops</text>
+<rect class="bx-q" x="440" y="24" width="180" height="48" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="530" y="44" text-anchor="middle" font-size="10.5" fill="#2b2a26">另一只 executor · 18 uops</text>
+<text class="ts" x="530" y="62" text-anchor="middle" font-size="9.5" fill="#6b675e">挂在别的 code object 上</text>
+<rect class="bx-gone" x="440" y="105" width="180" height="56" rx="5" fill="#ece9e2" stroke="#a29d90" stroke-width="1.2" stroke-dasharray="5 3"/>
+<text class="ts" x="530" y="127" text-anchor="middle" font-size="10.5" fill="#2b2a26">cold executor</text>
+<text class="ts" x="530" y="146" text-anchor="middle" font-size="9.5" fill="#6b675e">共享单例 · _COLD_EXIT</text>
+<line class="flc" x1="80" y1="156" x2="80" y2="112" stroke="#b03a2e" stroke-width="1.8" marker-end="url(#t2A5c)"/>
+<text class="tc" x="92" y="140" font-size="10.5" fill="#b03a2e">一个出口 · 直接缝合</text>
+<line class="fl" x1="200" y1="62" x2="434" y2="48" stroke="#6b675e" stroke-width="1.2" marker-end="url(#t2A5)"/>
+<text class="ts" x="290" y="44" font-size="10" fill="#6b675e">一个出口</text>
+<line class="fl" x1="200" y1="92" x2="434" y2="122" stroke="#6b675e" stroke-width="1.2" marker-end="url(#t2A5)"/>
+<text class="ts" x="298" y="100" font-size="10" fill="#6b675e">六个出口</text>
+<line class="fl" x1="200" y1="198" x2="434" y2="146" stroke="#6b675e" stroke-width="1.2" marker-end="url(#t2A5)"/>
+<text class="ts" x="298" y="186" font-size="10" fill="#6b675e">六个出口</text>
+<text class="ts" x="20" y="244" font-size="10.5" fill="#6b675e">十四个出口：十二个指向冷存根，两个直连别的 executor</text>
+</svg>
+</figure>
+
 链条不是无限延伸的。`MAX_CHAIN_DEPTH = 4`：从 side exit 连出的 executor 到第四代必须“有进展”（能保证推进而非自我循环），否则不允许再挂。这是对病态分支模式的保险。
 
 ## 失效：动态语义的反制
@@ -360,6 +496,40 @@ executor @ 54: valid=True    指令显示 JUMP_BACKWARD_JIT（重建）
 ```
 
 一次 `builtins.range` 赋值，trace 里的常量假设全部作废。字节码回到 `JUMP_BACKWARD`，重新计数、重新录制、重新优化，循环回来时又是一只新 executor。语言语义没有让步分毫：改 builtins 前后，`sum_loop(100)` 的结果完全一致。
+
+失效走的这条链：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 220" role="img" aria-label="失效链条六步：修改 builtins.range 触发优化器挂上的 watcher 回调；解释器扫描所有 executor 的 Bloom filter 依赖表，命中者立即失效；ENTER_EXECUTOR 处检查退回原指令 JUMP_BACKWARD；重新计数升温后录出新 executor" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="t2A6" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-sick" x="20" y="40" width="180" height="54" rx="5" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="ts" x="110" y="62" text-anchor="middle" font-size="10.5" fill="#b03a2e">builtins.range = lambda …</text>
+<text class="ts" x="110" y="80" text-anchor="middle" font-size="9.5" fill="#6b675e">一次普通赋值</text>
+<line class="fl" x1="200" y1="67" x2="232" y2="67" stroke="#6b675e" stroke-width="1.3" marker-end="url(#t2A6)"/>
+<rect class="bx-q" x="235" y="40" width="180" height="54" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="325" y="62" text-anchor="middle" font-size="10.5" fill="#2b2a26">watcher 回调触发</text>
+<text class="ts" x="325" y="80" text-anchor="middle" font-size="9.5" fill="#6b675e">建 trace 时挂上的</text>
+<line class="fl" x1="415" y1="67" x2="447" y2="67" stroke="#6b675e" stroke-width="1.3" marker-end="url(#t2A6)"/>
+<rect class="bx-q" x="450" y="40" width="180" height="54" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="540" y="62" text-anchor="middle" font-size="10.5" fill="#2b2a26">扫依赖表（Bloom filter）</text>
+<text class="ts" x="540" y="80" text-anchor="middle" font-size="9.5" fill="#6b675e">命中者立即失效</text>
+<line class="fl" x1="540" y1="94" x2="540" y2="126" stroke="#6b675e" stroke-width="1.3" marker-end="url(#t2A6)"/>
+<rect class="bx-q" x="450" y="130" width="180" height="54" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="540" y="152" text-anchor="middle" font-size="10.5" fill="#2b2a26">ENTER_EXECUTOR 退回</text>
+<text class="ts" x="540" y="170" text-anchor="middle" font-size="9.5" fill="#6b675e">指令回到 JUMP_BACKWARD</text>
+<line class="fl" x1="450" y1="157" x2="418" y2="157" stroke="#6b675e" stroke-width="1.3" marker-end="url(#t2A6)"/>
+<rect class="bx-q" x="235" y="130" width="180" height="54" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="325" y="152" text-anchor="middle" font-size="10.5" fill="#2b2a26">counter 重新升温</text>
+<text class="ts" x="325" y="170" text-anchor="middle" font-size="9.5" fill="#6b675e">trace 内部 _CHECK_VALIDITY 同步弹回</text>
+<line class="fl" x1="235" y1="157" x2="203" y2="157" stroke="#6b675e" stroke-width="1.3" marker-end="url(#t2A6)"/>
+<rect class="bx" x="20" y="130" width="180" height="54" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="110" y="152" text-anchor="middle" font-size="10.5" fill="#2b2a26">新一只 executor</text>
+<text class="ts" x="110" y="170" text-anchor="middle" font-size="9.5" fill="#6b675e">录制 · 优化 · 重新挂表</text>
+<text class="ts" x="20" y="210" font-size="10.5" fill="#6b675e">builtins 只是触发源之一：globals、类型、监测工具接管走同一条链</text>
+</svg>
+</figure>
 
 上一篇的结论在此升级了一层：Tier 1 的特化是“可撤销的假设”，Tier 2 的 trace 是“更大张的、成片可撤销的假设”。
 
