@@ -323,6 +323,32 @@ body {
   fill: var(--ink-soft);
 }
 
+.mq-fig .flc {
+  stroke: var(--cinnabar);
+}
+
+.mq-fig .bx-gone {
+  fill: none;
+  stroke: var(--ink-faint);
+  stroke-dasharray: 4 3;
+}
+
+.mq-fig .bar {
+  fill: var(--ink);
+}
+
+.mq-fig .onbar {
+  fill: var(--paper);
+}
+
+.mq-fig .mk-c path {
+  fill: var(--cinnabar);
+}
+
+.mq-fig .mk-f path {
+  fill: var(--ink-faint);
+}
+
 .prose-ink hr {
   border: none;
   margin: 2.5em auto;
