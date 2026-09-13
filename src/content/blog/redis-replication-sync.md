@@ -81,18 +81,28 @@ PSYNC <我认识的 replid> <我需要的下一个 offset>
 
 随后只发送副本缺失的那段 backlog。若核对失败，则回到 `+FULLRESYNC`，重新生成和传输整份快照。
 
-```text
-副本                                  主库
-  │  PSYNC <replid> <offset>            │
-  ├────────────────────────────────────>│
-  │                                     ├─ 身份与历史都匹配
-  │  +CONTINUE + 缺失字节                │
-  │<────────────────────────────────────┤
-  │                                     │
-  │                                     └─ 身份或历史不匹配
-  │  +FULLRESYNC + 完整快照              │
-  │<────────────────────────────────────┘
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 244" role="img" aria-label="PSYNC 交互时序：副本重连后递上自己认识的 replid 和需要的下一个 offset；主库核对身份与历史都匹配就回 +CONTINUE 只补发缺失字节，任何一项不匹配就回 +FULLRESYNC 重新生成并传输整份快照" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="red11As1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+<marker id="red11Ac1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-c" d="M0 0 L8 4 L0 8 Z" fill="#b03a2e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">重逢时的一次问答，两种答复</text>
+<rect class="bx-q" x="60" y="40" width="120" height="32" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="120" y="60" text-anchor="middle" font-size="12" fill="#6b675e">副本</text>
+<rect class="bx-q" x="460" y="40" width="120" height="32" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="520" y="60" text-anchor="middle" font-size="12" fill="#6b675e">主库</text>
+<line class="grid" x1="120" y1="72" x2="120" y2="216" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 3"/>
+<line class="grid" x1="520" y1="72" x2="520" y2="216" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 3"/>
+<line class="fl" x1="120" y1="96" x2="516" y2="96" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red11As1)"/>
+<text class="ts" x="320" y="88" text-anchor="middle" font-size="11" fill="#6b675e">PSYNC &lt;我认识的 replid&gt; &lt;我需要的下一个 offset&gt;</text>
+<line class="fl" x1="520" y1="140" x2="124" y2="140" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red11As1)"/>
+<text class="ts" x="320" y="132" text-anchor="middle" font-size="11" fill="#6b675e">身份与历史都匹配：+CONTINUE，只补发缺失的那段字节</text>
+<line class="flc" x1="520" y1="188" x2="124" y2="188" stroke="#b03a2e" stroke-width="1.6" marker-end="url(#red11Ac1)"/>
+<text class="tc" x="320" y="180" text-anchor="middle" font-size="11" fill="#b03a2e">任一项不匹配：+FULLRESYNC，重新生成并传输整份快照</text>
+<text class="ts" x="20" y="234" font-size="12" fill="#6b675e">第一次连接没有历史可出示：PSYNC ? -1，答复只能是 FULLRESYNC</text>
+</svg>
+</figure>
 
 两种答复只差一个单词，背后却可能相差一次 `fork`、一份 RDB、整段网络传输和一次副本加载。
 
@@ -137,12 +147,22 @@ PSYNC <replid> 1001
 
 从语义上看，backlog 是一扇滑动窗口，只保留最近一段复制字节：
 
-```text
-已经被裁掉                         仍在 backlog                         流尾
-───────┆───────────────────────────────────────────────────────────┆
-       ^                                                           ^
-       repl_backlog_first_byte_offset                              master_repl_offset
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 194" role="img" aria-label="复制 backlog 的滑动窗口：左边是被裁掉不再存在的历史字节，中间是窗口仍保留的 histlen 字节，右端是 master_repl_offset 流尾；新字节从右边进入，旧字节从左边淘汰，窗口滑动" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">backlog：一扇只保留最近历史的滑动窗口</text>
+<rect class="bx-gone" x="40" y="52" width="140" height="28" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<text class="ts" x="110" y="70" text-anchor="middle" font-size="11" fill="#6b675e">已被裁掉</text>
+<rect class="bx-q" x="180" y="52" width="440" height="28" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="400" y="70" text-anchor="middle" font-size="11" fill="#6b675e">仍在 backlog：histlen 字节，回来续传全靠它</text>
+<line class="flc" x1="180" y1="46" x2="180" y2="96" stroke="#b03a2e" stroke-width="2"/>
+<text class="tc" x="186" y="112" font-size="10" fill="#b03a2e">repl_backlog_first_byte_offset</text>
+<line class="flk" x1="620" y1="46" x2="620" y2="96" stroke="#2b2a26" stroke-width="2"/>
+<text class="ts" x="614" y="112" text-anchor="end" font-size="10" fill="#6b675e">master_repl_offset（流尾）</text>
+<text class="ts" x="40" y="142" font-size="11" fill="#6b675e">first_byte_offset = master_repl_offset − histlen + 1：三个读数互相咬合</text>
+<text class="ts" x="40" y="164" font-size="12" fill="#6b675e">窗口是公共的：所有回来请求续传的副本查同一份历史，它不认识任何一只副本</text>
+<text class="ts" x="40" y="184" font-size="12" fill="#6b675e">Redis 7 的底层是分块链表，与副本输出共享；逻辑上仍是左淘汰、右进入</text>
+</svg>
+</figure>
 
 `repl_backlog_histlen` 是窗口当前保存的历史长度，因此始终满足：
 
@@ -189,21 +209,39 @@ backlog 存在
 
 可以画成一张决策树：
 
-```text
-副本递来 replid + offset
-  │
-  ├─ ID 不属于当前历史，也不属于可承认的上一段历史
-  │      └─ FULLRESYNC
-  │
-  ├─ ID 可以承认，但 offset 已被窗口左侧裁掉
-  │      └─ FULLRESYNC
-  │
-  ├─ offset 尚未存在或超出可续范围
-  │      └─ FULLRESYNC
-  │
-  └─ ID 匹配，offset 仍在窗口
-         └─ CONTINUE，从该字节开始补发
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 280" role="img" aria-label="PSYNC 部分同步判定树：先验 replid 是否属于当前历史或可承认的上一段历史，不属于则 FULLRESYNC；再验请求 offset 是否仍在 backlog 窗口区间内，被裁掉或超出则 FULLRESYNC；两关都过才 CONTINUE 从该字节补发" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="red11As3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-q" x="200" y="36" width="240" height="36" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="320" y="58" text-anchor="middle" font-size="12" fill="#6b675e">副本递来 replid + offset</text>
+<line class="fl" x1="320" y1="72" x2="320" y2="92" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red11As3)"/>
+<rect class="bx" x="190" y="96" width="260" height="40" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="320" y="112" text-anchor="middle" font-size="11" fill="#6b675e">第一关 · ID 属于当前历史，</text>
+<text class="ts" x="320" y="128" text-anchor="middle" font-size="11" fill="#6b675e">或属于可承认的上一段（replid2）？</text>
+<line class="fl" x1="450" y1="116" x2="516" y2="126" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red11As3)"/>
+<text class="ts" x="472" y="106" text-anchor="middle" font-size="10" fill="#6b675e">否</text>
+<rect class="bx-sick" x="500" y="128" width="140" height="64" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="570" y="152" text-anchor="middle" font-size="12" fill="#b03a2e">FULLRESYNC</text>
+<text class="ts" x="570" y="172" text-anchor="middle" font-size="10" fill="#6b675e">重建基线</text>
+<line class="fl" x1="320" y1="136" x2="320" y2="156" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red11As3)"/>
+<text class="ts" x="330" y="150" font-size="10" fill="#6b675e">是</text>
+<rect class="bx" x="190" y="160" width="260" height="40" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="320" y="176" text-anchor="middle" font-size="11" fill="#6b675e">第二关 · offset 仍落在窗口内？</text>
+<text class="ts" x="320" y="192" text-anchor="middle" font-size="11" fill="#6b675e">first_byte_offset ≤ 请求 ≤ 窗口右端</text>
+<line class="fl" x1="450" y1="180" x2="496" y2="170" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red11As3)"/>
+<text class="ts" x="470" y="164" text-anchor="middle" font-size="10" fill="#6b675e">否</text>
+<line class="fl" x1="320" y1="200" x2="320" y2="220" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red11As3)"/>
+<text class="ts" x="330" y="214" font-size="10" fill="#6b675e">是</text>
+<rect class="bx-q" x="200" y="224" width="240" height="36" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="tc" x="320" y="246" text-anchor="middle" font-size="12" fill="#b03a2e">CONTINUE：从该字节开始补发</text>
+<text class="ts" x="20" y="122" font-size="10" fill="#6b675e">replid == master_replid，</text>
+<text class="ts" x="20" y="136" font-size="10" fill="#6b675e">或 == replid2 且未越过</text>
+<text class="ts" x="20" y="150" font-size="10" fill="#6b675e">second_repl_offset</text>
+<text class="ts" x="20" y="272" font-size="12" fill="#6b675e">三个 FULLRESYNC 的死因各不相同：日志与 sync_partial_err 会分开记</text>
+</svg>
+</figure>
 
 `master_replid2` 为什么存在，后面再说。只看最普通的断线重连，结论已经明确：
 
@@ -250,6 +288,27 @@ Unable to partial resync ... for lack of backlog
 
 毫秒数、协议开销与具体 offset 每次都会变化，但判断不靠这些固定数字。唯一重要的关系是：副本请求的位置是否还落在 backlog 覆盖区间内。时间相近，复制流已经翻过了完全不同长度的历史。
 
+两次断线，两扇窗口：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 240" role="img" aria-label="两次断线的窗口对照：第一次 backlog 1MB、断线期间只写约 10KB，副本请求的位置落在窗口内，CONTINUE 补发一万字节；第二次 backlog 只有 32KB、断线期间写了约 192KB，请求位置 2109062 落在窗口起点 2272582 的左边，已被裁掉，只能 FULLRESYNC" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">秒表几乎一样，复制流走过的字节天差地别（两行比例尺不同）</text>
+<text class="ts" x="20" y="56" font-size="12" fill="#6b675e">第一次 · backlog 1MB · 写入约 10KB</text>
+<rect class="bx-q" x="140" y="66" width="440" height="24" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="360" y="82" text-anchor="middle" font-size="10" fill="#6b675e">窗口：1MB 历史都在</text>
+<line class="flc" x1="190" y1="58" x2="190" y2="98" stroke="#b03a2e" stroke-width="2"/>
+<text class="tc" x="196" y="112" font-size="10" fill="#b03a2e">请求位置在窗口内：CONTINUE，补发 10,628 字节</text>
+<text class="ts" x="20" y="152" font-size="12" fill="#6b675e">第二次 · backlog 32KB · 写入约 192KB</text>
+<rect class="bx-gone" x="140" y="162" width="280" height="24" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<text class="ts" x="280" y="178" text-anchor="middle" font-size="10" fill="#6b675e">被 192KB 新字节裁掉的旧历史</text>
+<rect class="bx-q" x="420" y="162" width="160" height="24" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="500" y="178" text-anchor="middle" font-size="10" fill="#6b675e">窗口只剩 32KB</text>
+<line class="flc" x1="190" y1="154" x2="190" y2="194" stroke="#b03a2e" stroke-width="2"/>
+<text class="tc" x="196" y="212" font-size="10" fill="#b03a2e">请求 2,109,062 &lt; 窗口起点 2,272,582：FULLRESYNC</text>
+<text class="ts" x="20" y="234" font-size="12" fill="#6b675e">决定生死的是这 1 秒里窗口滑过了多少字节</text>
+</svg>
+</figure>
+
 ## 从头再来，要付三笔成本
 
 部分同步只是把 backlog 中缺失的字节挂到副本发送路径上。全量同步则要重建基线，至少付出三笔成本。
@@ -262,11 +321,33 @@ Unable to partial resync ... for lack of backlog
 
 实验数据集只有约 3.8MB，磁盘式全量同步的 `latest_fork_usec` 约 0.5 毫秒，`total_forks` 随全量次数增加，COW 也只有约 0.5MB。数字很小，是因为现场刻意受限；机制与 fork 篇里数百 MB 的实验一致：数据越大，fork、传输、加载和保存窗口越值得单独预算。
 
-```text
-主库       [fork] ── 继续服务，并保存同步期间的新写入
-子进程             └── 生成完整 RDB ──────────────┐
-副本                                               └── 接收并加载 ── 追增量
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 240" role="img" aria-label="全量同步三泳道：主线程 fork 后继续服务，同步期间的新写入进复制缓冲；RDB 子进程生成完整快照，无盘时写进管道；副本接收并加载快照，期间可能无法服务，加载完再追平增量" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="red11As5" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">一次全量同步的三条时间线</text>
+<text class="t" x="20" y="68" font-size="12" fill="#2b2a26">主库</text>
+<rect class="bx-sick" x="100" y="52" width="40" height="24" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="120" y="68" text-anchor="middle" font-size="9" fill="#b03a2e">fork</text>
+<rect class="bx-q" x="140" y="52" width="470" height="24" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="375" y="68" text-anchor="middle" font-size="10" fill="#6b675e">继续服务；同步期间的新写入进复制缓冲，最后追赶用</text>
+<text class="t" x="20" y="128" font-size="12" fill="#2b2a26">子进程</text>
+<rect class="bx" x="140" y="112" width="280" height="24" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="280" y="128" text-anchor="middle" font-size="10" fill="#6b675e">生成完整 RDB（无盘：直接写管道）</text>
+<line class="fl" x1="118" y1="76" x2="136" y2="108" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red11As5)"/>
+<text class="t" x="20" y="188" font-size="12" fill="#2b2a26">副本</text>
+<rect class="bx" x="180" y="172" width="240" height="24" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="300" y="188" text-anchor="middle" font-size="10" fill="#6b675e">接收并加载（期间可能无法服务）</text>
+<rect class="bx-q" x="440" y="172" width="170" height="24" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="525" y="188" text-anchor="middle" font-size="10" fill="#6b675e">追增量，回到在线</text>
+<line class="fl" x1="280" y1="136" x2="280" y2="168" stroke="#6b675e" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#red11As5)"/>
+<text class="ts" x="288" y="156" font-size="10" fill="#6b675e">快照字节流</text>
+<line class="fl" x1="525" y1="76" x2="525" y2="168" stroke="#6b675e" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#red11As5)"/>
+<text class="ts" x="533" y="156" font-size="10" fill="#6b675e">缓冲的新写入</text>
+<text class="ts" x="20" y="224" font-size="12" fill="#6b675e">无盘复制省掉的是本地临时文件：fork、RDB 编码、网络字节一样都不少</text>
+</svg>
+</figure>
 
 全量同步不是“部分同步失败以后多传一点”，而是重新建立一条共享历史。
 
@@ -320,16 +401,26 @@ repl_backlog_histlen:0
 
 但立即彻底否认旧 ID，又会让所有原本追随同一条历史的副本被迫全量同步。Redis 的做法是保留一栏“曾用名”：“当前 ID”换新，旧 ID 移到 `master_replid2`，并用 `second_repl_offset` 标出它仍然有效到哪里。
 
-```text
-提升以前
-replid = A
-流位置 = 2306223
-
-提升以后
-replid  = B
-replid2 = A
-second_repl_offset = 2306224
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 206" role="img" aria-label="故障转移前后的 ID 换挡：提升以前 replid 是 A、流位置 2306223；提升以后新主库 replid 换成 B，旧 ID A 移进 master_replid2 曾用名栏，second_repl_offset 标出 A 仍有效到 2306224；拿着旧 ID 的副本在限额内仍可部分同步到新历史 B" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="red11As6" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">换主时的 ID 换挡：新历史 B，曾用名 A</text>
+<rect class="bx" x="30" y="44" width="250" height="86" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="155" y="66" text-anchor="middle" font-size="12" fill="#2b2a26">提升以前</text>
+<text class="ts" x="155" y="90" text-anchor="middle" font-size="11" fill="#6b675e">replid = A</text>
+<text class="ts" x="155" y="110" text-anchor="middle" font-size="11" fill="#6b675e">流位置 = 2306223</text>
+<line class="fl" x1="280" y1="87" x2="356" y2="87" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red11As6)"/>
+<text class="ts" x="318" y="77" text-anchor="middle" font-size="10" fill="#6b675e">故障转移</text>
+<rect class="bx-q" x="360" y="44" width="270" height="86" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="495" y="66" text-anchor="middle" font-size="12" fill="#2b2a26">提升以后（新主库）</text>
+<text class="ts" x="495" y="88" text-anchor="middle" font-size="11" fill="#6b675e">replid = B · replid2 = A</text>
+<text class="ts" x="495" y="108" text-anchor="middle" font-size="11" fill="#6b675e">second_repl_offset = 2306224</text>
+<text class="ts" x="30" y="160" font-size="12" fill="#6b675e">拿旧 ID A 回来的副本：位置没越过 2306224 且字节还在窗口，就能续到新历史 B</text>
+<text class="ts" x="30" y="184" font-size="12" fill="#6b675e">曾用名只留一代：连续多次拓扑变化，不能无限追溯祖谱</text>
+</svg>
+</figure>
 
 新历史 B 从分叉点继续前进；拿着旧历史 A 的副本，只要请求位置没有越过 A 的有效上限，且所需字节仍在 backlog，就可以部分同步到 B。
 
