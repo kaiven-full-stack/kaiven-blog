@@ -37,23 +37,61 @@ mem_not_counted_for_evict:0
 
 **maxmemory 管的是 Redis 分配器已分配字节的水位，与操作系统内存表上的最后一行不是同一个数。**
 
+同一个实例的两把尺子：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 196" role="img" aria-label="淘汰水位与进程内存的两把尺子：used_memory 约 16.76MB 是分配器已分配字节，水位比较用它；进程 RSS 约 24.5MB 还包含分配器保留页、碎片与线程栈，两者的比值就是碎片率 1.46" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">水位看哪条线：实验稳态的两把尺子</text>
+<text class="ts" x="20" y="66" font-size="12" fill="#6b675e">used_memory</text>
+<rect class="bar" x="140" y="52" width="335" height="20" fill="#2b2a26"/>
+<text class="onbar" x="150" y="67" font-size="11" fill="#f6f3ec">16.76MB · 分配器已分配字节</text>
+<text class="ts" x="20" y="110" font-size="12" fill="#6b675e">进程 RSS</text>
+<rect class="bar" x="140" y="96" width="490" height="20" fill="#6b675e"/>
+<text class="onbar" x="150" y="111" font-size="11" fill="#f6f3ec">24.5MB · 再加保留页、碎片、线程栈</text>
+<line class="flc" x1="475" y1="44" x2="475" y2="124" stroke="#b03a2e" stroke-width="1.6" stroke-dasharray="4 3"/>
+<text class="tc" x="481" y="140" font-size="11" fill="#b03a2e">maxmemory 只与上面那条比</text>
+<text class="ts" x="20" y="166" font-size="12" fill="#6b675e">两条的比值 24.5 ÷ 16.76 ≈ 1.46，正是 mem_fragmentation_ratio</text>
+<text class="ts" x="20" y="186" font-size="12" fill="#6b675e">比较前还扣掉 AOF 缓冲等不计入项，防「越淘汰越超限」的反馈回路</text>
+</svg>
+</figure>
+
 ## 每条命令前，重新回答一次“要不要腾空间”
 
 Redis 7.4.11 在 `processCommand()` 的执行前检查阶段调用 `performEvictions()`：
 
-```text
-客户端命令到达
-    │
-    ├─ 解析、认证、ACL、Cluster 路由等检查
-    │
-    ├─ performEvictions()
-    │     ├─ 水位正常：继续
-    │     ├─ 成功腾出空间：继续
-    │     ├─ 尚在时间预算内分批处理：继续调度
-    │     └─ 无候选或 noeviction：记录 OOM 状态
-    │
-    └─ DENYOOM 命令可能在执行前被拒绝
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 268" role="img" aria-label="performEvictions 的检查流程：客户端命令到达，先过解析认证 ACL 路由检查，再进 performEvictions；四个出口分别是水位正常继续、成功腾出空间继续、预算用完安排下一批、无候选或 noeviction 记 OOM；OOM 状态下 denyoom 写命令被拒，GET DEL EXPIRE 照常" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="red9As2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">「内存满了」没有后台哨兵：每条命令执行前重新问一遍</text>
+<rect class="bx-q" x="230" y="36" width="200" height="32" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="330" y="56" text-anchor="middle" font-size="12" fill="#6b675e">客户端命令到达</text>
+<line class="fl" x1="330" y1="68" x2="330" y2="84" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red9As2)"/>
+<rect class="bx" x="200" y="88" width="260" height="32" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="330" y="108" text-anchor="middle" font-size="11" fill="#6b675e">解析、认证、ACL、Cluster 路由检查</text>
+<line class="fl" x1="330" y1="120" x2="330" y2="136" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red9As2)"/>
+<rect class="bx-sick" x="230" y="140" width="200" height="32" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="330" y="160" text-anchor="middle" font-size="12" fill="#b03a2e">performEvictions()</text>
+<line class="fl" x1="270" y1="172" x2="95" y2="190" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red9As2)"/>
+<line class="fl" x1="310" y1="172" x2="250" y2="190" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red9As2)"/>
+<line class="fl" x1="360" y1="172" x2="410" y2="190" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red9As2)"/>
+<line class="fl" x1="400" y1="172" x2="570" y2="190" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red9As2)"/>
+<rect class="bx" x="20" y="194" width="145" height="46" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="92" y="212" text-anchor="middle" font-size="10" fill="#6b675e">水位正常</text>
+<text class="ts" x="92" y="230" text-anchor="middle" font-size="10" fill="#6b675e">继续执行</text>
+<rect class="bx" x="175" y="194" width="145" height="46" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="247" y="212" text-anchor="middle" font-size="10" fill="#6b675e">成功腾出空间</text>
+<text class="ts" x="247" y="230" text-anchor="middle" font-size="10" fill="#6b675e">继续执行</text>
+<rect class="bx" x="330" y="194" width="155" height="46" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="407" y="212" text-anchor="middle" font-size="10" fill="#6b675e">单轮预算用完还差</text>
+<text class="ts" x="407" y="230" text-anchor="middle" font-size="10" fill="#6b675e">安排时间事件分批续做</text>
+<rect class="bx-sick" x="495" y="194" width="150" height="46" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="570" y="212" text-anchor="middle" font-size="10" fill="#b03a2e">无候选 / noeviction</text>
+<text class="ts" x="570" y="230" text-anchor="middle" font-size="10" fill="#6b675e">记 OOM 状态</text>
+<text class="ts" x="20" y="260" font-size="12" fill="#6b675e">OOM 状态下：denyoom 的写命令被拒，GET / DEL / EXPIRE 这些不涨内存或能缩水的照常</text>
+</svg>
+</figure>
 
 所以“内存满了”这件事没有独立的后台告警，它由后续命令不断重新触发判断。默认 `maxmemory-eviction-tenacity=10` 对应约 500 微秒的单轮预算；预算用完但仍需淘汰时，Redis 会安排时间事件继续小批处理，而不是让一次水位检查无限占住主线程。把 tenacity 调到 100 则表示不限制这一轮时间，尾延迟风险也随之上升。
 
@@ -131,21 +169,53 @@ LRU 模式下，这 24 位保存最近访问时的时钟读数。读取对象时
 
 样本被放入容量为 16 的 eviction pool。池按“最值得淘汰”程度排序，保留跨轮候选；真正删除时从最优候选一端取键。若池里的键已经不存在，就跳过并继续寻找。
 
-```text
-从候选集合随机采样 N 只
-          │
-          ▼
-┌──────── eviction pool，容量 16 ────────┐
-│ 较不该删 ...                    最该删 │
-└────────────────────────────────────────┘
-                                  │
-                                  ▼
-                           删除一个候选
-                                  │
-                      仍高于 maxmemory？
-                          ├─ 是：继续
-                          └─ 否：退出
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 254" role="img" aria-label="近似淘汰的循环：从候选集合随机采样默认 5 只键，放进容量 16 的 eviction pool 按最值得淘汰排序，从最优端删除一个，仍高于水位就再抽一轮，直到回到水位之下；random 策略不进池" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="red9As3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">候选名单从不预先存在：水位越界时临时拼出来</text>
+<rect class="bx" x="20" y="48" width="170" height="86" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="105" y="70" text-anchor="middle" font-size="12" fill="#2b2a26">候选集合</text>
+<rect class="msg" x="40" y="82" width="8" height="10" fill="#a29d90" opacity="0.65"/>
+<rect class="msg" x="56" y="82" width="8" height="10" fill="#a29d90" opacity="0.65"/>
+<rect class="msg" x="72" y="82" width="8" height="10" fill="#a29d90" opacity="0.65"/>
+<rect class="msg" x="88" y="82" width="8" height="10" fill="#a29d90" opacity="0.65"/>
+<rect class="msg" x="104" y="82" width="8" height="10" fill="#a29d90" opacity="0.65"/>
+<rect class="msg" x="120" y="82" width="8" height="10" fill="#a29d90" opacity="0.65"/>
+<rect class="msg" x="136" y="82" width="8" height="10" fill="#a29d90" opacity="0.65"/>
+<rect class="msg" x="152" y="82" width="8" height="10" fill="#a29d90" opacity="0.65"/>
+<text class="ts" x="105" y="112" text-anchor="middle" font-size="10" fill="#6b675e">allkeys：全库 · volatile：仅 TTL 键</text>
+<text class="ts" x="105" y="126" text-anchor="middle" font-size="10" fill="#6b675e">随机采样 N 只（默认 5）</text>
+<line class="fl" x1="190" y1="90" x2="236" y2="90" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red9As3)"/>
+<rect class="bx-q" x="240" y="48" width="280" height="86" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="380" y="70" text-anchor="middle" font-size="12" fill="#2b2a26">eviction pool · 容量 16</text>
+<rect class="bx" x="256" y="82" width="14" height="14" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<rect class="bx" x="274" y="82" width="14" height="14" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<rect class="bx" x="292" y="82" width="14" height="14" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<rect class="bx" x="310" y="82" width="14" height="14" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<rect class="bx" x="328" y="82" width="14" height="14" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<rect class="bx" x="346" y="82" width="14" height="14" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<rect class="bx" x="364" y="82" width="14" height="14" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<rect class="bx" x="382" y="82" width="14" height="14" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<rect class="bx-sick" x="400" y="82" width="14" height="14" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/>
+<rect class="bx-sick" x="418" y="82" width="14" height="14" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/>
+<rect class="bx-sick" x="436" y="82" width="14" height="14" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/>
+<rect class="bx-sick" x="454" y="82" width="14" height="14" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/>
+<text class="ts" x="256" y="116" font-size="10" fill="#6b675e">较不该删</text>
+<text class="ts" x="468" y="116" font-size="10" fill="#6b675e">→ 最该删</text>
+<text class="ts" x="380" y="128" text-anchor="middle" font-size="10" fill="#6b675e">跨轮保留历史样本 · 键没了就跳过</text>
+<line class="fl" x1="520" y1="90" x2="556" y2="90" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red9As3)"/>
+<rect class="bx-sick" x="560" y="66" width="90" height="48" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="605" y="86" text-anchor="middle" font-size="11" fill="#b03a2e">删除一个</text>
+<text class="ts" x="605" y="104" text-anchor="middle" font-size="10" fill="#6b675e">取最优端</text>
+<path class="fl" d="M605 114 L605 172 L105 172 L105 140" fill="none" stroke="#6b675e" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#red9As3)"/>
+<text class="ts" x="355" y="166" text-anchor="middle" font-size="11" fill="#6b675e">仍高于 maxmemory：再抽一轮（单轮预算约 500μs）</text>
+<text class="ts" x="355" y="196" text-anchor="middle" font-size="11" fill="#6b675e">回到水位之下：退出循环，这条命令继续执行</text>
+<text class="ts" x="20" y="230" font-size="12" fill="#6b675e">排序依据随策略换：LRU 按空闲时长，LFU 按反频率，volatile-ttl 按到期时间</text>
+<text class="ts" x="20" y="248" font-size="12" fill="#6b675e">random 策略不进池：抽到即删</text>
+</svg>
+</figure>
 
 LRU 用空闲时长排序，LFU 用反频率排序，`volatile-ttl` 用到期时间排序。random 策略不走候选池，抽到后直接选择。
 
@@ -165,6 +235,53 @@ LRU 用空闲时长排序，LFU 用反频率排序，`volatile-ttl` 用到期时
 
 `samples=1` 基本就是随机挑一只：三组受害数量接近，连刚写入的新键也稳定出现于淘汰名单。到默认值 5，最新组在本次三轮中不再被淘汰，压力集中到 A、B；增加到 25 后，名单进一步靠近真正最老的 A 组。
 
+受害者分布画出来：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 254" role="img" aria-label="三档采样下的受害者分布条形图：samples=1 时 A、B、C、新写键四组各被淘汰六七十到八十五只，接近抽签；samples=5 时 A 组约 209、B 组约 92，C 组和新键归零；samples=25 时 A 组约 258、B 组约 43，名单贴向真正最老的一组" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">800 键三组分层、约 302 次淘汰：每档取三轮的代表值</text>
+<text class="ts" x="115" y="56" text-anchor="middle" font-size="12" fill="#6b675e">samples=1</text>
+<rect class="bar" x="45" y="145" width="30" height="35" fill="#2b2a26"/>
+<rect class="bar" x="85" y="148" width="30" height="32" fill="#6b675e"/>
+<rect class="bar" x="125" y="146" width="30" height="34" fill="#a29d90"/>
+<rect class="bar" x="165" y="140" width="30" height="40" fill="#b03a2e"/>
+<text class="ts" x="60" y="196" text-anchor="middle" font-size="10" fill="#6b675e">76</text>
+<text class="ts" x="100" y="196" text-anchor="middle" font-size="10" fill="#6b675e">68</text>
+<text class="ts" x="140" y="196" text-anchor="middle" font-size="10" fill="#6b675e">73</text>
+<text class="ts" x="180" y="196" text-anchor="middle" font-size="10" fill="#6b675e">85</text>
+<text class="ts" x="325" y="56" text-anchor="middle" font-size="12" fill="#6b675e">samples=5（默认）</text>
+<rect class="bar" x="255" y="83" width="30" height="97" fill="#2b2a26"/>
+<rect class="bar" x="295" y="137" width="30" height="43" fill="#6b675e"/>
+<rect class="bar" x="335" y="178" width="30" height="2" fill="#a29d90"/>
+<rect class="bar" x="375" y="178" width="30" height="2" fill="#b03a2e"/>
+<text class="ts" x="270" y="196" text-anchor="middle" font-size="10" fill="#6b675e">209</text>
+<text class="ts" x="310" y="196" text-anchor="middle" font-size="10" fill="#6b675e">92</text>
+<text class="ts" x="350" y="196" text-anchor="middle" font-size="10" fill="#6b675e">0</text>
+<text class="ts" x="390" y="196" text-anchor="middle" font-size="10" fill="#6b675e">0</text>
+<text class="ts" x="535" y="56" text-anchor="middle" font-size="12" fill="#6b675e">samples=25</text>
+<rect class="bar" x="465" y="60" width="30" height="120" fill="#2b2a26"/>
+<rect class="bar" x="505" y="160" width="30" height="20" fill="#6b675e"/>
+<rect class="bar" x="545" y="178" width="30" height="2" fill="#a29d90"/>
+<rect class="bar" x="585" y="178" width="30" height="2" fill="#b03a2e"/>
+<text class="ts" x="480" y="196" text-anchor="middle" font-size="10" fill="#6b675e">258</text>
+<text class="ts" x="520" y="196" text-anchor="middle" font-size="10" fill="#6b675e">43</text>
+<text class="ts" x="560" y="196" text-anchor="middle" font-size="10" fill="#6b675e">0</text>
+<text class="ts" x="600" y="196" text-anchor="middle" font-size="10" fill="#6b675e">0</text>
+<line class="axis" x1="35" y1="180" x2="205" y2="180" stroke="#6b675e" stroke-width="1"/>
+<line class="axis" x1="245" y1="180" x2="415" y2="180" stroke="#6b675e" stroke-width="1"/>
+<line class="axis" x1="455" y1="180" x2="625" y2="180" stroke="#6b675e" stroke-width="1"/>
+<rect class="bar" x="40" y="212" width="12" height="12" fill="#2b2a26"/>
+<text class="ts" x="58" y="222" font-size="11" fill="#6b675e">A 最老组</text>
+<rect class="bar" x="150" y="212" width="12" height="12" fill="#6b675e"/>
+<text class="ts" x="168" y="222" font-size="11" fill="#6b675e">B 中间组</text>
+<rect class="bar" x="260" y="212" width="12" height="12" fill="#a29d90"/>
+<text class="ts" x="278" y="222" font-size="11" fill="#6b675e">C 最新组</text>
+<rect class="bar" x="370" y="212" width="12" height="12" fill="#b03a2e"/>
+<text class="ts" x="388" y="222" font-size="11" fill="#6b675e">新写键</text>
+<text class="ts" x="20" y="246" font-size="12" fill="#6b675e">变的是分布形状，不是总量：淘汰总数由内存缺口决定，策略只决定谁中签</text>
+</svg>
+</figure>
+
 这些区间只属于本次键数、访问间隔和淘汰压力。换一次随机种子，具体键名会变；换一台机器，时间层次也可能变化。可依赖的是趋势：样本越大，选中“更符合排序目标”的概率越高，但检查成本也更高。
 
 官方建议 5 已能取得较好近似，10 更接近精确 LRU。即使把样本调得很大，每键时钟仍只有秒级和 24 位，也不能宣称得到数学意义上的严格 LRU。近似算法给出的是受害者分布，不是一份可预先写死的名单。
@@ -173,10 +290,21 @@ LRU 用空闲时长排序，LFU 用反频率排序，`volatile-ttl` 用到期时
 
 LFU 没有为每个对象再增加一只完整计数器，它重新解释了同一块 24 位字段：
 
-```text
-LRU: [              24 位最近访问时钟              ]
-LFU: [       16 位分钟时钟       ][ 8 位频率计数 ]
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 192" role="img" aria-label="每个对象 24 位字段的两种读法：LRU 模式整段是最近访问时钟，秒级分辨率约 194 天回绕；LFU 模式切成 16 位分钟时钟约 45 天回绕，加 8 位频率计数，初值 5，概率式增长，255 饱和" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">同一块 24 位，两种切法</text>
+<text class="t" x="20" y="66" font-size="12" fill="#2b2a26">LRU</text>
+<rect class="bx-q" x="80" y="48" width="460" height="32" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="310" y="68" text-anchor="middle" font-size="11" fill="#6b675e">24 位最近访问时钟：秒级分辨率，约 194 天回绕</text>
+<text class="t" x="20" y="126" font-size="12" fill="#2b2a26">LFU</text>
+<rect class="bx" x="80" y="108" width="310" height="32" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="235" y="128" text-anchor="middle" font-size="11" fill="#6b675e">16 位分钟时钟：约 45 天回绕</text>
+<rect class="bx-sick" x="390" y="108" width="150" height="32" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="465" y="128" text-anchor="middle" font-size="11" fill="#b03a2e">8 位频率计数</text>
+<text class="ts" x="80" y="162" font-size="12" fill="#6b675e">计数初值 5，每次访问按概率 +1，255 饱和：是印象值，不是访问次数</text>
+<text class="ts" x="80" y="182" font-size="12" fill="#6b675e">策略决定读法：同一块内存，LRU 读出「多久没来」，LFU 读出「来得多勤」</text>
+</svg>
+</figure>
 
 低 8 位并不记录真实访问次数。新键初始值是 5；每次访问只以一定概率加一：
 
@@ -194,6 +322,38 @@ baseval = max(counter - 5, 0)
 | 本次 FREQ | 6 | 7 | 7 | 7 | 8 | 8 | 9 | 11 | 15 | 16 |
 
 这是一条随机概率曲线，不是每次运行必须得到的固定表。官方默认参数的数量级示例也显示：约 100 次访问可能到 10，1000 次到 18，约一百万次才接近 255。
+
+这次加热的曲线：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 234" role="img" aria-label="LFU 加热曲线：横轴是累计访问次数（对数），纵轴是 OBJECT FREQ；1 次访问从初值 5 到 6，1023 次访问也只到 16，前几次最容易留下痕迹，越热越难增长" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">连续访问同一只键：1023 次只把 FREQ 从 5 推到 16</text>
+<text class="ts" x="20" y="44" font-size="11" fill="#6b675e">OBJECT FREQ</text>
+<line class="grid" x1="70" y1="130" x2="610" y2="130" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 4"/>
+<line class="grid" x1="70" y1="70" x2="610" y2="70" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 4"/>
+<line class="axis" x1="70" y1="190" x2="70" y2="50" stroke="#6b675e" stroke-width="1.2"/>
+<line class="axis" x1="70" y1="190" x2="620" y2="190" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="62" y="194" text-anchor="end" font-size="11" fill="#6b675e">5</text>
+<text class="ts" x="62" y="134" text-anchor="end" font-size="11" fill="#6b675e">10</text>
+<text class="ts" x="62" y="74" text-anchor="end" font-size="11" fill="#6b675e">15</text>
+<polyline class="curve-k" points="70,178 155,166 222,166 281,166 337,154 393,154 447,142 502,118 556,70 610,58" fill="none" stroke="#2b2a26" stroke-width="2"/>
+<circle class="fill-c" cx="70" cy="178" r="3" fill="#b03a2e"/>
+<circle class="fill-c" cx="222" cy="166" r="3" fill="#b03a2e"/>
+<circle class="fill-c" cx="337" cy="154" r="3" fill="#b03a2e"/>
+<circle class="fill-c" cx="447" cy="142" r="3" fill="#b03a2e"/>
+<circle class="fill-c" cx="556" cy="70" r="3" fill="#b03a2e"/>
+<circle class="fill-c" cx="610" cy="58" r="3" fill="#b03a2e"/>
+<text class="tc" x="86" y="160" font-size="11" fill="#b03a2e">前几次最容易留下痕迹</text>
+<text class="ts" x="420" y="170" font-size="11" fill="#6b675e">越热，下一次 +1 越难</text>
+<text class="ts" x="70" y="210" text-anchor="middle" font-size="11" fill="#6b675e">1</text>
+<text class="ts" x="178" y="210" text-anchor="middle" font-size="11" fill="#6b675e">4</text>
+<text class="ts" x="286" y="210" text-anchor="middle" font-size="11" fill="#6b675e">16</text>
+<text class="ts" x="394" y="210" text-anchor="middle" font-size="11" fill="#6b675e">64</text>
+<text class="ts" x="502" y="210" text-anchor="middle" font-size="11" fill="#6b675e">256</text>
+<text class="ts" x="610" y="210" text-anchor="middle" font-size="11" fill="#6b675e">1024</text>
+<text class="ts" x="620" y="228" text-anchor="end" font-size="11" fill="#6b675e">累计访问次数（横轴对数）</text>
+</svg>
+</figure>
 
 `OBJECT FREQ` 使用不触碰对象的读取路径，并计算惰性衰减，不会因为查看频率而给它增加一次访问。
 
