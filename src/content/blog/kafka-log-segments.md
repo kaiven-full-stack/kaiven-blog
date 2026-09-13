@@ -39,6 +39,38 @@ compresscodec: none crc: 4059270002 isvalid: true
 
 **消息在磁盘上的真实形态不是一条条记录，而是一批批的压缩包**。这也解释了上一篇灌压实验 20000 条 1.7 秒的一个侧面：攒批不只减少请求次数，还把每条消息的元数据开销摊薄进了批次头。
 
+一个 batch 的结构，画出来：
+
+<figure class="mq-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 226" role="img" aria-label="batch 结构：一个批次头带五条消息记录，头里记着 baseOffset 0、lastOffset 4、count 5、size 296 字节、crc 校验和 producerId -1，offset 在区间内顺次编号" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">一次 send 的 5 条消息：磁盘上是同一个 batch，共享一个批次头</text>
+<rect class="bx-q" x="40" y="40" width="580" height="112" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<rect class="bx" x="56" y="52" width="150" height="84" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="131" y="72" text-anchor="middle" font-size="14" fill="#2b2a26">批次头</text>
+<text class="ts" x="131" y="90" text-anchor="middle" font-size="12" fill="#6b675e">baseOffset 0, lastOffset 4</text>
+<text class="ts" x="131" y="106" text-anchor="middle" font-size="12" fill="#6b675e">count 5 · size 296B</text>
+<text class="ts" x="131" y="122" text-anchor="middle" font-size="12" fill="#6b675e">crc · producerId -1</text>
+<rect class="bx" x="222" y="52" width="60" height="84" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="252" y="90" text-anchor="middle" font-size="14" fill="#2b2a26">#0</text>
+<text class="ts" x="252" y="112" text-anchor="middle" font-size="12" fill="#6b675e">消息</text>
+<rect class="bx" x="290" y="52" width="60" height="84" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="320" y="90" text-anchor="middle" font-size="14" fill="#2b2a26">#1</text>
+<text class="ts" x="320" y="112" text-anchor="middle" font-size="12" fill="#6b675e">消息</text>
+<rect class="bx" x="358" y="52" width="60" height="84" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="388" y="90" text-anchor="middle" font-size="14" fill="#2b2a26">#2</text>
+<text class="ts" x="388" y="112" text-anchor="middle" font-size="12" fill="#6b675e">消息</text>
+<rect class="bx" x="426" y="52" width="60" height="84" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="456" y="90" text-anchor="middle" font-size="14" fill="#2b2a26">#3</text>
+<text class="ts" x="456" y="112" text-anchor="middle" font-size="12" fill="#6b675e">消息</text>
+<rect class="bx" x="494" y="52" width="60" height="84" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="524" y="90" text-anchor="middle" font-size="14" fill="#2b2a26">#4</text>
+<text class="ts" x="524" y="112" text-anchor="middle" font-size="12" fill="#6b675e">消息</text>
+<text class="ts" x="330" y="172" text-anchor="middle" font-size="12" fill="#6b675e">count: 5，offset 0–4 在这一个区间里顺次编号</text>
+<text class="ts" x="20" y="194" font-size="12" fill="#6b675e">offset 的分配单位是 batch：leader 给整批一个起点，区间内每条顺次编号</text>
+<text class="ts" x="20" y="212" font-size="12" fill="#6b675e">压缩的单位也是 batch：compresscodec 作用在整批，不在单条消息</text>
+</svg>
+</figure>
+
 ## 二、日志段：文件名就是坐标
 
 一批 296 字节不足以看清存储的骨架。往同一个分区灌 1.2MB（20 条 60KB 的大消息，每条独占一个 batch），然后看日志目录：
@@ -50,6 +82,35 @@ compresscodec: none crc: 4059270002 isvalid: true
 ```
 
 三个文件，三个**日志段（segment）**。规则一目了然：段写满 1MB（我们配的 `segment.bytes`）就滚动，开新段；**文件名是 20 位零填充的数字，就是这个段的起始 offset**。`...005` 段从 offset 5 开始，装到 21；`...022` 从 22 开始，是当前正在写的活跃段（active segment）。
+
+这三个段在日志目录里的样子：
+
+<figure class="mq-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 192" role="img" aria-label="日志段目录视图：三个段文件 000、005、022，文件名就是各自段的起始 offset，前两段已封板只读，022 是正在写的活跃段，每段旁边配 index 和 timeindex 文件" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="mq4As1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">灌进 1.2MB，滚出三个段：文件名就是该段的起始 offset</text>
+<rect class="bx" x="40" y="44" width="170" height="84" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="125" y="68" text-anchor="middle" font-size="14" fill="#2b2a26">…000.log</text>
+<text class="ts" x="125" y="88" text-anchor="middle" font-size="12" fill="#6b675e">offset 0–4</text>
+<text class="ts" x="125" y="106" text-anchor="middle" font-size="12" fill="#6b675e">296 B · 已封板只读</text>
+<rect class="bx" x="240" y="44" width="170" height="84" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="325" y="68" text-anchor="middle" font-size="14" fill="#2b2a26">…005.log</text>
+<text class="ts" x="325" y="88" text-anchor="middle" font-size="12" fill="#6b675e">offset 5–21</text>
+<text class="ts" x="325" y="106" text-anchor="middle" font-size="12" fill="#6b675e">1,046,018 B · 已封板只读</text>
+<rect class="bx-q" x="440" y="44" width="170" height="84" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="525" y="68" text-anchor="middle" font-size="14" fill="#2b2a26">…022.log</text>
+<text class="ts" x="525" y="88" text-anchor="middle" font-size="12" fill="#6b675e">offset 22–24</text>
+<text class="tc" x="525" y="106" text-anchor="middle" font-size="12" fill="#b03a2e">活跃段：正在写</text>
+<line class="fl" x1="210" y1="86" x2="234" y2="86" stroke="#6b675e" stroke-width="1.6" marker-end="url(#mq4As1)"/>
+<line class="fl" x1="410" y1="86" x2="434" y2="86" stroke="#6b675e" stroke-width="1.6" marker-end="url(#mq4As1)"/>
+<text class="ts" x="125" y="146" text-anchor="middle" font-size="12" fill="#6b675e">…000.index / .timeindex</text>
+<text class="ts" x="325" y="146" text-anchor="middle" font-size="12" fill="#6b675e">…005.index / .timeindex</text>
+<text class="ts" x="525" y="146" text-anchor="middle" font-size="12" fill="#6b675e">…022.index / .timeindex</text>
+<text class="ts" x="330" y="176" text-anchor="middle" font-size="12" fill="#6b675e">段写满 segment.bytes=1MB 就滚动开新段；正在写的只有活跃段，旧段只读</text>
+</svg>
+</figure>
 
 为什么要把一根连续的日志切成段？三个理由，每个都对应后面的一节：
 
@@ -76,6 +137,53 @@ offset: 21 position: 984487
 
 查找 offset=9 的消息走三步：①定目标段，对文件名二分（`...005` ≤ 9 < `...022`）；②段内对索引二分，找到 `offset: 9 position: 246120`；③从 position 246120 开始顺序扫描，在下一条索引条目覆盖的范围内找到精确位置。第三步是稀疏索引的精髓：允许索引不精确，因为日志本身有序且连续，扫几条消息的代价是常数，换来索引体积缩小一个数量级。
 
+查找的三步，每步一张：
+
+<figure class="mq-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 318" role="img" aria-label="稀疏索引查找 offset=9 的三步：先对段文件名二分定位到 005 段，再对段内 index 二分命中 offset 9 对应 position 246120，最后从该 position 顺序短扫找到精确位置" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="mq4Ac1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-c" d="M0 0 L8 4 L0 8 Z" fill="#b03a2e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">查 offset=9 的消息</text>
+<rect class="bx" x="40" y="48" width="80" height="32" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="80" y="68" text-anchor="middle" font-size="12" fill="#6b675e">…000</text>
+<rect class="bx-q" x="130" y="48" width="80" height="32" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="170" y="68" text-anchor="middle" font-size="14" fill="#2b2a26">…005</text>
+<rect class="bx" x="220" y="48" width="80" height="32" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="260" y="68" text-anchor="middle" font-size="12" fill="#6b675e">…022</text>
+<line class="flc" x1="130" y1="86" x2="210" y2="86" stroke="#b03a2e" stroke-width="2"/>
+<text class="ts" x="320" y="68" font-size="12" fill="#6b675e">① 对文件名二分定段：5 ≤ 9 &lt; 22，命中 …005.log</text>
+<rect class="bx" x="40" y="112" width="104" height="40" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="92" y="128" text-anchor="middle" font-size="12" fill="#6b675e">offset 6</text>
+<text class="ts" x="92" y="144" text-anchor="middle" font-size="12" fill="#6b675e">pos 61530</text>
+<rect class="bx" x="152" y="112" width="104" height="40" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="204" y="128" text-anchor="middle" font-size="12" fill="#6b675e">offset 7</text>
+<text class="ts" x="204" y="144" text-anchor="middle" font-size="12" fill="#6b675e">pos 123060</text>
+<rect class="bx" x="264" y="112" width="104" height="40" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="316" y="128" text-anchor="middle" font-size="12" fill="#6b675e">offset 8</text>
+<text class="ts" x="316" y="144" text-anchor="middle" font-size="12" fill="#6b675e">pos 184590</text>
+<rect class="bx-q" x="376" y="112" width="104" height="40" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="428" y="128" text-anchor="middle" font-size="14" fill="#2b2a26">offset 9</text>
+<text class="t" x="428" y="144" text-anchor="middle" font-size="14" fill="#2b2a26">pos 246120</text>
+<rect class="bx" x="488" y="112" width="104" height="40" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="540" y="128" text-anchor="middle" font-size="12" fill="#6b675e">offset 10</text>
+<text class="ts" x="540" y="144" text-anchor="middle" font-size="12" fill="#6b675e">pos 307650</text>
+<line class="flc" x1="376" y1="158" x2="480" y2="158" stroke="#b03a2e" stroke-width="2"/>
+<text class="ts" x="40" y="176" font-size="12" fill="#6b675e">② 段内对 .index 二分：命中 offset: 9, position: 246120</text>
+<path class="fill-c" d="M185 194 L180 204 L190 204 Z" fill="#b03a2e"/>
+<text class="tc" x="185" y="190" text-anchor="middle" font-size="12" fill="#b03a2e">position 246120</text>
+<rect class="bx-q" x="40" y="204" width="580" height="40" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<rect class="msg" x="192" y="218" width="10" height="12" fill="#a29d90" opacity="0.65"/>
+<rect class="msg" x="228" y="218" width="10" height="12" fill="#a29d90" opacity="0.65"/>
+<rect class="fill-c" x="264" y="218" width="10" height="12" fill="#b03a2e"/>
+<rect class="msg" x="300" y="218" width="10" height="12" fill="#a29d90" opacity="0.65"/>
+<text class="ts" x="318" y="228" font-size="12" fill="#6b675e">offset 9 的精确位置</text>
+<line class="flc" x1="190" y1="256" x2="296" y2="256" stroke="#b03a2e" stroke-width="1.6" marker-end="url(#mq4Ac1)"/>
+<text class="ts" x="244" y="274" text-anchor="middle" font-size="12" fill="#6b675e">③ 顺序短扫，就几条</text>
+<text class="ts" x="40" y="300" font-size="12" fill="#6b675e">索引允许不精确：日志有序且连续，短扫的代价是常数，换来索引体积缩小一个数量级</text>
+</svg>
+</figure>
+
 拿 B+ 树对照：B+ 树是为随机点查造的多级目录，三层下降三次随机 I/O；稀疏索引是为有序追加造的一级路标，数据物理上已经排好序，索引只需要偶尔立块牌子。MySQL 读者还会想起索引的另一种形态：InnoDB 的 change buffer（缓冲池篇拆过）在为「不必现在找」打时间差，Kafka 干脆取消了「找」。数据结构长成什么样，取决于数据怎么被访问。
 
 两个边角发现顺手记下。其一：`.index` 文件 `ls -la` 显示 10MB，`du` 实占 0 磁盘块，是预分配的稀疏文件，滚动关闭时才 truncate 到实际内容（活跃段索引 10MB、老段索引 0~128B，都见过实物）。这样避免频繁扩文件，也说明了「索引有上限、稀疏是必需品」。其二：段的第一条消息（baseOffset）不占索引条目，position 0 是隐含的起点，条目从第二条开始记，这也是 5 号段索引从 offset 6 开始的原因。
@@ -100,9 +208,64 @@ kseg:0:6
 
 返回 offset 6：那个时刻的第一条消息。时间旅行的工程形态就是它：「把消费组重置到事故发生前」。这在 RabbitMQ 里没有对应物（消息送走就没了，没有历史可回），在 Kafka 里是一次 timeindex 查询加一次位移重置。日志存的不只是消息，是带时间轴的历史。这也解释了上一节稀疏索引为什么可以粗：这段历史反正会按时间窗整段截断，索引没必要比数据活得精细。
 
+这次查询的路径：
+
+<figure class="mq-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 172" role="img" aria-label="时间旅行路径：拿昨天 14:00 的时间戳查 timeindex 得到 offset 6，消费者把位移重置到 6 从那里继续读；已 unlink 的段救不回来" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="mq4As3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">「把消费组重置到昨天 14:00」的工程形态：一次索引查询，加一次位移重置</text>
+<rect class="bx" x="30" y="60" width="130" height="44" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="95" y="86" text-anchor="middle" font-size="14" fill="#2b2a26">昨天 14:00</text>
+<line class="fl" x1="160" y1="82" x2="196" y2="82" stroke="#6b675e" stroke-width="1.6" marker-end="url(#mq4As3)"/>
+<text class="ts" x="178" y="74" text-anchor="middle" font-size="12" fill="#6b675e">查</text>
+<rect class="bx-q" x="202" y="60" width="140" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="272" y="79" text-anchor="middle" font-size="14" fill="#2b2a26">.timeindex</text>
+<text class="ts" x="272" y="95" text-anchor="middle" font-size="12" fill="#6b675e">timestamp ↔ offset</text>
+<line class="fl" x1="342" y1="82" x2="378" y2="82" stroke="#6b675e" stroke-width="1.6" marker-end="url(#mq4As3)"/>
+<text class="ts" x="360" y="74" text-anchor="middle" font-size="12" fill="#6b675e">得到</text>
+<rect class="bx" x="384" y="60" width="100" height="44" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="434" y="86" text-anchor="middle" font-size="14" fill="#2b2a26">offset 6</text>
+<line class="fl" x1="484" y1="82" x2="520" y2="82" stroke="#6b675e" stroke-width="1.6" marker-end="url(#mq4As3)"/>
+<text class="ts" x="502" y="74" text-anchor="middle" font-size="12" fill="#6b675e">重置</text>
+<rect class="bx" x="526" y="60" width="110" height="44" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="581" y="79" text-anchor="middle" font-size="14" fill="#2b2a26">消费者</text>
+<text class="ts" x="581" y="95" text-anchor="middle" font-size="12" fill="#6b675e">从 6 继续读</text>
+<text class="ts" x="330" y="136" text-anchor="middle" font-size="12" fill="#6b675e">时间旅行只在保留期内有效：被 unlink 的段，timeindex 也救不回来</text>
+<text class="ts" x="330" y="158" text-anchor="middle" font-size="12" fill="#6b675e">RabbitMQ 里没有对应物：消息送走就没了，没有历史可回</text>
+</svg>
+</figure>
+
 ## 五、删除：按段，而且不着急
 
 retention 配了 60 秒。灌完消息等 60 秒、80 秒、100 秒，段文件一动不动。过期和删除是两件事，中间隔着一个周期任务：broker 的清理线程默认每 5 分钟（`log.retention.check.interval.ms`）巡一遍日志目录，发现段的整体时间戳过了保留期，才把它标记删除：改名 `.deleted`，再等一个删除延迟（默认 60 秒），才真正 unlink。60 秒的 retention 撞上 5 分钟的巡逻周期，具体什么时候删由巡逻决定。这个设计是故意的：删除要和读写竞争磁盘 IO，Kafka 把它安排成不慌不忙的后台任务。
+
+这条延迟画在时间轴上：
+
+<figure class="mq-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 216" role="img" aria-label="删除时间线：retention 60 秒到期时段文件不动，清理线程每 5 分钟巡一遍，发现过期才改名 .deleted，再等 60 秒删除延迟才真正 unlink，earliest 从 0 跳到 25" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="mq4As2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">retention 60 秒，删除却不准时：过期和删除是两件事</text>
+<line class="fl" x1="40" y1="120" x2="612" y2="120" stroke="#6b675e" stroke-width="1.6" marker-end="url(#mq4As2)"/>
+<line class="axis" x1="80" y1="112" x2="80" y2="128" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="80" y="100" text-anchor="middle" font-size="12" fill="#6b675e">灌完，三个段</text>
+<text class="ts" x="80" y="146" text-anchor="middle" font-size="12" fill="#6b675e">t=0</text>
+<line class="flc" x1="220" y1="112" x2="220" y2="128" stroke="#b03a2e" stroke-width="2"/>
+<text class="tc" x="220" y="100" text-anchor="middle" font-size="12" fill="#b03a2e">retention 60s 到期</text>
+<text class="ts" x="220" y="146" text-anchor="middle" font-size="12" fill="#6b675e">段还躺着，一动不动</text>
+<line class="axis" x1="380" y1="112" x2="380" y2="128" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="380" y="100" text-anchor="middle" font-size="12" fill="#6b675e">清理线程巡到了</text>
+<text class="ts" x="380" y="146" text-anchor="middle" font-size="12" fill="#6b675e">改名 .deleted</text>
+<line class="axis" x1="520" y1="112" x2="520" y2="128" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="520" y="100" text-anchor="middle" font-size="12" fill="#6b675e">再等 60 秒删除延迟</text>
+<text class="tc" x="520" y="146" text-anchor="middle" font-size="12" fill="#b03a2e">unlink，整段消失</text>
+<text class="ts" x="330" y="180" text-anchor="middle" font-size="12" fill="#6b675e">清理线程 5 分钟才巡一遍：什么时候真删，由巡逻决定，不由 retention 决定</text>
+<text class="ts" x="330" y="200" text-anchor="middle" font-size="12" fill="#6b675e">消费者能感知的全部变化：earliest 从 0 跳到 25</text>
+</svg>
+</figure>
 
 再看删除的单位。等清理周期过去（实测等了 400 秒）：
 
