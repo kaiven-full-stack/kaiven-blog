@@ -612,8 +612,8 @@ export const concepts: ConceptMeta[] = [
   {
     id: 'lag',
     label: 'lag',
-    description: '读者落后作者的距离：日志末端减提交位移',
-    posts: ['kafka-message-journey'],
+    description: '读者落后作者的距离：日志末端减提交位移，也是端到端延迟的第一项',
+    posts: ['kafka-message-journey', 'kafka-latency-measurement'],
   },
   {
     id: 'log-segment',
@@ -638,6 +638,24 @@ export const concepts: ConceptMeta[] = [
     label: '日志压实',
     description: 'compact 按 key 只留最新值，状态型日志不被历史撑爆',
     posts: ['kafka-consumer-offsets'],
+  },
+  {
+    id: 'three-timelines',
+    label: '三层时间轴',
+    description: '事件、落盘、消费三个时刻三种钟：CreateTime 是客户端的，LogAppendTime 才是 broker 的',
+    posts: ['kafka-latency-measurement'],
+  },
+  {
+    id: 'latency-distribution',
+    label: '延迟分布',
+    description: 'avg 藏双峰，p50 迟钝 p99 先炸，尾延迟顺扇出往上爬',
+    posts: ['kafka-latency-measurement'],
+  },
+  {
+    id: 'coordinated-omission',
+    label: '协同遗漏',
+    description: '闭环发压随系统一起卡，遭殃的样本整体消失，p99 假好看',
+    posts: ['kafka-latency-measurement'],
   },
 ];
 
@@ -681,4 +699,6 @@ export const relatedLinks: RelatedLink[] = [
   { from: 'kafka-consumer-offsets', to: 'redis-aof-append-fsync', note: 'compact 与 AOF 重写：把日志压成最新状态' },
   { from: 'kafka-idempotent-transactions', to: 'mysql-binlog-redo-2pc', note: '事务两阶段与 2PC：为原子性付协调代价' },
   { from: 'kafka-idempotent-transactions', to: 'redis-multi-exec-watch', note: '两种事务：可中止围栏 vs 即执行乐观锁' },
+  { from: 'kafka-latency-measurement', to: 'mysql-performance-schema', note: '两个收官篇都先拆产生读数的仪器' },
+  { from: 'kafka-latency-measurement', to: 'kernel-page-cache-writeback', note: '读端冷热差落在内核页缓存' },
 ];
