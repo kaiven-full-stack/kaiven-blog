@@ -487,7 +487,7 @@ export const concepts: ConceptMeta[] = [
     id: 'delivery-semantics',
     label: '投递语义',
     description: 'at-most / at-least / exactly-once 三档语义与各自的代价',
-    posts: ['mq-basics-delivery-semantics', 'kafka-consumer-offsets'],
+    posts: ['mq-basics-delivery-semantics', 'kafka-consumer-offsets', 'kafka-idempotent-transactions'],
   },
   {
     id: 'dead-letter',
@@ -535,7 +535,31 @@ export const concepts: ConceptMeta[] = [
     id: 'idempotent-producer',
     label: '幂等生产者',
     description: 'kafkajs 每 broker 互斥锁串行化，Java 靠 PID+序列号 broker 卡门',
-    posts: ['kafka-ordering-boundaries'],
+    posts: ['kafka-ordering-boundaries', 'kafka-idempotent-transactions'],
+  },
+  {
+    id: 'kafka-transaction',
+    label: 'Kafka 事务',
+    description: 'send+sendOffsets 绑成原子步，endTxnMarker 控制记录裁定可见性',
+    posts: ['kafka-idempotent-transactions'],
+  },
+  {
+    id: 'exactly-once',
+    label: 'exactly-once',
+    description: '幂等+事务+read_committed 凑成，作用域仅 Kafka 内部，外部 sink 不保',
+    posts: ['mq-basics-delivery-semantics', 'kafka-idempotent-transactions'],
+  },
+  {
+    id: 'producer-fencing',
+    label: '僵尸围栏',
+    description: 'transactional.id 定 PID，epoch 递增顶掉旧写作者，旧 epoch 提交即拒',
+    posts: ['kafka-idempotent-transactions'],
+  },
+  {
+    id: 'last-stable-offset',
+    label: 'LSO 与 read_committed',
+    description: 'read_committed 只读 LSO 以下，开放事务钉住 LSO 造成队头阻塞',
+    posts: ['kafka-idempotent-transactions'],
   },
   {
     id: 'kafka-isr',
@@ -655,4 +679,6 @@ export const relatedLinks: RelatedLink[] = [
   { from: 'kafka-consumer-offsets', to: 'mysql-replication-gtid', note: '提交位移与 GTID：两种断点续传' },
   { from: 'kafka-consumer-offsets', to: 'mysql-innodb-redo-recovery', note: '协调者接管靠重放日志，同崩溃恢复' },
   { from: 'kafka-consumer-offsets', to: 'redis-aof-append-fsync', note: 'compact 与 AOF 重写：把日志压成最新状态' },
+  { from: 'kafka-idempotent-transactions', to: 'mysql-binlog-redo-2pc', note: '事务两阶段与 2PC：为原子性付协调代价' },
+  { from: 'kafka-idempotent-transactions', to: 'redis-multi-exec-watch', note: '两种事务：可中止围栏 vs 即执行乐观锁' },
 ];
