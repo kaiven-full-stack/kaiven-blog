@@ -18,11 +18,36 @@ tags: [Redis, 数据库]
 
 实验集群有三个主节点和三个副本：
 
-```text
-m1  172.28.0.11  slots 0-5460       ← replica r2
-m2  172.28.0.12  slots 5461-10922   ← replica r3
-m3  172.28.0.13  slots 10923-16383  ← replica r1
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 216" role="img" aria-label="实验集群拓扑：三个主节点各管一段槽，m1 管 0 到 5460，m2 管 5461 到 10922，m3 管 10923 到 16383；每个主节点各带一只副本，交叉命名 r2 跟 m1、r3 跟 m2、r1 跟 m3" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="red13As1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">三主三副本：16384 个槽切成三段，每槽只有一个正式 owner</text>
+<rect class="bx-q" x="30" y="44" width="180" height="64" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="120" y="66" text-anchor="middle" font-size="13" fill="#2b2a26">m1 · .11</text>
+<text class="ts" x="120" y="86" text-anchor="middle" font-size="11" fill="#6b675e">slots 0–5460</text>
+<text class="ts" x="120" y="102" text-anchor="middle" font-size="10" fill="#6b675e">主节点</text>
+<rect class="bx-q" x="240" y="44" width="180" height="64" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="330" y="66" text-anchor="middle" font-size="13" fill="#2b2a26">m2 · .12</text>
+<text class="ts" x="330" y="86" text-anchor="middle" font-size="11" fill="#6b675e">slots 5461–10922</text>
+<text class="ts" x="330" y="102" text-anchor="middle" font-size="10" fill="#6b675e">主节点</text>
+<rect class="bx-q" x="450" y="44" width="180" height="64" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="540" y="66" text-anchor="middle" font-size="13" fill="#2b2a26">m3 · .13</text>
+<text class="ts" x="540" y="86" text-anchor="middle" font-size="11" fill="#6b675e">slots 10923–16383</text>
+<text class="ts" x="540" y="102" text-anchor="middle" font-size="10" fill="#6b675e">主节点</text>
+<line class="fl" x1="120" y1="108" x2="120" y2="140" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red13As1)"/>
+<line class="fl" x1="330" y1="108" x2="330" y2="140" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red13As1)"/>
+<line class="fl" x1="540" y1="108" x2="540" y2="140" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red13As1)"/>
+<rect class="bx" x="60" y="144" width="120" height="32" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="120" y="164" text-anchor="middle" font-size="11" fill="#6b675e">replica r2</text>
+<rect class="bx" x="270" y="144" width="120" height="32" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="330" y="164" text-anchor="middle" font-size="11" fill="#6b675e">replica r3</text>
+<rect class="bx" x="480" y="144" width="120" height="32" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="540" y="164" text-anchor="middle" font-size="11" fill="#6b675e">replica r1</text>
+<text class="ts" x="20" y="200" font-size="12" fill="#6b675e">客户端可连任意节点，敲错门靠重定向纠正；bus 端口 = 客户端端口 + 10000，走 gossip</text>
+</svg>
+</figure>
 
 节点启用：
 
@@ -121,18 +146,35 @@ redis-cli -c -h 172.28.0.11 GET foo
 
 客户端不能把它当成轻量版 `MOVED`。正确流程是：
 
-```text
-client                 source m1                 target m2
-  │ GET/SET key            │                         │
-  ├───────────────────────>│                         │
-  │ <──── ASK slot m2 ─────┤                         │
-  │                                                  │
-  │ ASKING                                          │
-  ├─────────────────────────────────────────────────>│
-  │ command                                         │
-  ├─────────────────────────────────────────────────>│
-  │ <────────────────────────────── result ──────────┤
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 256" role="img" aria-label="ASK 重定向的正确流程时序：客户端向源节点 m1 发命令，m1 回 -ASK 指向 m2；客户端先向 m2 发 ASKING 设一次性标志，再发同一条命令，m2 在 importing 槽上执行并返回结果；每条经 ASK 跳转的命令都要重新 ASKING" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="red13As3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+<marker id="red13Ac3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-c" d="M0 0 L8 4 L0 8 Z" fill="#b03a2e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">ASK 的正确走法：一次性通行证，用完即焚</text>
+<rect class="bx-q" x="40" y="40" width="100" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="90" y="59" text-anchor="middle" font-size="11" fill="#6b675e">client</text>
+<rect class="bx-q" x="280" y="40" width="100" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="330" y="59" text-anchor="middle" font-size="11" fill="#6b675e">源 m1</text>
+<rect class="bx-q" x="510" y="40" width="100" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="560" y="59" text-anchor="middle" font-size="11" fill="#6b675e">目标 m2</text>
+<line class="grid" x1="90" y1="70" x2="90" y2="222" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 3"/>
+<line class="grid" x1="330" y1="70" x2="330" y2="222" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 3"/>
+<line class="grid" x1="560" y1="70" x2="560" y2="222" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 3"/>
+<line class="fl" x1="90" y1="92" x2="326" y2="92" stroke="#6b675e" stroke-width="1.5" marker-end="url(#red13As3)"/>
+<text class="ts" x="208" y="84" text-anchor="middle" font-size="10" fill="#6b675e">GET / SET key</text>
+<line class="flc" x1="330" y1="120" x2="94" y2="120" stroke="#b03a2e" stroke-width="1.5" marker-end="url(#red13Ac3)"/>
+<text class="tc" x="208" y="112" text-anchor="middle" font-size="10" fill="#b03a2e">-ASK 5061 172.28.0.12:6379</text>
+<line class="fl" x1="90" y1="150" x2="556" y2="150" stroke="#6b675e" stroke-width="1.5" marker-end="url(#red13As3)"/>
+<text class="ts" x="320" y="142" text-anchor="middle" font-size="10" fill="#6b675e">ASKING（在 m2 连接上设一次性标志）</text>
+<line class="fl" x1="90" y1="176" x2="556" y2="176" stroke="#6b675e" stroke-width="1.5" marker-end="url(#red13As3)"/>
+<text class="ts" x="320" y="168" text-anchor="middle" font-size="10" fill="#6b675e">同一条命令</text>
+<line class="fl" x1="560" y1="202" x2="94" y2="202" stroke="#6b675e" stroke-width="1.5" marker-end="url(#red13As3)"/>
+<text class="ts" x="320" y="194" text-anchor="middle" font-size="10" fill="#6b675e">结果（标志随之清除）</text>
+<text class="ts" x="20" y="244" font-size="12" fill="#6b675e">不带 ASKING 直接敲 m2，它会按全局槽表 MOVED 回 m1；长期槽位表也不许因 ASK 更新</text>
+</svg>
+</figure>
 
 `ASKING` 在客户端连接上设置一次性 `CLIENT_ASKING` 标志。下一条普通命令执行后，标志会被清除；在 `MULTI` 中有延后到事务结束的特殊处理。实验连续发送：
 
@@ -152,22 +194,52 @@ GET key
 
 迁移不是把整槽数据瞬间从 A 复制到 B。键按批搬运，所以同一个槽在一段时间内有两个物理落点：
 
-```text
-slot 5061 正式 owner: m1
-
-m1: bar, {bar}old, {bar}left
-m2: {bar}new, {bar}moved
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 190" role="img" aria-label="迁移窗口的双落点：槽 5061 的正式 owner 仍是 m1，旧键 bar、{bar}old、{bar}left 还在 m1 上；已搬走的 {bar}new、{bar}moved 和新写入的键落在 m2；全局槽位表还没有改" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">slot 5061 正式 owner：m1（全局槽位表还没改）</text>
+<rect class="bx-q" x="30" y="44" width="280" height="86" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="170" y="66" text-anchor="middle" font-size="12" fill="#2b2a26">m1 · 源端</text>
+<rect class="bx" x="50" y="78" width="70" height="24" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="85" y="94" text-anchor="middle" font-size="10" fill="#6b675e">bar</text>
+<rect class="bx" x="130" y="78" width="80" height="24" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="170" y="94" text-anchor="middle" font-size="10" fill="#6b675e">{bar}old</text>
+<rect class="bx" x="220" y="78" width="80" height="24" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="260" y="94" text-anchor="middle" font-size="10" fill="#6b675e">{bar}left</text>
+<text class="ts" x="170" y="120" text-anchor="middle" font-size="10" fill="#6b675e">旧键还在：源端直接服务</text>
+<rect class="bx" x="360" y="44" width="280" height="86" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="500" y="66" text-anchor="middle" font-size="12" fill="#2b2a26">m2 · 目标端</text>
+<rect class="bx-sick" x="395" y="78" width="90" height="24" rx="3" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="ts" x="440" y="94" text-anchor="middle" font-size="10" fill="#6b675e">{bar}new</text>
+<rect class="bx-sick" x="495" y="78" width="100" height="24" rx="3" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="ts" x="545" y="94" text-anchor="middle" font-size="10" fill="#6b675e">{bar}moved</text>
+<text class="ts" x="500" y="120" text-anchor="middle" font-size="10" fill="#6b675e">已搬走的键 + 迁移期间的新键</text>
+<text class="ts" x="20" y="156" font-size="12" fill="#6b675e">找 m1 要已搬走的键或写新键：m1 本地没有，回 ASK 把这条命令引到 m2</text>
+<text class="ts" x="20" y="178" font-size="12" fill="#6b675e">双落点窗口里，「槽归谁」和「键在哪」暂时是两个问题</text>
+</svg>
+</figure>
 
 旧键如果仍在源节点，源节点直接服务。已搬走的键若再次请求源节点，源节点发现本地不存在，返回 `ASK`。一个从未存在的新键也会被引向目标节点，让迁移期间的新数据尽量落在新家。
 
 目标节点虽然已经持有一些键，却尚未成为正式 owner。若没有 `ASKING`，它仍按全局槽位表返回 `MOVED` 指向源节点。这阻止一个持有过期路由表的客户端绕过迁移协议，直接在目标节点制造另一份键。
 
-```text
-源 m1 的本地视图： [5061 ->- m2]  MIGRATING
-目标 m2 的本地视图：[5061 -<- m1] IMPORTING
-第三方 m3 的视图：  5061 -> m1      正式归属未变
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 168" role="img" aria-label="迁移标记只属于两端：源 m1 的本地视图是 5061 MIGRATING 到 m2，目标 m2 的本地视图是 5061 IMPORTING 自 m1，第三方 m3 看到的仍是 5061 归 m1；这两个标记不进心跳也不走 gossip" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">同一时刻，三种视角</text>
+<text class="ts" x="20" y="58" font-size="11" fill="#6b675e">源 m1 本地视图</text>
+<rect class="bx-sick" x="150" y="42" width="240" height="26" rx="3" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="tc" x="270" y="59" text-anchor="middle" font-size="11" fill="#b03a2e">[5061 -&gt;- m2] MIGRATING</text>
+<text class="ts" x="20" y="94" font-size="11" fill="#6b675e">目标 m2 本地视图</text>
+<rect class="bx-sick" x="150" y="78" width="240" height="26" rx="3" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="tc" x="270" y="95" text-anchor="middle" font-size="11" fill="#b03a2e">[5061 -&lt;- m1] IMPORTING</text>
+<text class="ts" x="20" y="130" font-size="11" fill="#6b675e">第三方 m3 视图</text>
+<rect class="bx-q" x="150" y="114" width="240" height="26" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="270" y="131" text-anchor="middle" font-size="11" fill="#6b675e">5061 → m1：正式归属未变</text>
+<text class="ts" x="420" y="59" font-size="11" fill="#6b675e">migrating_slots_to[5061]</text>
+<text class="ts" x="420" y="95" font-size="11" fill="#6b675e">importing_slots_from[5061]</text>
+<text class="ts" x="420" y="131" font-size="11" fill="#6b675e">两个标记只是两端本地数组：</text>
+<text class="ts" x="420" y="147" font-size="11" fill="#6b675e">不进心跳，不走 gossip</text>
+</svg>
+</figure>
 
 `ASK` 解决的正是这段双落点窗口：让请求按键是否已搬运临时分流，同时不宣布槽位整体完成迁移。
 
@@ -223,13 +295,29 @@ OK
 
 单键路由只需问“这个键现在在哪”。同槽多键命令还要问“这些键是否都在同一端”。源节点的路由逻辑分三种：
 
-```text
-MIGRATING 槽上的同槽多键命令
-  │
-  ├─ 所有键仍在源端       -> 源端执行
-  ├─ 所有键都不在源端     -> ASK 到目标端
-  └─ 部分在、部分不在     -> TRYAGAIN
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 210" role="img" aria-label="MIGRATING 槽上同槽多键命令的三种分流：所有键仍在源端则源端执行；所有键都不在源端则 ASK 到目标端；部分在部分不在则返回 TRYAGAIN，因为无法安全执行要求同时看见所有键的命令" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="red13As4" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">同槽多键命令：先问「键是否都在同一端」</text>
+<rect class="bx-q" x="200" y="40" width="260" height="36" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="330" y="62" text-anchor="middle" font-size="12" fill="#6b675e">MIGRATING 槽上的多键命令</text>
+<line class="fl" x1="260" y1="76" x2="125" y2="106" stroke="#6b675e" stroke-width="1.5" marker-end="url(#red13As4)"/>
+<line class="fl" x1="330" y1="76" x2="330" y2="106" stroke="#6b675e" stroke-width="1.5" marker-end="url(#red13As4)"/>
+<line class="fl" x1="400" y1="76" x2="535" y2="106" stroke="#6b675e" stroke-width="1.5" marker-end="url(#red13As4)"/>
+<rect class="bx" x="20" y="110" width="200" height="56" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="120" y="132" text-anchor="middle" font-size="11" fill="#6b675e">所有键仍在源端</text>
+<text class="t" x="120" y="152" text-anchor="middle" font-size="12" fill="#2b2a26">源端执行</text>
+<rect class="bx" x="240" y="110" width="200" height="56" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="340" y="132" text-anchor="middle" font-size="11" fill="#6b675e">所有键都不在源端</text>
+<text class="t" x="340" y="152" text-anchor="middle" font-size="12" fill="#2b2a26">ASK 到目标端</text>
+<rect class="bx-sick" x="460" y="110" width="180" height="56" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="ts" x="550" y="132" text-anchor="middle" font-size="11" fill="#6b675e">部分在、部分不在</text>
+<text class="tc" x="550" y="152" text-anchor="middle" font-size="12" fill="#b03a2e">TRYAGAIN</text>
+<text class="ts" x="20" y="194" font-size="12" fill="#6b675e">目标端带 ASKING 时同样检查：键没到齐也是 TRYAGAIN，退避后重试</text>
+</svg>
+</figure>
 
 实际错误是：
 
@@ -295,18 +383,37 @@ while I still hold keys for this hash slot.
 
 源节点在还有键时不会交出槽，这是上一节的护栏。交出最后一个槽的主节点在允许 replica migration 的配置下，还可能转为目标节点的副本。
 
-```text
-控制端              target m2               source m1              others
-  │ SETSLOT NODE m2      │                       │                     │
-  ├─────────────────────>│                       │                     │
-  │                      ├─ bump configEpoch     │                     │
-  │                      ├─ broadcast PONG ──────────────────────────>│
-  │ SETSLOT NODE m2                              │                     │
-  ├─────────────────────────────────────────────>│                     │
-  │                                              ├─ clear MIGRATING    │
-  │ SETSLOT NODE m2                                                    │
-  ├───────────────────────────────────────────────────────────────────>│
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 260" role="img" aria-label="SETSLOT NODE 的交槽时序：控制端先让目标 m2 把槽指派给自己，m2 抬高 configEpoch 并广播 PONG；再让源 m1 把槽指派给 m2 并清除 MIGRATING；最后通知其余节点或等待 gossip 收敛；目标先接槽避免无 owner 窗口" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="red13As5" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">正式交槽：目标先接，源端后放</text>
+<rect class="bx-q" x="20" y="40" width="100" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="70" y="59" text-anchor="middle" font-size="11" fill="#6b675e">控制端</text>
+<rect class="bx-q" x="200" y="40" width="100" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="250" y="59" text-anchor="middle" font-size="11" fill="#6b675e">target m2</text>
+<rect class="bx-q" x="380" y="40" width="100" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="430" y="59" text-anchor="middle" font-size="11" fill="#6b675e">source m1</text>
+<rect class="bx-q" x="545" y="40" width="100" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="595" y="59" text-anchor="middle" font-size="11" fill="#6b675e">others</text>
+<line class="grid" x1="70" y1="70" x2="70" y2="222" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 3"/>
+<line class="grid" x1="250" y1="70" x2="250" y2="222" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 3"/>
+<line class="grid" x1="430" y1="70" x2="430" y2="222" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 3"/>
+<line class="grid" x1="595" y1="70" x2="595" y2="222" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 3"/>
+<line class="fl" x1="70" y1="92" x2="246" y2="92" stroke="#6b675e" stroke-width="1.5" marker-end="url(#red13As5)"/>
+<text class="ts" x="158" y="84" text-anchor="middle" font-size="10" fill="#6b675e">① SETSLOT 5061 NODE m2</text>
+<text class="tc" x="258" y="112" font-size="10" fill="#b03a2e">bump configEpoch（不投票）</text>
+<line class="fl" x1="250" y1="126" x2="591" y2="126" stroke="#6b675e" stroke-width="1.5" marker-end="url(#red13As5)"/>
+<text class="ts" x="420" y="118" text-anchor="middle" font-size="10" fill="#6b675e">广播 PONG</text>
+<line class="fl" x1="70" y1="154" x2="426" y2="154" stroke="#6b675e" stroke-width="1.5" marker-end="url(#red13As5)"/>
+<text class="ts" x="248" y="146" text-anchor="middle" font-size="10" fill="#6b675e">② SETSLOT 5061 NODE m2</text>
+<text class="ts" x="438" y="174" font-size="10" fill="#6b675e">clear MIGRATING（此刻之前它还持键不放槽）</text>
+<line class="fl" x1="70" y1="196" x2="591" y2="196" stroke="#6b675e" stroke-width="1.5" marker-end="url(#red13As5)"/>
+<text class="ts" x="330" y="188" text-anchor="middle" font-size="10" fill="#6b675e">③ SETSLOT NODE（或等 gossip 收敛）</text>
+<text class="ts" x="20" y="244" font-size="12" fill="#6b675e">若源先放、目标还没接：槽短暂没有主人，可能形成重定向环</text>
+</svg>
+</figure>
 
 **槽位正式改属发生在 `SETSLOT NODE`，不发生在第一只键抵达目标时。**
 
