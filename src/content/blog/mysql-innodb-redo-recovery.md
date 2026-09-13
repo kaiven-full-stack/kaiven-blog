@@ -16,6 +16,26 @@ tags: [MySQL, 数据库, 事务]
 
 先看容量。8.4 的 redo 住在 `#innodb_redo/` 目录：32 个 `#ib_redo` 文件环成一个 100MiB 的圈（`innodb_redo_log_capacity`，可在线调），写满一圈回头复用。**redo 是一个环形缓冲区，不是无限追加的日志文件**。这与 8.0 前固定两个 ib_logfile 的设计完全不同，是 8.0.30 起的新形态。
 
+这个圈的样子：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 254" role="img" aria-label="redo 环形缓冲区：32 个 ib_redo 文件环成 100MiB 的圈，写入头不断前进，checkpoint 之前的部分被消费回收，写满一圈回头复用；checkpoint 推进速度是圈速的裁判，日志消费太慢写入线程就要等" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<circle class="grid" cx="180" cy="136" r="78" fill="none" stroke="#a29d90" stroke-width="30" opacity="0.35"/>
+<path class="spine" d="M180 58 A78 78 0 1 1 107 162" fill="none" stroke="#b03a2e" stroke-width="26"/>
+<text class="ts" x="180" y="130" text-anchor="middle" font-size="12" fill="#6b675e">100MiB</text>
+<text class="ts" x="180" y="148" text-anchor="middle" font-size="11" fill="#6b675e">32 个 #ib_redo 文件</text>
+<text class="tc" x="180" y="36" text-anchor="middle" font-size="11" fill="#b03a2e">写入头（current LSN）</text>
+<text class="ts" x="88" y="196" text-anchor="middle" font-size="11" fill="#6b675e">checkpoint</text>
+<text class="ts" x="320" y="60" font-size="12" fill="#6b675e">朱砂段：还没被 checkpoint 消费的日志</text>
+<text class="ts" x="320" y="82" font-size="12" fill="#6b675e">灰段：已消费，等写入头绕回来复用</text>
+<text class="ts" x="320" y="112" font-size="12" fill="#6b675e">容量在线可调（老设计要停机）</text>
+<text class="tc" x="320" y="142" font-size="12" fill="#b03a2e">checkpoint 是圈速的裁判：</text>
+<text class="tc" x="320" y="162" font-size="12" fill="#b03a2e">脏页刷得太慢、圈追上来，写入线程就得等</text>
+<text class="ts" x="320" y="192" font-size="12" fill="#6b675e">观测量具：Innodb_log_waits，正常应为 0</text>
+<text class="ts" x="320" y="214" font-size="12" fill="#6b675e">8.0.30 起取代 ib_logfile0/1 两个大文件</text>
+</svg>
+</figure>
+
 一条 UPDATE 值多少 redo？实测两种行宽（`Innodb_redo_log_current_lsn` 前后差值）：
 
 | 表 | 每事务 | redo 总量 | 每行 |
@@ -24,6 +44,30 @@ tags: [MySQL, 数据库, 事务]
 | churn_fat（pad 列 200 字节） | 5000 行 | 2,450,180 字节 | **490 字节** |
 
 窄行每行 75 字节，宽行每行 490 字节，差值 415 ≈ 旧值加新值的字节量。**redo 记的是「改了什么」，不是「改完长什么样」**：物理页上的旧字节 → 新字节，加上页号定位，一条紧凑记录。这就是 WAL 的经济学：改 16KiB 的一页只在日志里花几十字节，提交的代价与「改了多少」成正比、与「数据多大」无关。
+
+这笔账画出来：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 176" role="img" aria-label="WAL 经济学：一次 UPDATE 改动的是一个 16KiB 的页，但落进 redo 日志的只有旧字节到新字节的物理 diff 加页号定位，窄行 75 字节、宽行 490 字节，差值恰是旧值加新值的字节量" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="my4As2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">改动的对象是页，落日志的只有 diff</text>
+<rect class="bx-q" x="30" y="44" width="130" height="84" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="95" y="80" text-anchor="middle" font-size="12" fill="#2b2a26">数据页</text>
+<text class="ts" x="95" y="100" text-anchor="middle" font-size="11" fill="#6b675e">16KiB</text>
+<line class="fl" x1="160" y1="86" x2="216" y2="86" stroke="#6b675e" stroke-width="1.6" marker-end="url(#my4As2)"/>
+<text class="ts" x="188" y="76" text-anchor="middle" font-size="10" fill="#6b675e">一次 UPDATE</text>
+<rect class="bx-sick" x="224" y="56" width="12" height="20" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="ts" x="244" y="70" font-size="11" fill="#6b675e">窄行（v 1 字节）：75 B/行</text>
+<rect class="bx-sick" x="224" y="92" width="78" height="20" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="ts" x="310" y="106" font-size="11" fill="#6b675e">宽行（pad 200 字节）：490 B/行</text>
+<text class="tc" x="450" y="70" font-size="11" fill="#b03a2e">差 415 字节</text>
+<text class="ts" x="450" y="88" font-size="11" fill="#6b675e">≈ 旧值 + 新值的字节量</text>
+<text class="ts" x="450" y="106" font-size="11" fill="#6b675e">条内还有页号定位</text>
+<text class="ts" x="20" y="154" font-size="12" fill="#6b675e">提交的代价与「改了多少」成正比、与「数据多大」无关：5000 行窄行总共 378KB 日志</text>
+</svg>
+</figure>
 
 页自己也有记录。还记得第一篇卖的那个关子吗：三次 UPDATE 前后导出对比，17 个字节变了，其中 12 个在页头页尾，当时一笔带过。现在拆开：
 
@@ -49,6 +93,25 @@ Modified db pages           21            ← 21 个脏页还没写盘
 提交那一刻，**redo 已 100% 落盘**（flushed = current）。这就是 `innodb_flush_log_at_trx_commit=1` 的含义，也是「提交成功」的全部实质。但数据页还躺在内存里（21 个脏页），checkpoint 落后 5.3MiB。6 秒后再看：`Modified db pages 0`，水位全部追平。
 
 **WAL 的秩序是：日志先行，页面随意。** 只要日志在，脏页什么时候刷盘无所谓，最坏情况它们没刷，重启时照日志重放一遍。checkpoint 的任务就是给「重放」划一条起跑线：脏页陆续刷盘后，checkpoint 推进，**日志里 checkpoint 之前的部分就可以被回收复用**（环形缓冲区的圈就是这么转起来的）。
+
+提交瞬间的三个水位：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 208" role="img" aria-label="提交返回那一瞬间的 LSN 水位：current 与 flushed 相等都在 2347537359，redo 百分之百落盘；checkpoint 停在 2342232939 落后 5.3MiB；另有 21 个脏页还在内存里，6 秒后全部刷完、水位追平" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">插 2 万行提交返回的那一瞬间（双 1 默认）</text>
+<line class="axis" x1="40" y1="80" x2="620" y2="80" stroke="#6b675e" stroke-width="1.2"/>
+<line class="flk" x1="330" y1="66" x2="330" y2="94" stroke="#2b2a26" stroke-width="2"/>
+<text class="ts" x="330" y="56" text-anchor="middle" font-size="11" fill="#6b675e">Last checkpoint</text>
+<text class="ts" x="330" y="112" text-anchor="middle" font-size="10" fill="#6b675e">2342232939</text>
+<line class="flc" x1="560" y1="62" x2="560" y2="98" stroke="#b03a2e" stroke-width="2.4"/>
+<text class="tc" x="560" y="52" text-anchor="middle" font-size="11" fill="#b03a2e">current = flushed</text>
+<text class="ts" x="560" y="112" text-anchor="middle" font-size="10" fill="#6b675e">2347537359</text>
+<path class="flc" d="M330 124 L330 132 L560 132 L560 124" fill="none" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="445" y="150" text-anchor="middle" font-size="11" fill="#b03a2e">5.3MiB 日志未 checkpoint：重放的起跑线还在这里</text>
+<text class="ts" x="40" y="176" font-size="12" fill="#6b675e">Modified db pages = 21：数据页还躺在内存里；6 秒后归 0，水位全部追平</text>
+<text class="ts" x="40" y="196" font-size="12" fill="#6b675e">「提交成功」的全部实质 = 日志已落盘；数据页什么时候写盘，没人催</text>
+</svg>
+</figure>
 
 断电前那组数字（第二次实验）正好是这个秩序的极端现场：**27MiB 日志未 checkpoint、95 个脏页没刷盘**。按「先写数据」的直觉，这 27MiB 涉及的已提交改动应该丢了。结局是没丢，因为它们在 redo 环里。
 
@@ -84,6 +147,36 @@ InnoDB: Progress in percents: 1 2 3 4 ... 100
 
 **崩溃恢复就三步**：重放 redo（物理层面把所有改动重演一遍，无论提交与否）；回滚未提交（undo 层面沿链逆向抄回）；然后开门营业。没有神秘力量，只有日志。
 
+三步与日志的对应：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 218" role="img" aria-label="崩溃恢复三步：第一步重放 redo，物理层面把所有改动重演一遍不问提交，本次实验耗时 0.9 秒；第二步回滚未提交事务，用 undo 沿版本链逆向抄回 5000 行僵尸改动，进度条 0.3 秒；第三步开门营业 ready for connections" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="my4As4" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">kill -9 之后 3 秒，三步走完</text>
+<rect class="bx-sick" x="20" y="44" width="190" height="94" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="t" x="115" y="66" text-anchor="middle" font-size="12" fill="#2b2a26">① 重放 redo</text>
+<text class="ts" x="115" y="86" text-anchor="middle" font-size="10" fill="#6b675e">物理重演所有改动</text>
+<text class="ts" x="115" y="102" text-anchor="middle" font-size="10" fill="#6b675e">不问提交与否</text>
+<text class="ts" x="115" y="122" text-anchor="middle" font-size="10" fill="#6b675e">本次 0.9 秒</text>
+<line class="fl" x1="210" y1="91" x2="231" y2="91" stroke="#6b675e" stroke-width="1.6" marker-end="url(#my4As4)"/>
+<rect class="bx" x="235" y="44" width="190" height="94" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="330" y="66" text-anchor="middle" font-size="12" fill="#2b2a26">② 回滚未提交</text>
+<text class="ts" x="330" y="86" text-anchor="middle" font-size="10" fill="#6b675e">页面里躺着僵尸改动：</text>
+<text class="ts" x="330" y="102" text-anchor="middle" font-size="10" fill="#6b675e">undo 沿链逆向抄回 5000 行</text>
+<text class="ts" x="330" y="122" text-anchor="middle" font-size="10" fill="#6b675e">进度条 0.3 秒</text>
+<line class="fl" x1="425" y1="91" x2="446" y2="91" stroke="#6b675e" stroke-width="1.6" marker-end="url(#my4As4)"/>
+<rect class="bx-q" x="450" y="44" width="190" height="94" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="545" y="66" text-anchor="middle" font-size="12" fill="#2b2a26">③ 开门营业</text>
+<text class="ts" x="545" y="86" text-anchor="middle" font-size="10" fill="#6b675e">ready for connections</text>
+<text class="ts" x="545" y="102" text-anchor="middle" font-size="10" fill="#6b675e">10001 行一行不少</text>
+<text class="ts" x="545" y="122" text-anchor="middle" font-size="10" fill="#6b675e">僵尸版一行不留</text>
+<text class="ts" x="20" y="170" font-size="12" fill="#6b675e">恢复日志的对应：两行 System 之间是重放；Progress in percents 那行是回滚</text>
+<text class="ts" x="20" y="192" font-size="12" fill="#6b675e">锁不在这三步里：它们住在内存，断电即散，重启后从零开始</text>
+</svg>
+</figure>
+
 ### redo 重放：拿着 FIL_PAGE_LSN 挑活儿
 
 重放不是无脑全量。第一篇讲页骨架时提过页头 LSN，现在它上岗：**每个 redo 记录自带它全局 LSN，每页头上有 FIL_PAGE_LSN**。恢复程序拿 redo 记录的 LSN 与目标页头上的 LSN 对表：
@@ -92,6 +185,33 @@ InnoDB: Progress in percents: 1 2 3 4 ... 100
 - redo 的 LSN > 页的 FIL_PAGE_LSN：页面落后，**重放这条**。
 
 所以 95 个脏页里，凡是断电前恰好已被后台线程刷下去的，重放时会被页头 LSN 挡回来：**每页只补自己缺的那几笔**，不重不漏。这也顺带解释了 CRC32 校验和的用途：重放前先验页身，撕裂页（见 doublewrite 节）当场现形。
+
+对表的逻辑：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 220" role="img" aria-label="redo 重放的挑选逻辑：每条 redo 记录自带全局 LSN，每个页头有 FIL_PAGE_LSN 记录最后修改位置；记录 LSN 小于等于页头 LSN 说明页比日志新、跳过，大于则页面落后、重放这条；重放前先验 CRC32，撕裂页当场现形" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="my4As5" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">重放不是无脑全量：每条记录先和页头对表</text>
+<rect class="bx-q" x="30" y="44" width="250" height="48" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="155" y="64" text-anchor="middle" font-size="11" fill="#6b675e">redo 记录</text>
+<text class="ts" x="155" y="82" text-anchor="middle" font-size="11" fill="#6b675e">自带全局 LSN = X</text>
+<rect class="bx-q" x="380" y="44" width="250" height="48" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="505" y="64" text-anchor="middle" font-size="11" fill="#6b675e">目标页 · 页头</text>
+<text class="ts" x="505" y="82" text-anchor="middle" font-size="11" fill="#6b675e">FIL_PAGE_LSN = Y</text>
+<line class="fl" x1="155" y1="92" x2="290" y2="116" stroke="#6b675e" stroke-width="1.5" marker-end="url(#my4As5)"/>
+<line class="fl" x1="505" y1="92" x2="370" y2="116" stroke="#6b675e" stroke-width="1.5" marker-end="url(#my4As5)"/>
+<rect class="bx" x="250" y="120" width="160" height="34" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="330" y="141" text-anchor="middle" font-size="11" fill="#6b675e">对表：X 与 Y 谁大？</text>
+<line class="fl" x1="280" y1="154" x2="180" y2="172" stroke="#6b675e" stroke-width="1.5" marker-end="url(#my4As5)"/>
+<line class="fl" x1="380" y1="154" x2="480" y2="172" stroke="#6b675e" stroke-width="1.5" marker-end="url(#my4As5)"/>
+<rect class="bx" x="30" y="176" width="290" height="34" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="175" y="197" text-anchor="middle" font-size="11" fill="#6b675e">X ≤ Y：页比日志新，跳过</text>
+<rect class="bx-sick" x="340" y="176" width="290" height="34" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="485" y="197" text-anchor="middle" font-size="11" fill="#b03a2e">X &gt; Y：页面落后，重放这条</text>
+</svg>
+</figure>
 
 ### undo 回滚：那个进度条在数什么
 
@@ -121,6 +241,44 @@ WAL 防的是「改动丢失」，还有另一种祸：「**写了一半的页**
 ```
 
 合计 16MiB = 128 页 × 16KiB × 2（`innodb_doublewrite_pages=128`）。批刷流程：脏页先顺序写入 dblwr 文件，fsync，再写到各自 .ibd 里的原位。若原位写撕裂，**dblwr 里那份完好的副本还在**，恢复时直接整页拷回，再走 redo。实测灌 3 万行肥数据前后，两个 dblwr 文件尺寸一点没变：**它是循环复用的缓冲区，不是追加型文件**，与 redo 的环形设计呼应。
+
+两道写与那道祸：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 256" role="img" aria-label="doublewrite 防撕裂页：16KiB 页被操作系统按 4KiB 分解写盘，断电可能停在中间形成半新半旧的撕裂页；批刷时脏页先顺序写入 dblwr 文件并 fsync，再写 ibd 原位，原位撕裂就用 dblwr 的完好副本整页拷回再走 redo diff" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="my4As6" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">先抄一份，再写原位</text>
+<rect class="bx-q" x="20" y="70" width="110" height="56" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="75" y="94" text-anchor="middle" font-size="11" fill="#6b675e">脏页</text>
+<text class="ts" x="75" y="112" text-anchor="middle" font-size="11" fill="#6b675e">16KiB</text>
+<line class="fl" x1="130" y1="84" x2="176" y2="64" stroke="#6b675e" stroke-width="1.5" marker-end="url(#my4As6)"/>
+<text class="ts" x="146" y="62" font-size="10" fill="#6b675e">①</text>
+<rect class="bx" x="180" y="40" width="190" height="52" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="275" y="60" text-anchor="middle" font-size="11" fill="#2b2a26">#ib_16384_0/1.dblwr</text>
+<text class="ts" x="275" y="78" text-anchor="middle" font-size="10" fill="#6b675e">顺序写整页 + fsync · 16MiB 循环复用</text>
+<line class="fl" x1="130" y1="112" x2="156" y2="134" stroke="#6b675e" stroke-width="1.5" marker-end="url(#my4As6)"/>
+<text class="ts" x="128" y="136" font-size="10" fill="#6b675e">②</text>
+<rect class="bx" x="160" y="112" width="180" height="52" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="250" y="132" text-anchor="middle" font-size="11" fill="#2b2a26">各自 .ibd 的原位</text>
+<text class="tc" x="250" y="150" text-anchor="middle" font-size="10" fill="#b03a2e">16KiB 按 4KiB 分四次写</text>
+<rect class="bx-sick" x="380" y="112" width="26" height="44" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/>
+<rect class="bx-sick" x="406" y="112" width="26" height="44" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/>
+<rect class="bx-gone" x="432" y="112" width="26" height="44" fill="none" stroke="#a29d90" stroke-dasharray="3 2"/>
+<rect class="bx-gone" x="458" y="112" width="26" height="44" fill="none" stroke="#a29d90" stroke-dasharray="3 2"/>
+<text class="ts" x="496" y="130" font-size="10" fill="#6b675e">断电停在中间：</text>
+<text class="ts" x="496" y="146" font-size="10" fill="#6b675e">前两片新、后两片旧</text>
+<text class="ts" x="496" y="162" font-size="10" fill="#6b675e">= 撕裂页</text>
+<line class="fl" x1="360" y1="92" x2="360" y2="192" stroke="#6b675e" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#my4As6)"/>
+<text class="ts" x="368" y="180" font-size="10" fill="#6b675e">副本还在</text>
+<rect class="bx-q" x="60" y="196" width="430" height="34" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="275" y="217" text-anchor="middle" font-size="11" fill="#6b675e">恢复：dblwr 的完好副本整页拷回 → 再走 redo 补 diff</text>
+<text class="ts" x="510" y="214" font-size="11" fill="#6b675e">CRC32 验页身，</text>
+<text class="ts" x="510" y="230" font-size="11" fill="#6b675e">撕裂当场现形</text>
+<text class="ts" x="20" y="250" font-size="12" fill="#6b675e">WAL 防「丢改动」，dblwr 防「坏基线」：redo 是物理 diff，旧字节没了就无从套起</text>
+</svg>
+</figure>
 
 （有人会问：redo 自己会不会撕裂？redo 记录有校验和、块内也有填充机制，重放时验坏即停，撕裂的日志尾巴会被识别并丢弃，不影响已完成部分。另外 `innodb_flush_method=O_DIRECT` 绕开页缓存、自 8.0.20 起 doublewrite 恒开，这两道闸门就不展开了。）
 
