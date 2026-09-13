@@ -32,6 +32,41 @@ trx=99469  idx=PRIMARY  X,REC_NOT_GAP   GRANTED  data=5
 
 `LOCK_DATA` 标锚点：记录锁锚在主键值上；间隙锁锚在**间隙的右边界记录**上；最上界锚在 `supremum pseudo-record`，首篇页骨架里那条「最大记录」，它还有戏份。
 
+把这张五行表画成一条数轴，三种锁的对象就都在上面：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 206" role="img" aria-label="五行表 t_lock 的锁对象数轴：主键 1、5、10、15、20 是五个记录点，点与点之间是间隙，最右端是每个叶子页末尾的 supremum 伪记录；记录锁钉住行本体，间隙锁锚在右边界记录上钉住空隙，锁 supremum 等于封住比 20 大的一切" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">锁的对象三种：存在的行、不存在的隙、无穷的伪记录</text>
+<text class="ts" x="150" y="56" text-anchor="middle" font-size="10" fill="#6b675e">(1,5)</text>
+<text class="ts" x="250" y="56" text-anchor="middle" font-size="10" fill="#6b675e">(5,10)</text>
+<text class="ts" x="350" y="56" text-anchor="middle" font-size="10" fill="#6b675e">(10,15)</text>
+<text class="ts" x="450" y="56" text-anchor="middle" font-size="10" fill="#6b675e">(15,20)</text>
+<text class="ts" x="550" y="56" text-anchor="middle" font-size="10" fill="#6b675e">(20,∞)</text>
+<text class="ts" x="60" y="56" text-anchor="middle" font-size="10" fill="#6b675e">(−∞,1)</text>
+<line class="axis" x1="40" y1="76" x2="620" y2="76" stroke="#6b675e" stroke-width="1.2"/>
+<line class="flk" x1="100" y1="66" x2="100" y2="86" stroke="#2b2a26" stroke-width="2"/>
+<line class="flk" x1="200" y1="66" x2="200" y2="86" stroke="#2b2a26" stroke-width="2"/>
+<line class="flk" x1="300" y1="66" x2="300" y2="86" stroke="#2b2a26" stroke-width="2"/>
+<line class="flk" x1="400" y1="66" x2="400" y2="86" stroke="#2b2a26" stroke-width="2"/>
+<line class="flk" x1="500" y1="66" x2="500" y2="86" stroke="#2b2a26" stroke-width="2"/>
+<line class="flc" x1="600" y1="64" x2="600" y2="88" stroke="#b03a2e" stroke-width="2" stroke-dasharray="4 3"/>
+<text class="t" x="100" y="102" text-anchor="middle" font-size="11" fill="#2b2a26">1</text>
+<text class="t" x="200" y="102" text-anchor="middle" font-size="11" fill="#2b2a26">5</text>
+<text class="t" x="300" y="102" text-anchor="middle" font-size="11" fill="#2b2a26">10</text>
+<text class="t" x="400" y="102" text-anchor="middle" font-size="11" fill="#2b2a26">15</text>
+<text class="t" x="500" y="102" text-anchor="middle" font-size="11" fill="#2b2a26">20</text>
+<text class="tc" x="600" y="102" text-anchor="middle" font-size="10" fill="#b03a2e">supremum</text>
+<line class="flc" x1="200" y1="108" x2="200" y2="148" stroke="#b03a2e" stroke-width="1.6"/>
+<text class="tc" x="196" y="162" text-anchor="end" font-size="10" fill="#b03a2e">X,REC_NOT_GAP@5：钉住行本体</text>
+<path class="flc" d="M206 120 L206 128 L294 128 L294 120" fill="none" stroke="#b03a2e" stroke-width="1.6"/>
+<text class="tc" x="250" y="146" text-anchor="middle" font-size="10" fill="#b03a2e">X,GAP@10：钉住 (5,10)，锚右边界</text>
+<line class="flc" x1="600" y1="108" x2="600" y2="128" stroke="#b03a2e" stroke-width="1.6"/>
+<text class="tc" x="594" y="144" text-anchor="end" font-size="10" fill="#b03a2e">X@supremum：封住「比 20 大的一切」</text>
+<text class="ts" x="20" y="176" font-size="12" fill="#6b675e">B 插 id=7 落在 (5,10)：行锁管不着，2.4ms 过；B 改 id=5 撞行本体，等 9.96 秒</text>
+<text class="ts" x="20" y="196" font-size="12" fill="#6b675e">每个叶子页末尾都有一条 supremum：它是永远存在、永远比一切大的伪记录</text>
+</svg>
+</figure>
+
 ## 间隙：锁住不存在的东西
 
 第二条实验换个问法：A 去锁一行**不存在**的 id=7。
@@ -71,6 +106,47 @@ trx=99483  PRIMARY  X,GAP,INSERT_INTENTION WAITING   data=10
 
 D 一共等了 14 秒，**分两段**：先等 A 放（5 秒），再等 C 放（9 秒）。「所有封隙者离开」是一个一个清点的。顺带补一刀：UPDATE 打空同样封隙，`UPDATE ... WHERE id=2`（表中无 2，`ROW_COUNT()=0`）留下 `X,GAP@5`，B 插 id=3 被挡 4 秒。**WHERE 打中了 0 行，但它「可能打中」的位置被锁上了。**
 
+全篇最反直觉的现场：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 258" role="img" aria-label="同一间隙两把 X 锁共存：A 与 C 都持有 X,GAP@10 且同时 GRANTED，因为间隙锁锁的是别在这里长出新行的期望；D 的 INSERT 带 INSERT_INTENTION 锁 WAITING，要等所有封隙者离开，14 秒等待分成等 A 和等 C 两段" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="my3As3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+<marker id="my3Ac3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-c" d="M0 0 L8 4 L0 8 Z" fill="#b03a2e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">间隙 (5,10)：两把 X 锁相安无事，插入者等全体</text>
+<rect class="bx-sick" x="200" y="48" width="180" height="16" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/>
+<line class="axis" x1="120" y1="56" x2="460" y2="56" stroke="#6b675e" stroke-width="1.2"/>
+<line class="flk" x1="200" y1="46" x2="200" y2="66" stroke="#2b2a26" stroke-width="2"/>
+<line class="flk" x1="380" y1="46" x2="380" y2="66" stroke="#2b2a26" stroke-width="2"/>
+<text class="t" x="200" y="82" text-anchor="middle" font-size="11" fill="#2b2a26">5</text>
+<text class="t" x="380" y="82" text-anchor="middle" font-size="11" fill="#2b2a26">10</text>
+<rect class="bx-q" x="115" y="92" width="170" height="34" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="200" y="113" text-anchor="middle" font-size="10" fill="#6b675e">A · X,GAP@10 · GRANTED</text>
+<rect class="bx-q" x="300" y="92" width="170" height="34" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="385" y="113" text-anchor="middle" font-size="10" fill="#6b675e">C · X,GAP@10 · GRANTED</text>
+<rect class="bx-sick" x="205" y="142" width="205" height="34" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="307" y="163" text-anchor="middle" font-size="10" fill="#b03a2e">D · INSERT_INTENTION · WAITING</text>
+<line class="flc" x1="290" y1="142" x2="290" y2="70" stroke="#b03a2e" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#my3Ac3)"/>
+<text class="ts" x="500" y="106" font-size="10" fill="#6b675e">持有阶段互不冲突：</text>
+<text class="ts" x="500" y="122" font-size="10" fill="#6b675e">GAP 对 GAP 兼容</text>
+<text class="ts" x="500" y="154" font-size="10" fill="#6b675e">唯一的冲突：</text>
+<text class="ts" x="500" y="170" font-size="10" fill="#6b675e">有人要 INSERT</text>
+<line class="axis" x1="40" y1="212" x2="620" y2="212" stroke="#6b675e" stroke-width="1.2"/>
+<line class="flk" x1="80" y1="204" x2="80" y2="220" stroke="#2b2a26" stroke-width="2"/>
+<text class="ts" x="80" y="196" text-anchor="middle" font-size="10" fill="#6b675e">43.4 C 拿锁</text>
+<line class="flk" x1="180" y1="204" x2="180" y2="220" stroke="#2b2a26" stroke-width="2"/>
+<text class="ts" x="180" y="236" text-anchor="middle" font-size="10" fill="#6b675e">45.4 D 开始等</text>
+<line class="flk" x1="300" y1="204" x2="300" y2="220" stroke="#2b2a26" stroke-width="2"/>
+<text class="ts" x="300" y="196" text-anchor="middle" font-size="10" fill="#6b675e">50.4 A 提交：D 没动</text>
+<line class="flk" x1="470" y1="204" x2="470" y2="220" stroke="#2b2a26" stroke-width="2"/>
+<text class="ts" x="470" y="236" text-anchor="middle" font-size="10" fill="#6b675e">59.4 C 提交</text>
+<line class="flc" x1="590" y1="204" x2="590" y2="220" stroke="#b03a2e" stroke-width="2"/>
+<text class="tc" x="590" y="196" text-anchor="middle" font-size="10" fill="#b03a2e">59.4 D 完成 +2.8ms</text>
+<text class="ts" x="40" y="254" font-size="11" fill="#6b675e">D 的 14 秒分两段：等 A 放 5 秒，再等 C 放 9 秒，「所有封隙者离开」是一个一个清点的</text>
+</svg>
+</figure>
+
 ## 范围：next-key 与 9 个「无穷」
 
 范围当前读是间隙锁的主场。A 锁开区间 (5,15)：
@@ -82,6 +158,36 @@ trx=99499  PRIMARY  X,GAP   GRANTED  data=15   ← 锁住 (10,15)
 ```
 
 三把锁封住 (5,10) ∪ {10} ∪ (10,15)：**next-key = 记录 + 前隙**，左开右闭区间 (5,10]。B 插 id=8，正好落在封地中央，被挡 6 秒。`@10` 那两把（`X` 与 `X,GAP`）覆盖的地带其实首尾相接，登记上分成两条，是 InnoDB 把「命中行的锁」和「扫过的隙」分开记录的结果。
+
+封地的边界：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 196" role="img" aria-label="锁开区间 (5,15) 的封地范围：三把锁覆盖 (5,10] 与 (10,15)，行 5 本体在封地之外（左开），行 15 本体也在封地之外（右开，只封它前面的隙）；B 插 id=8 落在封地中央被挡" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">A 锁开区间 (5,15)：封地 = (5,10] ∪ (10,15)</text>
+<text class="tc" x="257" y="46" text-anchor="middle" font-size="11" fill="#b03a2e">封地</text>
+<rect class="bx-sick" x="172" y="52" width="170" height="16" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/>
+<line class="axis" x1="60" y1="76" x2="560" y2="76" stroke="#6b675e" stroke-width="1.2"/>
+<line class="flk" x1="80" y1="66" x2="80" y2="86" stroke="#2b2a26" stroke-width="2"/>
+<line class="flk" x1="170" y1="66" x2="170" y2="86" stroke="#2b2a26" stroke-width="2"/>
+<line class="flc" x1="260" y1="64" x2="260" y2="88" stroke="#b03a2e" stroke-width="2"/>
+<line class="flk" x1="350" y1="66" x2="350" y2="86" stroke="#2b2a26" stroke-width="2"/>
+<line class="flk" x1="440" y1="66" x2="440" y2="86" stroke="#2b2a26" stroke-width="2"/>
+<text class="t" x="80" y="102" text-anchor="middle" font-size="11" fill="#2b2a26">1</text>
+<text class="t" x="170" y="102" text-anchor="middle" font-size="11" fill="#2b2a26">5</text>
+<text class="t" x="260" y="102" text-anchor="middle" font-size="11" fill="#2b2a26">10</text>
+<text class="t" x="350" y="102" text-anchor="middle" font-size="11" fill="#2b2a26">15</text>
+<text class="t" x="440" y="102" text-anchor="middle" font-size="11" fill="#2b2a26">20</text>
+<text class="ts" x="164" y="60" text-anchor="end" font-size="10" fill="#6b675e">行 5 本体：封地外（左开）</text>
+<text class="ts" x="356" y="60" font-size="10" fill="#6b675e">行 15 本体：封地外（右开，只封前隙）</text>
+<rect class="bx" x="20" y="118" width="195" height="34" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="117" y="139" text-anchor="middle" font-size="10" fill="#6b675e">X（next-key）@10：行 10 + 前隙</text>
+<rect class="bx" x="232" y="118" width="195" height="34" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="329" y="139" text-anchor="middle" font-size="10" fill="#6b675e">X,GAP@10 与 X,GAP@15：扫过的隙</text>
+<rect class="bx-q" x="444" y="118" width="195" height="34" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="541" y="139" text-anchor="middle" font-size="10" fill="#6b675e">B 插 id=8：封地中央，挡 6 秒</text>
+<text class="ts" x="20" y="180" font-size="12" fill="#6b675e">@10 的两把锁首尾相接，登记成两条：命中行的锁与扫过的隙分开记</text>
+</svg>
+</figure>
 
 把上界开到无穷：A 锁 `id>20`：
 
@@ -98,6 +204,28 @@ trx=99504  PRIMARY  X,INSERT_INTENTION   WAITING   data=supremum pseudo-record
 （普通间隙的插入意向带 `GAP` 后缀，supremum 上省略，同一个请求的两种拼写。）B 被挡 6 秒后放行。
 
 退化规则至此集齐三张牌，值得写下：**等值命中唯一索引 → 纯记录锁（不锁隙，邻居随便插）；等值落空 → 纯间隙锁（不锁行，本体随便改）；越过终点 / 开上界 → 锁到 supremum（封住无穷）。** 范围扫描的默认是 next-key，端点按这三条退化。
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 168" role="img" aria-label="锁退化三张牌：等值命中唯一索引退化为纯记录锁，两侧间隙自由；等值落空退化为纯间隙锁，行本体自由；越过终点或开上界锁到 supremum，封住比它大的一切可能" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">三张退化牌：范围扫描默认 next-key，端点按这三条退化</text>
+<rect class="bx-q" x="20" y="40" width="195" height="86" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="117" y="60" text-anchor="middle" font-size="11" fill="#6b675e">等值命中唯一索引</text>
+<text class="t" x="117" y="82" text-anchor="middle" font-size="12" fill="#2b2a26">纯记录锁</text>
+<text class="ts" x="117" y="102" text-anchor="middle" font-size="10" fill="#6b675e">REC_NOT_GAP</text>
+<text class="ts" x="117" y="118" text-anchor="middle" font-size="10" fill="#6b675e">两侧间隙自由：邻居随便插</text>
+<rect class="bx-q" x="232" y="40" width="195" height="86" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="329" y="60" text-anchor="middle" font-size="11" fill="#6b675e">等值落空（id=7 不存在）</text>
+<text class="t" x="329" y="82" text-anchor="middle" font-size="12" fill="#2b2a26">纯间隙锁</text>
+<text class="ts" x="329" y="102" text-anchor="middle" font-size="10" fill="#6b675e">GAP，锚右边界记录</text>
+<text class="ts" x="329" y="118" text-anchor="middle" font-size="10" fill="#6b675e">行本体自由：已有行随便改</text>
+<rect class="bx-sick" x="444" y="40" width="195" height="86" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="ts" x="541" y="60" text-anchor="middle" font-size="11" fill="#6b675e">越过终点 / 开上界（id&gt;20）</text>
+<text class="t" x="541" y="82" text-anchor="middle" font-size="12" fill="#2b2a26">锁到 supremum</text>
+<text class="ts" x="541" y="102" text-anchor="middle" font-size="10" fill="#6b675e">锚「最大记录」伪记录</text>
+<text class="ts" x="541" y="118" text-anchor="middle" font-size="10" fill="#6b675e">封住比它大的一切可能</text>
+<text class="ts" x="20" y="154" font-size="12" fill="#6b675e">RC 把间隙那一半整个拆掉：等值落空一把锁都不设，只剩表级 IX</text>
+</svg>
+</figure>
 
 ## 幻读的封印，与 RC 的取舍
 
@@ -164,6 +292,42 @@ B：持 S，请求 X → 等其它 S 释放（即等 A）      ← 环成立
 
 B 被回滚。**FOR SHARE 不是免费的保险**：读时人人可进，升级写锁时人人互堵。想避开「先读后写」的这笔开销，还有一条乐观的路：读与写之间不上锁，落笔时校验读到的版本还在不在，不在就整个重来（Redis 的 WATCH 走的就是这条路）。冲突很少发生时乐观赢，冲突频繁时重试的成本反超锁等待。乐观与悲观没有对错，赌注的方向不同而已。
 
+三种最短的成环路径：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 226" role="img" aria-label="三种死锁的等待环：AB-BA 互换两行，A 持 id1 要 id5，B 持 id5 要 id1；共享间隙死锁，A 与 C 的 X GAP 共存无冲突，双双 INSERT 同一间隙时互等对方放隙；双 S 升级，A B 同持 S 锁再各自请求 X，互等对方释放 S" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="my3As5" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">死锁 = 等待图里的环：三种实测复现的最短路径</text>
+<rect class="bx-q" x="30" y="52" width="160" height="36" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="110" y="74" text-anchor="middle" font-size="10" fill="#6b675e">A · 持 id=1，要 id=5</text>
+<rect class="bx-q" x="30" y="124" width="160" height="36" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="110" y="146" text-anchor="middle" font-size="10" fill="#6b675e">B · 持 id=5，要 id=1</text>
+<line class="fl" x1="80" y1="88" x2="80" y2="120" stroke="#6b675e" stroke-width="1.4" marker-end="url(#my3As5)"/>
+<line class="fl" x1="140" y1="124" x2="140" y2="92" stroke="#6b675e" stroke-width="1.4" marker-end="url(#my3As5)"/>
+<text class="t" x="110" y="186" text-anchor="middle" font-size="11" fill="#2b2a26">① AB-BA 互换两行</text>
+<rect class="bx-q" x="240" y="52" width="170" height="36" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="325" y="74" text-anchor="middle" font-size="10" fill="#6b675e">A · 持 GAP@10，INSERT 7</text>
+<rect class="bx-q" x="240" y="124" width="170" height="36" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="325" y="146" text-anchor="middle" font-size="10" fill="#6b675e">C · 持 GAP@10，INSERT 7</text>
+<line class="fl" x1="295" y1="88" x2="295" y2="120" stroke="#6b675e" stroke-width="1.4" marker-end="url(#my3As5)"/>
+<line class="fl" x1="355" y1="124" x2="355" y2="92" stroke="#6b675e" stroke-width="1.4" marker-end="url(#my3As5)"/>
+<text class="t" x="325" y="186" text-anchor="middle" font-size="11" fill="#2b2a26">② 共享间隙 + 双双 INSERT</text>
+<text class="ts" x="325" y="204" text-anchor="middle" font-size="9" fill="#6b675e">持有阶段毫无冲突迹象的隐形环</text>
+<rect class="bx-q" x="450" y="52" width="170" height="36" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="535" y="74" text-anchor="middle" font-size="10" fill="#6b675e">A · 持 S@1，请求 X</text>
+<rect class="bx-q" x="450" y="124" width="170" height="36" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="535" y="146" text-anchor="middle" font-size="10" fill="#6b675e">B · 持 S@1，请求 X</text>
+<line class="fl" x1="505" y1="88" x2="505" y2="120" stroke="#6b675e" stroke-width="1.4" marker-end="url(#my3As5)"/>
+<line class="fl" x1="565" y1="124" x2="565" y2="92" stroke="#6b675e" stroke-width="1.4" marker-end="url(#my3As5)"/>
+<text class="t" x="535" y="186" text-anchor="middle" font-size="11" fill="#2b2a26">③ 双 S 升级 X</text>
+<text class="ts" x="110" y="204" text-anchor="middle" font-size="9" fill="#6b675e">牺牲品按回滚代价挑：行锁数 + undo 条数</text>
+<text class="ts" x="535" y="204" text-anchor="middle" font-size="9" fill="#6b675e">读时人人可进，升级时人人互堵</text>
+<text class="ts" x="20" y="222" font-size="11" fill="#6b675e">检测器毫秒级拆环、回滚一方；关掉检测器只剩 innodb_lock_wait_timeout（默认 50 秒）兜底</text>
+</svg>
+</figure>
+
 ### 检测器与超时：两层兜底
 
 以上环都是在**死锁检测器**（`innodb_deadlock_detect=ON`，默认）画出的等待图里抓到的：毫秒级发现、立即回滚一方。把它关掉重跑 AB-BA：
@@ -194,6 +358,38 @@ SELECT LOCK_DATA, COUNT(*) ... GROUP BY LOCK_DATA HAVING COUNT(*)>1;
 
 5000 行 / 9 叶 ≈ 每叶 556 行，**9 个叶子页，每页一把 supremum 锁**。全表范围 UPDATE 一路锁到每个叶子页的「无穷」，5000 行 + 9 个页尾伪记录 = 5009。首篇 156 行/页的树、MVCC 篇的 undo 观测，加上这一组，第三次出现「两个独立来源对上」。顺带一提：`trx_rows_locked` 把 supremum 也计入行数，排查「锁了 5009 行」的日志时，别忘了有 9 行是「不存在的那一行」。
 
+这笔账的形状：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 190" role="img" aria-label="全表 UPDATE 的 5009 把 X 锁构成：长条是 5000 个行锁，末端一小段朱砂是 9 个叶子页各一把的 supremum 锁；下方 9 个小方块代表 9 个叶子页，每页末尾的伪记录都被锁上" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">trx_rows_locked = 5009 的构成</text>
+<rect class="bar" x="40" y="44" width="450" height="22" fill="#2b2a26"/>
+<text class="onbar" x="50" y="59" font-size="11" fill="#f6f3ec">5000 把行锁：每行一把 X,REC_NOT_GAP</text>
+<rect class="bx-sick" x="490" y="44" width="16" height="22" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="514" y="59" font-size="11" fill="#b03a2e">+ 9 把 supremum</text>
+<rect class="bx" x="40" y="88" width="52" height="40" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<rect class="bx" x="100" y="88" width="52" height="40" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<rect class="bx" x="160" y="88" width="52" height="40" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<rect class="bx" x="220" y="88" width="52" height="40" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<rect class="bx" x="280" y="88" width="52" height="40" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<rect class="bx" x="340" y="88" width="52" height="40" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<rect class="bx" x="400" y="88" width="52" height="40" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<rect class="bx" x="460" y="88" width="52" height="40" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<rect class="bx" x="520" y="88" width="52" height="40" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<rect class="bx-sick" x="64" y="88" width="6" height="40" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/>
+<rect class="bx-sick" x="124" y="88" width="6" height="40" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/>
+<rect class="bx-sick" x="184" y="88" width="6" height="40" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/>
+<rect class="bx-sick" x="244" y="88" width="6" height="40" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/>
+<rect class="bx-sick" x="304" y="88" width="6" height="40" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/>
+<rect class="bx-sick" x="364" y="88" width="6" height="40" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/>
+<rect class="bx-sick" x="424" y="88" width="6" height="40" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/>
+<rect class="bx-sick" x="484" y="88" width="6" height="40" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/>
+<rect class="bx-sick" x="544" y="88" width="6" height="40" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/>
+<text class="ts" x="40" y="148" font-size="11" fill="#6b675e">9 个叶子页（每页约 556 行）：范围 UPDATE 锁到每页末尾的「无穷」，朱砂条是页尾 supremum</text>
+<text class="ts" x="40" y="174" font-size="12" fill="#6b675e">data_locks 与 INNODB_TRX 两处读数一致：锁是逐把登记、逐把可数的</text>
+</svg>
+</figure>
+
 ## MDL：一把不在 InnoDB 里的锁
 
 最后一种锁不住行、不住叶子页，甚至不在存储引擎里：**MDL（元数据锁）住在 server 层**，管的是「表结构这一刻能不能变」。三会话实验：
@@ -212,6 +408,42 @@ t_mdl  SHARED_READ       PENDING   ← C：排在 B 的 EXCLUSIVE 之后
 ```
 
 **门链的关键在最后一行**：C 只想要读锁，A 的读锁与它完全兼容，但 C 排在 B 后面。MDL 的队列讲先来后到：EXCLUSIVE 在等，后面所有 SHARED 就得陪等，不然 ALTER 永远被插队饿死。于是**一个挂着的事务 + 一个 ALTER = 全表后续读写集体堵死**，这是生产事故的标准剧本。
+
+门链与解开它的那一刀：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 240" role="img" aria-label="MDL 门链：A 持 SHARED_READ 已授予挂着不提交；B 的 ALTER 第一阶段 SHARED_UPGRADABLE 已持有、第二阶段 EXCLUSIVE PENDING 等 A；C 的普通 SELECT 与 A 完全兼容，却因先来后到排在 B 的 EXCLUSIVE 之后 PENDING。KILL 掉 B 之后 C 毫秒级放行，比 A 提交早 15 秒" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="my3As6" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">队前的 EXCLUSIVE 在等，队后的 SHARED 全陪等</text>
+<rect class="bx-q" x="30" y="44" width="170" height="48" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="115" y="64" text-anchor="middle" font-size="11" fill="#6b675e">A · SHARED_READ</text>
+<text class="tc" x="115" y="82" text-anchor="middle" font-size="11" fill="#b03a2e">GRANTED · 挂着 22 秒</text>
+<rect class="bx-sick" x="240" y="44" width="180" height="48" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="ts" x="330" y="64" text-anchor="middle" font-size="11" fill="#6b675e">B · ALTER：EXCLUSIVE</text>
+<text class="tc" x="330" y="82" text-anchor="middle" font-size="11" fill="#b03a2e">PENDING · 等 A</text>
+<rect class="bx" x="460" y="44" width="170" height="48" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="545" y="64" text-anchor="middle" font-size="11" fill="#6b675e">C · 普通 SELECT</text>
+<text class="ts" x="545" y="82" text-anchor="middle" font-size="11" fill="#6b675e">PENDING · 排在 B 后面</text>
+<line class="fl" x1="240" y1="68" x2="204" y2="68" stroke="#6b675e" stroke-width="1.4" marker-end="url(#my3As6)"/>
+<line class="fl" x1="460" y1="68" x2="424" y2="68" stroke="#6b675e" stroke-width="1.4" marker-end="url(#my3As6)"/>
+<text class="tc" x="330" y="112" text-anchor="middle" font-size="11" fill="#b03a2e">KILL B</text>
+<line class="flc" x1="330" y1="118" x2="330" y2="138" stroke="#b03a2e" stroke-width="1.6"/>
+<rect class="bx-gone" x="240" y="142" width="180" height="48" rx="4" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<text class="ts" x="330" y="162" text-anchor="middle" font-size="11" fill="#6b675e">B 消失：表结构原封未动</text>
+<text class="ts" x="330" y="180" text-anchor="middle" font-size="11" fill="#6b675e">（还没到动表的阶段）</text>
+<rect class="bx-q" x="460" y="142" width="170" height="48" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="545" y="162" text-anchor="middle" font-size="11" fill="#6b675e">C · SELECT</text>
+<text class="tc" x="545" y="180" text-anchor="middle" font-size="11" fill="#b03a2e">毫秒级放行</text>
+<line class="fl" x1="545" y1="92" x2="545" y2="138" stroke="#6b675e" stroke-width="1.4" marker-end="url(#my3As6)"/>
+<rect class="bx-q" x="30" y="142" width="170" height="48" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="115" y="162" text-anchor="middle" font-size="11" fill="#6b675e">A · 还挂着</text>
+<text class="ts" x="115" y="180" text-anchor="middle" font-size="11" fill="#6b675e">15 秒后才提交</text>
+<text class="ts" x="20" y="216" font-size="12" fill="#6b675e">解开门链靠的是 B 的排队消失，与 A 的锁无关：C 比 A 提交早了整整 15 秒</text>
+<text class="ts" x="20" y="234" font-size="12" fill="#6b675e">DML 行锁 50 秒认输；MDL 等待默认一年（lock_wait_timeout=31536000）</text>
+</svg>
+</figure>
 
 解法实测：`KILL` 掉 B 的 ALTER 连接，**C 的 SELECT 毫秒级完成，比 A 提交早了整整 15 秒**（C 完成于 03:23:57，A 提交于 03:24:12）。解开这道门链靠的是 B 的排队消失，与 A 的锁无关。而 ALTER 被杀后表结构原封未动（无 pad 列）：`SHARED_UPGRADABLE` 阶段还没动表。也是在这里，那个「一年」的 `lock_wait_timeout` 有了着落：**DML 默认 50 秒认输，DDL 默认等一年**。ALTER 堵住全表的场景里，一年是给你足够时间发现并处理它的。
 
