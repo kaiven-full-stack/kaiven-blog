@@ -20,13 +20,21 @@ pymalloc 管理的 arena 空间       39 MiB          39 MiB          3 MiB
 
 `del` 生效了，垃圾回收器也没有忘记工作。真正需要拆开的，是下面三件事：
 
-```text
-对象已经死亡
-      ≠
-那块空间无法再次使用
-      ≠
-相应页面已经离开进程 RSS
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 176" role="img" aria-label="三层不相等：对象已经死亡，不等于那块空间无法再次使用，也不等于相应页面已经离开进程 RSS；三层各属对象、分配器与操作系统" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="40" font-size="10.5" fill="#6b675e">对象层</text>
+<rect class="bx-q" x="120" y="20" width="400" height="32" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="320" y="41" text-anchor="middle" font-size="11.5" fill="#2b2a26">对象已经死亡</text>
+<text class="tc" x="320" y="68" text-anchor="middle" font-size="14" fill="#b03a2e">≠</text>
+<text class="ts" x="20" y="92" font-size="10.5" fill="#6b675e">分配器层</text>
+<rect class="bx-q" x="120" y="72" width="400" height="32" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="320" y="93" text-anchor="middle" font-size="11.5" fill="#2b2a26">那块空间无法再次使用</text>
+<text class="tc" x="320" y="120" text-anchor="middle" font-size="14" fill="#b03a2e">≠</text>
+<text class="ts" x="20" y="144" font-size="10.5" fill="#6b675e">页面层</text>
+<rect class="bx-sick" x="120" y="124" width="400" height="32" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="ts" x="320" y="145" text-anchor="middle" font-size="11.5" fill="#b03a2e">相应页面已经离开进程 RSS</text>
+</svg>
+</figure>
 
 上一篇停在对象生命的终点：名字消失、对象不可达、终结器运行和对象存储释放，并不发生在同一个时刻。这一篇继续往下一层走，进入 `Objects/obmalloc.c`，看看空间交回以后去了哪里，以及一只仍然活着的小对象为什么可能让整座 arena 暂时无法退租。
 
@@ -40,15 +48,28 @@ pymalloc 管理的 arena 空间       39 MiB          39 MiB          3 MiB
 
 这句话缺少主语，也缺少接收者。至少有四层状态需要分别判断：
 
-```text
-Python 对象是否仍可达
-        ↓
-对象占用的 block 是否已经释放
-        ↓
-pool / arena 是否仍由 pymalloc 持有
-        ↓
-对应页面是否仍计入操作系统观察到的 RSS
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 258" role="img" aria-label="四层状态逐层判断：Python 对象是否仍可达；对象占用的 block 是否已经释放；pool 与 arena 是否仍由 pymalloc 持有；对应页面是否仍计入操作系统观察到的 RSS" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="pmA2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-q" x="90" y="20" width="420" height="40" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="110" y="45" font-size="11" fill="#2b2a26">① Python 对象是否仍可达</text>
+<line class="fl" x1="300" y1="60" x2="300" y2="74" stroke="#6b675e" stroke-width="1.3" marker-end="url(#pmA2)"/>
+<rect class="bx-q" x="90" y="78" width="420" height="40" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="110" y="103" font-size="11" fill="#2b2a26">② 对象占用的 block 是否已经释放</text>
+<line class="fl" x1="300" y1="118" x2="300" y2="132" stroke="#6b675e" stroke-width="1.3" marker-end="url(#pmA2)"/>
+<rect class="bx-q" x="90" y="136" width="420" height="40" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="110" y="161" font-size="11" fill="#2b2a26">③ pool / arena 是否仍由 pymalloc 持有</text>
+<line class="fl" x1="300" y1="176" x2="300" y2="190" stroke="#6b675e" stroke-width="1.3" marker-end="url(#pmA2)"/>
+<rect class="bx-sick" x="90" y="194" width="420" height="40" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="ts" x="110" y="219" font-size="11" fill="#b03a2e">④ 对应页面是否仍计入操作系统观察到的 RSS</text>
+<text class="ts" x="528" y="45" font-size="9.5" fill="#6b675e">对象层</text>
+<text class="ts" x="528" y="103" font-size="9.5" fill="#6b675e">block 层</text>
+<text class="ts" x="528" y="161" font-size="9.5" fill="#6b675e">pymalloc 层</text>
+<text class="ts" x="528" y="219" font-size="9.5" fill="#6b675e">页面层</text>
+</svg>
+</figure>
 
 它们对应不同的问题：
 
@@ -79,19 +100,36 @@ CPython 的 C API 把内存分成三个 allocator domain：
 
 在本文使用的传统 GIL、默认 pymalloc 构建中，主路径可以粗略画成：
 
-```text
-PyObject_Malloc(size)
-        ↓
-OBJ domain 当前注册的 malloc
-        ↓
-_PyObject_Malloc()
-        ↓
-pymalloc_alloc()
-        ├── 小请求且池中有空间：block / pool / arena
-        └── 不由 pymalloc 处理：PyMem_RawMalloc()
-                                      ↓
-                               系统分配器路径
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 348" role="img" aria-label="对象分配主路径：PyObject_Malloc 进入 OBJ domain 当前注册的 malloc，落到 _PyObject_Malloc 与 pymalloc_alloc；小请求且池中有空间走 block、pool、arena 主路，不由 pymalloc 处理的大请求转 PyMem_RawMalloc 进系统分配器路径" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="pmA3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-q" x="180" y="20" width="300" height="34" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="ts" x="330" y="42" text-anchor="middle" font-size="10.5" fill="#2b2a26">PyObject_Malloc(size)</text>
+<line class="fl" x1="330" y1="54" x2="330" y2="66" stroke="#6b675e" stroke-width="1.2" marker-end="url(#pmA3)"/>
+<rect class="bx-q" x="180" y="70" width="300" height="34" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="330" y="92" text-anchor="middle" font-size="10.5" fill="#2b2a26">OBJ domain 当前注册的 malloc</text>
+<line class="fl" x1="330" y1="104" x2="330" y2="116" stroke="#6b675e" stroke-width="1.2" marker-end="url(#pmA3)"/>
+<rect class="bx-q" x="180" y="120" width="300" height="34" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="330" y="142" text-anchor="middle" font-size="10.5" fill="#2b2a26">_PyObject_Malloc()</text>
+<line class="fl" x1="330" y1="154" x2="330" y2="166" stroke="#6b675e" stroke-width="1.2" marker-end="url(#pmA3)"/>
+<rect class="bx" x="180" y="170" width="300" height="34" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="330" y="192" text-anchor="middle" font-size="10.5" fill="#2b2a26">pymalloc_alloc()</text>
+<line class="fl" x1="255" y1="204" x2="160" y2="238" stroke="#6b675e" stroke-width="1.3" marker-end="url(#pmA3)"/>
+<text class="ts" x="120" y="222" font-size="9.5" fill="#6b675e">≤ 512B 且池中有空间</text>
+<line class="fl" x1="405" y1="204" x2="505" y2="238" stroke="#6b675e" stroke-width="1.3" marker-end="url(#pmA3)"/>
+<text class="ts" x="444" y="222" font-size="9.5" fill="#6b675e">不由 pymalloc 处理</text>
+<rect class="bx-q" x="40" y="242" width="250" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="ts" x="165" y="260" text-anchor="middle" font-size="10.5" fill="#2b2a26">block / pool / arena</text>
+<text class="ts" x="165" y="277" text-anchor="middle" font-size="9" fill="#6b675e">本文主线的三层结构</text>
+<rect class="bx-q" x="390" y="242" width="230" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="505" y="268" text-anchor="middle" font-size="10.5" fill="#2b2a26">PyMem_RawMalloc()</text>
+<line class="fl" x1="505" y1="286" x2="505" y2="300" stroke="#6b675e" stroke-width="1.2" marker-end="url(#pmA3)"/>
+<rect class="bx-gone" x="390" y="304" width="230" height="34" rx="4" fill="#ece9e2" stroke="#a29d90" stroke-width="1.2" stroke-dasharray="5 3"/>
+<text class="ts" x="505" y="326" text-anchor="middle" font-size="10" fill="#6b675e">系统分配器路径</text>
+</svg>
+</figure>
 
 `PyMem_Malloc()` 的默认后端也会进入 pymalloc，并不只有名称带 `Object` 的接口才能使用它。普通对象从 `_PyObject_New()`、`PyType_GenericAlloc()` 等入口走到 `PyObject_Malloc()`；受循环 GC 追踪的对象还会为 GC 元数据预留空间，最后同样进入对象分配域。
 
@@ -165,17 +203,27 @@ block 是 pymalloc 最终交给一次小请求的空间。它没有一份始终�
 
 概念上可以画成：
 
-```text
-正在使用：
-┌──────────────────────────────┐
-│          object data         │
-└──────────────────────────────┘
-
-释放以后：
-┌──────────────┬───────────────┐
-│ next free ───┼──> 下一个空块 │
-└──────────────┴───────────────┘
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 208" role="img" aria-label="block 的两种状态：正在使用时整块存放 object data，没有独立 C header；释放以后开头一个机器字被复用成 next free 指针，串到同 size class 空闲链的下一个空块" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="pmA5" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="30" y="26" font-size="11" fill="#2b2a26">正在使用：</text>
+<rect class="bx-q" x="130" y="10" width="420" height="44" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="ts" x="340" y="37" text-anchor="middle" font-size="10.5" fill="#2b2a26">object data · 整块都是对象的空间</text>
+<text class="ts" x="30" y="106" font-size="11" fill="#2b2a26">释放以后：</text>
+<rect class="bx" x="130" y="86" width="150" height="44" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="205" y="105" text-anchor="middle" font-size="10" fill="#2b2a26">next free</text>
+<text class="ts" x="205" y="121" text-anchor="middle" font-size="9" fill="#6b675e">开头一个机器字</text>
+<rect class="bx-gone" x="280" y="86" width="270" height="44" rx="3" fill="#ece9e2" stroke="#a29d90" stroke-width="1.2" stroke-dasharray="5 3"/>
+<text class="ts" x="415" y="112" text-anchor="middle" font-size="10" fill="#6b675e">其余空间闲置，等待同档请求</text>
+<line class="fl" x1="205" y1="130" x2="416" y2="158" stroke="#6b675e" stroke-width="1.2" marker-end="url(#pmA5)"/>
+<rect class="bx-q" x="420" y="152" width="190" height="36" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="515" y="175" text-anchor="middle" font-size="10" fill="#2b2a26">空闲链上的下一个空块</text>
+<text class="ts" x="30" y="176" font-size="10" fill="#6b675e">同 size class 的 block</text>
+<text class="ts" x="30" y="192" font-size="10" fill="#6b675e">串在同一条空闲链上</text>
+</svg>
+</figure>
 
 对象释放时，`pymalloc_free()` 先判断地址是否属于 pymalloc 管理的范围。若属于，block 被放回所属 pool 的空闲链；若不属于，则交回 RAW 后端对应的释放函数。
 
@@ -212,19 +260,36 @@ pool 的开头有一份 `pool_header`，其中保存：
 
 pool 没有单独保存一个 `EMPTY`、`USED`、`FULL` 枚举。状态由计数、空闲链和它所在的链表共同表达：
 
-```text
-尚未切出
-    │
-    ▼
-部分使用 ◄──────── 满载
-    │  ▲             │
-    │  │             │ 释放第一个 block
-    │  └─────────────┘
-    │
-    │ 最后一个已分配 block 被释放
-    ▼
-空 pool
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 214" role="img" aria-label="pool 状态机：尚未切出的空间首次切出后成为部分使用，挂在 usedpools 里继续分配直到满载；满载后释放第一个 block 回到部分使用；最后一个已分配 block 被释放后成为空 pool，回到 arena 的 freepools，之后可以改服务另一个 size class" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="pmA6" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-gone" x="20" y="40" width="120" height="48" rx="5" fill="#ece9e2" stroke="#a29d90" stroke-width="1.2" stroke-dasharray="5 3"/>
+<text class="ts" x="80" y="69" text-anchor="middle" font-size="10.5" fill="#6b675e">尚未切出</text>
+<line class="fl" x1="140" y1="64" x2="186" y2="64" stroke="#6b675e" stroke-width="1.3" marker-end="url(#pmA6)"/>
+<text class="ts" x="163" y="54" text-anchor="middle" font-size="9" fill="#6b675e">首次切出</text>
+<rect class="bx-q" x="190" y="40" width="170" height="48" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="275" y="60" text-anchor="middle" font-size="11" fill="#2b2a26">部分使用</text>
+<text class="ts" x="275" y="78" text-anchor="middle" font-size="9" fill="#6b675e">挂在 usedpools · 可继续分配</text>
+<line class="fl" x1="360" y1="54" x2="456" y2="54" stroke="#6b675e" stroke-width="1.3" marker-end="url(#pmA6)"/>
+<text class="ts" x="408" y="46" text-anchor="middle" font-size="9" fill="#6b675e">空 block 分完</text>
+<line class="fl" x1="456" y1="78" x2="360" y2="78" stroke="#6b675e" stroke-width="1.3" marker-end="url(#pmA6)"/>
+<text class="ts" x="408" y="96" text-anchor="middle" font-size="9" fill="#6b675e">释放第一个 block</text>
+<rect class="bx" x="460" y="40" width="140" height="48" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="530" y="60" text-anchor="middle" font-size="11" fill="#2b2a26">满载</text>
+<text class="ts" x="530" y="78" text-anchor="middle" font-size="9" fill="#6b675e">从 usedpools 摘掉</text>
+<line class="fl" x1="275" y1="88" x2="275" y2="146" stroke="#6b675e" stroke-width="1.3" marker-end="url(#pmA6)"/>
+<text class="ts" x="288" y="116" font-size="9" fill="#6b675e">最后一个已分配 block 被释放</text>
+<rect class="bx-sick" x="190" y="150" width="170" height="48" rx="5" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.3"/>
+<text class="ts" x="275" y="170" text-anchor="middle" font-size="11" fill="#b03a2e">空 pool</text>
+<text class="ts" x="275" y="188" text-anchor="middle" font-size="9" fill="#6b675e">回到 arena 的 freepools</text>
+<line class="fl" x1="360" y1="174" x2="456" y2="174" stroke="#6b675e" stroke-width="1.2" stroke-dasharray="5 3" marker-end="url(#pmA6)"/>
+<rect class="bx-gone" x="460" y="150" width="170" height="48" rx="5" fill="#ece9e2" stroke="#a29d90" stroke-width="1.2" stroke-dasharray="5 3"/>
+<text class="ts" x="545" y="170" text-anchor="middle" font-size="9.5" fill="#6b675e">重新初始化后</text>
+<text class="ts" x="545" y="186" text-anchor="middle" font-size="9.5" fill="#6b675e">可改服务另一个 size class</text>
+</svg>
+</figure>
 
 状态变化决定下一步：
 
@@ -240,13 +305,28 @@ pool 再往上，才是 arena。
 
 本机默认 64 位构建中，一个 arena 是 1 MiB，理论上容纳 64 个 16 KiB pool：
 
-```text
-1 MiB arena
-┌────────────────────────────────────────────┐
-│ pool 0 │ pool 1 │ pool 2 │ ... │ pool 63 │
-└────────────────────────────────────────────┘
-        每个 pool 当前只服务一个 size class
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 132" role="img" aria-label="1 MiB arena 横切面：理论上容纳 64 个 16 KiB pool，从 pool 0 到 pool 63；每个 pool 在当前时刻只服务一个 size class" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="t" x="30" y="26" font-size="11.5" fill="#2b2a26">1 MiB arena</text>
+<rect class="bx" x="30" y="38" width="600" height="48" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<line class="grid" x1="105" y1="38" x2="105" y2="86" stroke="#a29d90" stroke-width="1"/>
+<line class="grid" x1="180" y1="38" x2="180" y2="86" stroke="#a29d90" stroke-width="1"/>
+<line class="grid" x1="255" y1="38" x2="255" y2="86" stroke="#a29d90" stroke-width="1"/>
+<line class="grid" x1="405" y1="38" x2="405" y2="86" stroke="#a29d90" stroke-width="1"/>
+<line class="grid" x1="480" y1="38" x2="480" y2="86" stroke="#a29d90" stroke-width="1"/>
+<line class="grid" x1="555" y1="38" x2="555" y2="86" stroke="#a29d90" stroke-width="1"/>
+<text class="ts" x="67" y="66" text-anchor="middle" font-size="9.5" fill="#2b2a26">pool 0</text>
+<text class="ts" x="142" y="66" text-anchor="middle" font-size="9.5" fill="#2b2a26">pool 1</text>
+<text class="ts" x="217" y="66" text-anchor="middle" font-size="9.5" fill="#2b2a26">pool 2</text>
+<text class="ts" x="330" y="66" text-anchor="middle" font-size="11" fill="#a29d90">…</text>
+<text class="ts" x="442" y="66" text-anchor="middle" font-size="9.5" fill="#2b2a26">pool 62</text>
+<text class="ts" x="592" y="66" text-anchor="middle" font-size="9.5" fill="#2b2a26">pool 63</text>
+<line class="axis" x1="480" y1="98" x2="630" y2="98" stroke="#a29d90" stroke-width="1.2"/>
+<line class="axis" x1="480" y1="94" x2="480" y2="102" stroke="#a29d90" stroke-width="1.2"/>
+<line class="axis" x1="630" y1="94" x2="630" y2="102" stroke="#a29d90" stroke-width="1.2"/>
+<text class="ts" x="555" y="118" text-anchor="middle" font-size="9.5" fill="#6b675e">每格 16 KiB</text>
+</svg>
+</figure>
 
 严格说，arena allocator 返回的首地址若没有满足 pool 对齐，开头可能损失一段空间，因此具体 arena 的 `ntotalpools` 不一定永远等于理论最大值。源码中的 `arena_object` 负责记录实际地址、可用 pool 数、下一个尚未切出的 pool、空 pool 链和前后 arena。
 
@@ -274,11 +354,24 @@ nfreepools == ntotalpools
 
 pymalloc 的 `usable_arenas` 因此按空闲 pool 数量排列，最满但仍可用的 arena 在前。需要新 pool 时，优先从表头取：
 
-```text
-arena A：只剩  2 个空 pool  ← 优先继续填
-arena B：还剩 18 个空 pool
-arena C：还剩 47 个空 pool
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 224" role="img" aria-label="三座 arena 的占用柱：arena A 只剩 2 个空 pool 排在表头优先继续填，arena B 剩 18 个空 pool，arena C 剩 47 个空 pool；深色为在用 pool，浅色为空 pool" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="11.5" fill="#6b675e">usable_arenas 表头在左 · 深色 = 在用 pool · 浅色 = 空 pool</text>
+<rect class="bx-q" x="70" y="44" width="90" height="128" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<rect class="bar" x="70" y="48" width="90" height="124" rx="2" fill="#2b2a26"/>
+<rect class="bx-q" x="250" y="44" width="90" height="128" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<rect class="bar" x="250" y="80" width="90" height="92" rx="2" fill="#2b2a26"/>
+<rect class="bx-q" x="430" y="44" width="90" height="128" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<rect class="bar" x="430" y="138" width="90" height="34" rx="2" fill="#2b2a26"/>
+<text class="tc" x="115" y="38" text-anchor="middle" font-size="10" fill="#b03a2e">← 表头：新 pool 从这里切</text>
+<text class="ts" x="115" y="192" text-anchor="middle" font-size="10.5" fill="#2b2a26">arena A</text>
+<text class="ts" x="115" y="208" text-anchor="middle" font-size="9.5" fill="#6b675e">只剩 2 个空 pool</text>
+<text class="ts" x="295" y="192" text-anchor="middle" font-size="10.5" fill="#2b2a26">arena B</text>
+<text class="ts" x="295" y="208" text-anchor="middle" font-size="9.5" fill="#6b675e">还剩 18 个空 pool</text>
+<text class="ts" x="475" y="192" text-anchor="middle" font-size="10.5" fill="#2b2a26">arena C</text>
+<text class="ts" x="475" y="208" text-anchor="middle" font-size="9.5" fill="#6b675e">还剩 47 个空 pool</text>
+</svg>
+</figure>
 
 这是一种主动提高密度的策略。继续把 A 填满，能让 B 和 C 保持较空；等对象释放时，较空的 arena 更有机会整体清空并退还。
 
@@ -385,13 +478,72 @@ allocated blocks 已经从约 38.0 MiB 降到约 1.43 MiB，说明绝大部分�
 
 这正是外部碎片的现场：
 
-```text
-arena 1  [活][空][空][空]...
-arena 2  [空][空][活][空]...
-arena 3  [空][活][空][空]...
-...
-arena 39 [空][空][空][活]...
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 176" role="img" aria-label="稀疏幸存布局示意：arena 1、2、3 直到 arena 39，每座楼的大部分 pool 已空闲，却各有一格仍在用；任何一座只要有在用 pool 就不能整体归还" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="39" font-size="10" fill="#6b675e">arena 1</text>
+<rect class="bx-sick" x="100" y="24" width="38" height="20" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="tc" x="119" y="38" text-anchor="middle" font-size="9" fill="#b03a2e">活</text>
+<rect class="bx-gone" x="142" y="24" width="38" height="20" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 2"/>
+<rect class="bx-gone" x="184" y="24" width="38" height="20" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 2"/>
+<rect class="bx-gone" x="226" y="24" width="38" height="20" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 2"/>
+<rect class="bx-gone" x="268" y="24" width="38" height="20" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 2"/>
+<rect class="bx-gone" x="310" y="24" width="38" height="20" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 2"/>
+<rect class="bx-gone" x="352" y="24" width="38" height="20" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 2"/>
+<rect class="bx-gone" x="394" y="24" width="38" height="20" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 2"/>
+<rect class="bx-gone" x="436" y="24" width="38" height="20" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 2"/>
+<rect class="bx-gone" x="478" y="24" width="38" height="20" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 2"/>
+<rect class="bx-gone" x="520" y="24" width="38" height="20" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 2"/>
+<rect class="bx-gone" x="562" y="24" width="38" height="20" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 2"/>
+<text class="ts" x="610" y="39" font-size="10" fill="#a29d90">…</text>
+<text class="ts" x="20" y="65" font-size="10" fill="#6b675e">arena 2</text>
+<rect class="bx-gone" x="100" y="50" width="38" height="20" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 2"/>
+<rect class="bx-gone" x="142" y="50" width="38" height="20" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 2"/>
+<rect class="bx-sick" x="184" y="50" width="38" height="20" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="tc" x="203" y="64" text-anchor="middle" font-size="9" fill="#b03a2e">活</text>
+<rect class="bx-gone" x="226" y="50" width="38" height="20" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 2"/>
+<rect class="bx-gone" x="268" y="50" width="38" height="20" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 2"/>
+<rect class="bx-gone" x="310" y="50" width="38" height="20" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 2"/>
+<rect class="bx-gone" x="352" y="50" width="38" height="20" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 2"/>
+<rect class="bx-gone" x="394" y="50" width="38" height="20" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 2"/>
+<rect class="bx-gone" x="436" y="50" width="38" height="20" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 2"/>
+<rect class="bx-gone" x="478" y="50" width="38" height="20" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 2"/>
+<rect class="bx-gone" x="520" y="50" width="38" height="20" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 2"/>
+<rect class="bx-gone" x="562" y="50" width="38" height="20" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 2"/>
+<text class="ts" x="610" y="65" font-size="10" fill="#a29d90">…</text>
+<text class="ts" x="20" y="91" font-size="10" fill="#6b675e">arena 3</text>
+<rect class="bx-gone" x="100" y="76" width="38" height="20" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 2"/>
+<rect class="bx-sick" x="142" y="76" width="38" height="20" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="tc" x="161" y="90" text-anchor="middle" font-size="9" fill="#b03a2e">活</text>
+<rect class="bx-gone" x="184" y="76" width="38" height="20" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 2"/>
+<rect class="bx-gone" x="226" y="76" width="38" height="20" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 2"/>
+<rect class="bx-gone" x="268" y="76" width="38" height="20" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 2"/>
+<rect class="bx-gone" x="310" y="76" width="38" height="20" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 2"/>
+<rect class="bx-gone" x="352" y="76" width="38" height="20" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 2"/>
+<rect class="bx-gone" x="394" y="76" width="38" height="20" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 2"/>
+<rect class="bx-gone" x="436" y="76" width="38" height="20" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 2"/>
+<rect class="bx-gone" x="478" y="76" width="38" height="20" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 2"/>
+<rect class="bx-gone" x="520" y="76" width="38" height="20" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 2"/>
+<rect class="bx-gone" x="562" y="76" width="38" height="20" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 2"/>
+<text class="ts" x="610" y="91" font-size="10" fill="#a29d90">…</text>
+<text class="ts" x="100" y="118" font-size="11" fill="#a29d90">⋮</text>
+<text class="ts" x="20" y="143" font-size="10" fill="#6b675e">arena 39</text>
+<rect class="bx-gone" x="100" y="128" width="38" height="20" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 2"/>
+<rect class="bx-gone" x="142" y="128" width="38" height="20" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 2"/>
+<rect class="bx-gone" x="184" y="128" width="38" height="20" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 2"/>
+<rect class="bx-sick" x="226" y="128" width="38" height="20" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="tc" x="245" y="142" text-anchor="middle" font-size="9" fill="#b03a2e">活</text>
+<rect class="bx-gone" x="268" y="128" width="38" height="20" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 2"/>
+<rect class="bx-gone" x="310" y="128" width="38" height="20" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 2"/>
+<rect class="bx-gone" x="352" y="128" width="38" height="20" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 2"/>
+<rect class="bx-gone" x="394" y="128" width="38" height="20" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 2"/>
+<rect class="bx-gone" x="436" y="128" width="38" height="20" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 2"/>
+<rect class="bx-gone" x="478" y="128" width="38" height="20" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 2"/>
+<rect class="bx-gone" x="520" y="128" width="38" height="20" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 2"/>
+<rect class="bx-gone" x="562" y="128" width="38" height="20" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 2"/>
+<text class="ts" x="610" y="143" font-size="10" fill="#a29d90">…</text>
+<text class="ts" x="100" y="168" font-size="9.5" fill="#6b675e">活 = 在用 pool · 空 = 已闲置 · 一格之上还压着一整座 1 MiB 的楼</text>
+</svg>
+</figure>
 
 实际布局当然不是每座恰好一个 block，也不保证幸存者平均分布；这张图只是说明一种能阻止整体归还的布局约束：只要某座 arena 仍有任意在用 pool，它就不能整体归还。原始统计确认稀疏幸存阶段仍有 39 座 arena，却不提供逐座占用图，不能把示意图当作本次运行的地址取证结果。
 
@@ -415,16 +567,26 @@ RSS=11.52 MiB
 
 问题在于，复用有层级约束：
 
-```text
-同 size class 的空 block
-    可以直接服务同档请求
-
-完全空的 pool
-    可以改去服务另一个 size class
-
-完全空且满足保留策略的 arena
-    才能整体归还 arena allocator
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 196" role="img" aria-label="复用的三层约束阶梯：同 size class 的空 block 可以直接服务同档请求；完全空的 pool 可以改去服务另一个 size class；完全空且满足保留策略的 arena 才能整体归还 arena allocator" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="pmA10" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-q" x="20" y="20" width="300" height="40" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="36" y="45" font-size="10.5" fill="#2b2a26">同 size class 的空 block</text>
+<line class="fl" x1="320" y1="40" x2="356" y2="40" stroke="#6b675e" stroke-width="1.3" marker-end="url(#pmA10)"/>
+<text class="ts" x="372" y="45" font-size="10.5" fill="#6b675e">直接服务同档请求</text>
+<rect class="bx-q" x="20" y="76" width="300" height="40" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="36" y="101" font-size="10.5" fill="#2b2a26">完全空的 pool</text>
+<line class="fl" x1="320" y1="96" x2="356" y2="96" stroke="#6b675e" stroke-width="1.3" marker-end="url(#pmA10)"/>
+<text class="ts" x="372" y="101" font-size="10.5" fill="#6b675e">可以改去服务另一个 size class</text>
+<rect class="bx" x="20" y="132" width="300" height="40" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="36" y="157" font-size="10.5" fill="#2b2a26">完全空且满足保留策略的 arena</text>
+<line class="fl" x1="320" y1="152" x2="356" y2="152" stroke="#6b675e" stroke-width="1.3" marker-end="url(#pmA10)"/>
+<text class="tc" x="372" y="157" font-size="10.5" fill="#b03a2e">才能整体归还 arena allocator</text>
+<text class="ts" x="20" y="190" font-size="10" fill="#6b675e">条件一层比一层苛刻：越往下，能挪用的空间越大，门槛也越高</text>
+</svg>
+</figure>
 
 所以“进程没有变瘦”与“程序以后还得重新申请同样多内存”不是一回事。一个负载呈周期性、峰值规模相近的服务，可能从已经保留的 pool 和 arena 中快速满足下一波请求，RSS 平稳反而意味着空间正在复用。
 
