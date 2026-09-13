@@ -18,6 +18,47 @@ tags: [Kafka, 消息队列, 分布式]
 
 50 个分区摊在 3 台 broker 上（实测 leader 分布 17/16/17），不同组的协调者自然落在不同机器，管花名册的负担被均摊，没有哪台 broker 当所有组的协调者。这是把 `__consumer_offsets` 切成 50 份的第二个用意：头一个是用分区做并行与复制的单位，这一个是把协调者这个角色摊薄。
 
+定位规则摊开是一条流水线：
+
+<figure class="mq-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 278" role="img" aria-label="组名到协调者的哈希流水线：组名经 String.hashCode（h=31h+c 按 32 位有符号回绕）、Utils.abs 取绝对值（MIN_VALUE 特判归 0）、模 50 落到 __consumer_offsets 的某个分区，该分区的 leader broker 出任这个组的协调者；15 个活组对照 describe 的 COORDINATOR 列全部命中；50 个分区的 leader 摊在 3 台 broker 上，实测分布 17/16/17" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="mq9As1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">组名到协调者：一条哈希流水线</text>
+<rect class="bx-q" x="20" y="44" width="104" height="56" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="72" y="66" text-anchor="middle" font-size="14" fill="#2b2a26">组名</text>
+<text class="ts" x="72" y="86" text-anchor="middle" font-size="12" fill="#6b675e">g-java-eager</text>
+<line class="fl" x1="124" y1="72" x2="146" y2="72" stroke="#6b675e" stroke-width="1.6" marker-end="url(#mq9As1)"/>
+<rect class="bx" x="150" y="44" width="104" height="56" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="202" y="66" text-anchor="middle" font-size="14" fill="#2b2a26">hashCode</text>
+<text class="ts" x="202" y="86" text-anchor="middle" font-size="12" fill="#6b675e">h=31h+c 回绕</text>
+<line class="fl" x1="254" y1="72" x2="276" y2="72" stroke="#6b675e" stroke-width="1.6" marker-end="url(#mq9As1)"/>
+<rect class="bx" x="280" y="44" width="104" height="56" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="332" y="66" text-anchor="middle" font-size="14" fill="#2b2a26">Utils.abs</text>
+<text class="ts" x="332" y="86" text-anchor="middle" font-size="12" fill="#6b675e">MIN_VALUE 特判</text>
+<line class="fl" x1="384" y1="72" x2="406" y2="72" stroke="#6b675e" stroke-width="1.6" marker-end="url(#mq9As1)"/>
+<rect class="bx" x="410" y="44" width="104" height="56" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="462" y="66" text-anchor="middle" font-size="14" fill="#2b2a26">% 50</text>
+<text class="ts" x="462" y="86" text-anchor="middle" font-size="12" fill="#6b675e">落进 0..49</text>
+<line class="fl" x1="514" y1="72" x2="536" y2="72" stroke="#6b675e" stroke-width="1.6" marker-end="url(#mq9As1)"/>
+<rect class="bx-q" x="540" y="44" width="104" height="56" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="592" y="66" text-anchor="middle" font-size="14" fill="#2b2a26">分区 leader</text>
+<text class="tc" x="592" y="86" text-anchor="middle" font-size="12" fill="#b03a2e">= 组的协调者</text>
+<text class="ts" x="20" y="130" font-size="12" fill="#6b675e">集群里 15 个活组对照 describe 的 COORDINATOR 列：15/15 全命中</text>
+<text class="ts" x="20" y="162" font-size="12" fill="#6b675e">50 个分区摊在 3 台 broker 上（实测 leader 分布 17/16/17）</text>
+<rect class="bx-q" x="60" y="172" width="160" height="26" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="140" y="189" text-anchor="middle" font-size="12" fill="#6b675e">kafka1</text>
+<rect class="bx-q" x="250" y="172" width="160" height="26" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="330" y="189" text-anchor="middle" font-size="12" fill="#6b675e">kafka2</text>
+<rect class="bx-q" x="440" y="172" width="160" height="26" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="520" y="189" text-anchor="middle" font-size="12" fill="#6b675e">kafka3</text>
+<text class="ts" x="60" y="224" font-size="12" fill="#6b675e">一个组的协调者在哪台机器，只由组名决定</text>
+<text class="tc" x="520" y="224" text-anchor="middle" font-size="12" fill="#b03a2e">g-java-eager 的协调者在这</text>
+<text class="ts" x="20" y="262" font-size="12" fill="#6b675e">一次哈希定下组的坐标：组名一换，落点就换</text>
+</svg>
+</figure>
+
 边界上有个坑值得记。Java 的 `String.hashCode` 返回 32 位有符号整数，最负的那个值是 `Integer.MIN_VALUE`（-2147483648），而 `Math.abs` 面对它有个出了名的毛病：绝对值超出正数范围，返回的还是 MIN_VALUE 本身，仍是负数，直接取模会得到负的分区号。Kafka 源码用自己的 `Utils.abs` 兜住，注释写得明白，遇到 MIN_VALUE 返回 0。偏偏真有一个字符串命中这个值，就是经典测试用例 `polygenelubricants`。我拿它当组名建了个消费者，hashCode 算出来正是 -2147483648，`Utils.abs` 归 0，落进分区 0，describe 显示协调者是 kafka2（恰是分区 0 的 leader），入组 Stable，消费正常。一个数学上会捅出负分区的输入，被一行特判接住了。
 
 顺带验证了一件更朴素的事：进度是数据，不是内存。整个集群重启（docker compose 把六个容器重新拉起）之后，这些老组一个不少，提交的位移原样都在。因为 `__consumer_offsets` 自己就是被持久化、被复制的日志，机器重启对它不过是一次重放。
@@ -72,6 +113,42 @@ key 是 (组, topic, 分区) 三元组，value 是它读到了哪（offset）外
 
 提交即追加这一点要单独敲实。我让一个组对同一个 (kofs, partition 0) 先后提交了 offset 5、10、15，挖出来同一个 key 底下这几次提交各占一条独立记录，各有各的 offset 和 commitTimestamp。旧记录不被覆盖，就待在原地，新记录追加在后头。日志的定义就是这个：只追加，不改写。协调者读的时候只认每个 key 最新的那条，这件事交给第三节的 cleaner。
 
+生命史在日志里的形状：
+
+<figure class="mq-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 296" role="img" aria-label="__consumer_offsets 同一分区里的两种记录按追加顺序排列：type=2 的组元数据记录 generation、成员与分配（gen0 空组、gen1 带成员、gen2 人走光），type=1 的位移提交记录（组、topic、分区）读到了哪个 offset；同一个 key 先后提交 offset 5、10、15 各占一条独立记录，追加而不覆盖" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="mq9As2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">日志里的生命史：两种记录交错追加</text>
+<text class="ts" x="14" y="44" font-size="12" fill="#6b675e">早</text>
+<line class="fl" x1="40" y1="52" x2="40" y2="236" stroke="#6b675e" stroke-width="1.6" marker-end="url(#mq9As2)"/>
+<text class="ts" x="14" y="256" font-size="12" fill="#6b675e">晚</text>
+<rect class="bx" x="60" y="48" width="64" height="24" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="92" y="64" text-anchor="middle" font-size="12" fill="#6b675e">type=2</text>
+<text class="ts" x="136" y="64" font-size="12" fill="#6b675e">gen 0：空组（还没有成员）</text>
+<rect class="bx" x="60" y="82" width="64" height="24" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="92" y="98" text-anchor="middle" font-size="12" fill="#6b675e">type=2</text>
+<text class="ts" x="136" y="98" font-size="12" fill="#6b675e">gen 1：members、分配、谁是组 leader</text>
+<rect class="bx-q" x="60" y="116" width="64" height="24" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="92" y="132" text-anchor="middle" font-size="12" fill="#6b675e">type=1</text>
+<text class="ts" x="136" y="132" font-size="12" fill="#6b675e">(g-dump, kofs, p0) → offset 5</text>
+<rect class="bx-q" x="60" y="150" width="64" height="24" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="92" y="166" text-anchor="middle" font-size="12" fill="#6b675e">type=1</text>
+<text class="ts" x="136" y="166" font-size="12" fill="#6b675e">(g-dump, kofs, p0) → offset 10</text>
+<rect class="bx-q" x="60" y="184" width="64" height="24" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="92" y="200" text-anchor="middle" font-size="12" fill="#6b675e">type=1</text>
+<text class="ts" x="136" y="200" font-size="12" fill="#6b675e">(g-dump, kofs, p0) → offset 15</text>
+<rect class="bx" x="60" y="218" width="64" height="24" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="92" y="234" text-anchor="middle" font-size="12" fill="#6b675e">type=2</text>
+<text class="ts" x="136" y="234" font-size="12" fill="#6b675e">gen 2：人走光（members 空）</text>
+<path class="flc" d="M350 118 h8 v88 h-8" fill="none" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="366" y="158" font-size="12" fill="#b03a2e">同一个 key 提交三次</text>
+<text class="tc" x="366" y="176" font-size="12" fill="#b03a2e">就留三条记录</text>
+<text class="ts" x="20" y="282" font-size="12" fill="#6b675e">key 说清这条记录是谁的，payload 说清发生了什么；旧值谁来打扫，是下一节 cleaner 的事</text>
+</svg>
+</figure>
+
 末尾还有个批次头字段值得扫一眼，partitionLeaderEpoch，和日志段篇批次头里那个同名。它记这批记录是在该分区第几任 leader 手下写的，集群重启、leader 换人，都会让它往上跳，痕迹全留在这里。
 
 ## 三、压实：50 个分区为什么不撑爆
@@ -88,6 +165,69 @@ key 是 (组, topic, 分区) 三元组，value 是它读到了哪（offset）外
 ```
 
 规律清清楚楚。每个 (组, topic, 分区) 的 key 只剩最新那条 offset（=30），早先的 5、10、15、20、25 全删；组元数据的 key 只剩最新一代，旧 generation 全删；两个组各留一条最新元数据。4 个段并成 1 个，5 条记录里是三个分区各自的最新位移，加两个组各自的最新一代。丢掉的全是被顶替的旧值。
+
+压实前 4 个段，压实后 1 个段：
+
+<figure class="mq-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 286" role="img" aria-label="压实前后对比：压实前日志有 4 个段，同一个 key 底下摞着 offset 5、10、15、15、20、25 的旧版本，还有旧代元数据和删组墓碑；cleaner 扫过之后只剩 1 个段 5 条记录，每个 key 只留最新一条：p0 的 30、p1 和 p2 各自的最新位移、两个组各自的最新一代" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="mq9Ac1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-c" d="M0 0 L8 4 L0 8 Z" fill="#b03a2e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">压实前后：4 个段并成 1 个段</text>
+<text class="ts" x="20" y="52" font-size="12" fill="#6b675e">压实前：4 个段（光头一个段就有 20 条本组记录）</text>
+<rect class="msg" x="20" y="60" width="40" height="28" fill="#a29d90" opacity="0.65"/>
+<text class="t" x="40" y="79" text-anchor="middle" font-size="12" fill="#2b2a26">5</text>
+<rect class="msg" x="63" y="60" width="40" height="28" fill="#a29d90" opacity="0.65"/>
+<text class="t" x="83" y="79" text-anchor="middle" font-size="12" fill="#2b2a26">10</text>
+<rect class="msg" x="106" y="60" width="40" height="28" fill="#a29d90" opacity="0.65"/>
+<text class="t" x="126" y="79" text-anchor="middle" font-size="12" fill="#2b2a26">15</text>
+<rect class="msg" x="149" y="60" width="40" height="28" fill="#a29d90" opacity="0.65"/>
+<text class="t" x="169" y="79" text-anchor="middle" font-size="12" fill="#2b2a26">15</text>
+<line class="fl" x1="190" y1="58" x2="190" y2="90" stroke="#6b675e" stroke-width="1"/>
+<rect class="msg" x="192" y="60" width="40" height="28" fill="#a29d90" opacity="0.65"/>
+<text class="t" x="212" y="79" text-anchor="middle" font-size="12" fill="#2b2a26">20</text>
+<rect class="msg" x="235" y="60" width="40" height="28" fill="#a29d90" opacity="0.65"/>
+<text class="t" x="255" y="79" text-anchor="middle" font-size="12" fill="#2b2a26">25</text>
+<rect class="bar" x="278" y="60" width="40" height="28" fill="#2b2a26"/>
+<text class="onbar" x="298" y="79" text-anchor="middle" font-size="12" fill="#f6f3ec">30</text>
+<rect class="msg" x="321" y="60" width="40" height="28" fill="#a29d90" opacity="0.65"/>
+<text class="t" x="341" y="79" text-anchor="middle" font-size="12" fill="#2b2a26">旧代</text>
+<line class="fl" x1="362" y1="58" x2="362" y2="90" stroke="#6b675e" stroke-width="1"/>
+<rect class="msg" x="364" y="60" width="40" height="28" fill="#a29d90" opacity="0.65"/>
+<text class="t" x="384" y="79" text-anchor="middle" font-size="12" fill="#2b2a26">旧代</text>
+<rect class="bx-gone" x="407" y="60" width="40" height="28" rx="3" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<text class="ts" x="427" y="79" text-anchor="middle" font-size="12" fill="#6b675e">墓碑</text>
+<rect class="bar" x="450" y="60" width="40" height="28" fill="#2b2a26"/>
+<text class="onbar" x="470" y="79" text-anchor="middle" font-size="12" fill="#f6f3ec">p1</text>
+<rect class="bar" x="493" y="60" width="40" height="28" fill="#2b2a26"/>
+<text class="onbar" x="513" y="79" text-anchor="middle" font-size="12" fill="#f6f3ec">p2</text>
+<line class="fl" x1="534" y1="58" x2="534" y2="90" stroke="#6b675e" stroke-width="1"/>
+<rect class="bar" x="536" y="60" width="40" height="28" fill="#2b2a26"/>
+<text class="onbar" x="556" y="79" text-anchor="middle" font-size="12" fill="#f6f3ec">最新代</text>
+<text class="ts" x="590" y="79" font-size="12" fill="#6b675e">…</text>
+<rect class="msg" x="20" y="104" width="12" height="12" fill="#a29d90" opacity="0.65"/>
+<text class="ts" x="38" y="114" font-size="12" fill="#6b675e">被顶替的旧值（清掉）</text>
+<rect class="bar" x="180" y="104" width="12" height="12" fill="#2b2a26"/>
+<text class="ts" x="198" y="114" font-size="12" fill="#6b675e">最新值（留下）</text>
+<rect class="bx-gone" x="300" y="104" width="12" height="12" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<text class="ts" x="318" y="114" font-size="12" fill="#6b675e">墓碑（&lt;DELETE&gt;）</text>
+<line class="flc" x1="330" y1="128" x2="330" y2="156" stroke="#b03a2e" stroke-width="1.6" marker-end="url(#mq9Ac1)"/>
+<text class="tc" x="344" y="150" font-size="12" fill="#b03a2e">cleaner：同 key 的旧记录一律删掉</text>
+<text class="ts" x="20" y="176" font-size="12" fill="#6b675e">压实后：1 个段，5 条记录</text>
+<rect class="bar" x="20" y="186" width="104" height="28" fill="#2b2a26"/>
+<text class="onbar" x="72" y="205" text-anchor="middle" font-size="12" fill="#f6f3ec">p0 = 30</text>
+<rect class="bar" x="132" y="186" width="104" height="28" fill="#2b2a26"/>
+<text class="onbar" x="184" y="205" text-anchor="middle" font-size="12" fill="#f6f3ec">p1 最新</text>
+<rect class="bar" x="244" y="186" width="104" height="28" fill="#2b2a26"/>
+<text class="onbar" x="296" y="205" text-anchor="middle" font-size="12" fill="#f6f3ec">p2 最新</text>
+<rect class="bar" x="356" y="186" width="104" height="28" fill="#2b2a26"/>
+<text class="onbar" x="408" y="205" text-anchor="middle" font-size="12" fill="#f6f3ec">组A 最新代</text>
+<rect class="bar" x="468" y="186" width="104" height="28" fill="#2b2a26"/>
+<text class="onbar" x="520" y="205" text-anchor="middle" font-size="12" fill="#f6f3ec">组B 最新代</text>
+<text class="ts" x="20" y="240" font-size="12" fill="#6b675e">丢掉的全是被顶替的旧值：旧代、被超过的位移、清完历史的墓碑</text>
+<text class="ts" x="20" y="272" font-size="12" fill="#6b675e">位移是状态，不是轨迹：日志再长，也压得回一小把当前值</text>
+</svg>
+</figure>
 
 墓碑也在这里说清。删一个组，`kafka-consumer-groups --delete` 不是物理抹掉记录，是给这个组的每个 key 追加一条 payload 为 `<DELETE>`（valueSize 为 -1）的墓碑。实测删一个组，4 条墓碑落在同一批里：3 条对它的 3 个 (topic, 分区) 位移 key，1 条对组元数据 key。cleaner 下一轮扫到墓碑，把这个 key 的历史连同墓碑一起清掉。墓碑自己也不会立刻消失，delete.retention.ms 默认 24 小时，留够时间让其他副本和下游消费者看到这个删除标记，之后才彻底蒸发。
 
@@ -125,19 +265,35 @@ CURRENT-OFFSET=35，跑在已处理的 33 前面。重启后从 35 续读，seq 
 
 同一个崩溃点（清单第 33 行），三种提交策略，三种结局：A 重复 3 丢失 0，B 丢失 2 重复 0，C 重复 13 丢失 0。窗口的方向和大小全看提交相对处理落在哪，没有玄学。先处理后提交偏重复（at-least-once），先提交后处理偏丢失（at-most-once），两头不可兼得。
 
-```text
-都崩在「处理到 seq 33」这一刻，区别只在提交点落在 33 的哪一侧：
+三个提交点摆在同一根标尺上：
 
-  A 先处理后提交   提交点=30（落在处理后面）
-     缺口 = seq 31、32、33：已处理，没提交
-     重启从 30 续读，这 3 条重来一遍   -> 重复，at-least-once
-
-  B 先提交后处理   提交点=35（跑到处理前面）
-     缺口 = seq 34、35：已提交，没处理
-     重启从 35 续读，这 2 条被跳过     -> 丢失，at-most-once
-
-  缺口 = 提交点与处理点之间的距离，方向决定重复还是丢失，长度决定多少条
-```
+<figure class="mq-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 298" role="img" aria-label="同一个崩溃点的三种提交策略数轴对比：都在处理到 seq 33 那一刻被 SIGKILL；策略 C autoCommit 提交点 20，重启后重放 21 到 33 共 13 条重复；策略 A 先处理后提交提交点 30，重放 31 到 33 共 3 条重复；策略 B 先提交后处理提交点 35，重启后跳过 34、35 共 2 条丢失；提交点在处理点左侧偏重复，右侧偏丢失，缺口长度决定条数" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="mq9As3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">都崩在「处理到 seq 33」这一刻，区别只在提交点落在 33 的哪一侧</text>
+<text class="tc" x="487" y="44" text-anchor="middle" font-size="12" fill="#b03a2e">SIGKILL：已处理到 33</text>
+<line class="flc" x1="487" y1="48" x2="487" y2="212" stroke="#b03a2e" stroke-width="2"/>
+<text class="ts" x="60" y="64" font-size="12" fill="#6b675e">C autoCommit 提交点=20：重放 21..33，共 13 条（重复）</text>
+<rect class="bx-sick" x="117" y="72" width="370" height="14" rx="3" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="ts" x="60" y="100" font-size="12" fill="#6b675e">A 先处理后提交 提交点=30：重放 31..33，共 3 条（重复）</text>
+<rect class="bx-sick" x="402" y="108" width="85" height="14" rx="3" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<line class="axis" x1="60" y1="170" x2="628" y2="170" stroke="#6b675e" stroke-width="1.2" marker-end="url(#mq9As3)"/>
+<line class="fl" x1="117" y1="170" x2="117" y2="176" stroke="#6b675e" stroke-width="1.6"/>
+<line class="fl" x1="260" y1="170" x2="260" y2="176" stroke="#6b675e" stroke-width="1.6"/>
+<line class="fl" x1="402" y1="170" x2="402" y2="176" stroke="#6b675e" stroke-width="1.6"/>
+<line class="fl" x1="544" y1="170" x2="544" y2="176" stroke="#6b675e" stroke-width="1.6"/>
+<text class="ts" x="117" y="190" text-anchor="middle" font-size="12" fill="#6b675e">20</text>
+<text class="ts" x="260" y="190" text-anchor="middle" font-size="12" fill="#6b675e">25</text>
+<text class="ts" x="402" y="190" text-anchor="middle" font-size="12" fill="#6b675e">30</text>
+<text class="ts" x="544" y="190" text-anchor="middle" font-size="12" fill="#6b675e">35</text>
+<rect class="bx-sick" x="487" y="198" width="57" height="14" rx="3" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="ts" x="60" y="232" font-size="12" fill="#6b675e">B 先提交后处理 提交点=35：跳过 34、35 共 2 条丢失，永远没人再读</text>
+<text class="ts" x="20" y="258" font-size="12" fill="#6b675e">提交点在 33 左侧：处理过没提交，重启后重放（重复）；在右侧：提交过没处理，重启后跳过（丢失）</text>
+<text class="ts" x="20" y="284" font-size="12" fill="#6b675e">缺口 = 提交点与处理点之间的距离：方向决定重复还是丢失，长度决定多少条</text>
+</svg>
+</figure>
 
 这正是投递语义篇那个结论的现场版：at-least-once 是常态默认，因为重复的代价远小于丢失。重复可以在消费端用幂等兜住（去重表、版本号、或操作本身就幂等），丢失的消息找不回来。所以几乎每个客户端的默认都是先处理后提交，场景 B 的先提交是个反面写法，得刻意写成那样才会踩到。
 
@@ -158,6 +314,30 @@ CURRENT-OFFSET=35，跑在已处理的 33 前面。重启后从 35 续读，seq 
 服务端接管的 12.0 秒，拆开是熟面孔：9 秒的 broker 心跳会话判死（副本篇 ISR 收缩那把同款尺子），控制器从 ISR 里指定新 leader，新 leader 把这个分区的日志从头重放一遍、重建内存态（源码里 CoordinatorLoaderImpl 干的就是这件事）。选举不在数据面投票，票已经在楼上控制器的 Raft 仲裁里投过，这也是副本篇的老结论。重放日志重建状态这件事，MySQL 那边 InnoDB 崩溃恢复篇也讲过：重启后重演 redo 把没落盘的数据补回来。两边是同一个套路，状态以日志形式持久化，恢复靠重放日志。
 
 客户端恢复比服务端慢得多，实测 70.6 秒。kafkajs 对死协调者的提交请求先连接被拒，反复重试到 KafkaJSNumberOfRetriesExceeded，整个 consumer 崩溃，随后自动重启，重新 FindCoordinator、重入组（GROUP_JOIN 实测两次），直到 kill 后 70.6 秒才有第一次提交成功。服务端其实早就就绪了，大头耗在客户端的重试退避和重启上。这个差距要记住：协调者故障时组恢复得多快，往往不取决于 broker 切换多快，取决于客户端库的重试策略多拗。
+
+两条泳道各自的速度：
+
+<figure class="mq-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 258" role="img" aria-label="杀掉协调者 broker 之后的双泳道时间轴：服务端泳道 9 秒 broker 心跳会话判死，控制器从 ISR 指定新 leader，12.0 秒重放日志后新 leader 上岗；客户端泳道提交被拒、重试到耗尽、consumer 崩溃重启、重新找协调者、重入组两次，70.6 秒才有第一次提交成功；进度核对 202 条提交一条不少、重复 6 条、丢失 0 条" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">杀掉协调者：两条泳道，两种速度</text>
+<text class="ts" x="74" y="42" font-size="12" fill="#6b675e">t=0 docker kill 协调者 broker（SIGKILL）</text>
+<line class="flk" x1="68" y1="48" x2="68" y2="158" stroke="#2b2a26" stroke-width="2"/>
+<text class="ts" x="20" y="83" font-size="12" fill="#6b675e">服务端</text>
+<rect class="bx" x="68" y="70" width="65" height="20" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<rect class="bx-q" x="133" y="70" width="21" height="20" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<line class="flc" x1="154" y1="56" x2="154" y2="98" stroke="#b03a2e" stroke-width="2"/>
+<text class="tc" x="160" y="63" font-size="12" fill="#b03a2e">12.0s 新 leader 上岗</text>
+<text class="ts" x="68" y="110" font-size="12" fill="#6b675e">9s 心跳会话判死 → 控制器从 ISR 指定新 leader，重放日志重建状态</text>
+<text class="ts" x="20" y="143" font-size="12" fill="#6b675e">客户端</text>
+<rect class="bx-sick" x="68" y="130" width="508" height="20" rx="3" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<line class="flc" x1="576" y1="122" x2="576" y2="158" stroke="#b03a2e" stroke-width="2"/>
+<text class="tc" x="570" y="118" text-anchor="end" font-size="12" fill="#b03a2e">70.6s 第一次提交成功</text>
+<text class="ts" x="76" y="170" font-size="12" fill="#6b675e">提交被拒 → 重试到耗尽 → consumer 崩溃重启 → 重新 FindCoordinator → 重入组（实测 2 次）</text>
+<path class="flc" d="M154 184 v8 H576 v-8" fill="none" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="365" y="212" text-anchor="middle" font-size="12" fill="#b03a2e">12.0s 对 70.6s：断层在客户端库，不在集群</text>
+<text class="ts" x="20" y="244" font-size="12" fill="#6b675e">进度核对：202 条提交一条不少，重复 6 条（seq 50..55），丢失 0 条</text>
+</svg>
+</figure>
 
 进度核对的结论很硬：kill 前提交到 seq 49，重启后从 50 续，重复 6 条（seq 50 到 55，崩溃瞬间在途、提交没落地的那批），丢失 0 条，200 条全覆盖。
 
