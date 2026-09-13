@@ -24,6 +24,37 @@ city-gz    1362891687    p0     p0
 
 15 个全中。每个 key 的两条消息都落同一分区，15 个 key 在三个分区上的分布是 5/5/5，murmur2 的均匀性在这个小样本上也立得住。旅程篇实测的 u1→p1、u2→p0 不是巧合，是这道除法的输出，当时只能观察，现在能算了。
 
+这道除法的三步：
+
+<figure class="mq-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 170" role="img" aria-label="落点计算的三步管线：key 经 murmur2 得到 32 位哈希值，toPositive 清掉符号位，再对分区数取模，得到落点分区；u2 的哈希是 1598843406，对 3 取模落 p0" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="mq5As1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">落点 = toPositive(murmur2(key)) % 分区数：没有随机数，没有状态，不用问 broker</text>
+<rect class="bx" x="20" y="50" width="90" height="48" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="65" y="70" text-anchor="middle" font-size="14" fill="#2b2a26">u2</text>
+<text class="ts" x="65" y="88" text-anchor="middle" font-size="12" fill="#6b675e">消息的 key</text>
+<line class="fl" x1="110" y1="74" x2="144" y2="74" stroke="#6b675e" stroke-width="1.6" marker-end="url(#mq5As1)"/>
+<rect class="bx" x="150" y="50" width="150" height="48" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="225" y="70" text-anchor="middle" font-size="14" fill="#2b2a26">murmur2</text>
+<text class="ts" x="225" y="88" text-anchor="middle" font-size="12" fill="#6b675e">→ 1598843406</text>
+<line class="fl" x1="300" y1="74" x2="334" y2="74" stroke="#6b675e" stroke-width="1.6" marker-end="url(#mq5As1)"/>
+<rect class="bx" x="340" y="50" width="140" height="48" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="410" y="70" text-anchor="middle" font-size="14" fill="#2b2a26">toPositive</text>
+<text class="ts" x="410" y="88" text-anchor="middle" font-size="12" fill="#6b675e">&amp; 0x7fffffff</text>
+<line class="fl" x1="480" y1="74" x2="514" y2="74" stroke="#6b675e" stroke-width="1.6" marker-end="url(#mq5As1)"/>
+<rect class="bx" x="520" y="50" width="120" height="48" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="580" y="70" text-anchor="middle" font-size="14" fill="#2b2a26">% 3</text>
+<text class="ts" x="580" y="88" text-anchor="middle" font-size="12" fill="#6b675e">分区数做分母</text>
+<line class="fl" x1="580" y1="98" x2="580" y2="116" stroke="#6b675e" stroke-width="1.6" marker-end="url(#mq5As1)"/>
+<rect class="bx-q" x="520" y="122" width="120" height="36" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="580" y="145" text-anchor="middle" font-size="14" fill="#2b2a26">p0</text>
+<text class="ts" x="20" y="132" font-size="12" fill="#6b675e">15 个 key 手算全中，三个分区上的分布 5/5/5</text>
+<text class="ts" x="20" y="152" font-size="12" fill="#6b675e">Java 客户端算出来同一个结果：落点是 key 和分区数的纯函数</text>
+</svg>
+</figure>
+
 换一种语言的客户端算出来还是同一个结果。用容器里的 Java console-producer 发一条 key=u2：
 
 ```text
@@ -56,6 +87,37 @@ $ echo "u2:from-java-cli" | kafka-console-producer.sh --topic kmap \
 
 1 分区全程全序；3 分区各自内部有序，全局到达顺序交错。这就是第一节那句承诺的边界：分区内「与写入顺序完全一致」成立，跨分区什么都不保证。还有个附带发现：三个分区只用了两个，u1/u2/u3 全哈希进了 p0 和 p1，p2 从头到尾空着。分区数只设上限，用不用得满看 key 的分布。
 
+顺序的范围，两种摆法：
+
+<figure class="mq-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 305" role="img" aria-label="顺序的范围对比：1 分区时 30 条消息到达顺序严格 1 到 30；3 分区时各分区内部有序，p0 是 1 4 7 到 28，p1 是 2 3 5 6 到 30，p2 空着，单个消费者读出的全局顺序交错" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">1 分区：全程全序，到达顺序就是写入顺序</text>
+<rect class="bx-q" x="40" y="40" width="580" height="36" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="70" y="63" text-anchor="middle" font-size="14" fill="#2b2a26">1</text>
+<text class="t" x="130" y="63" text-anchor="middle" font-size="14" fill="#2b2a26">2</text>
+<text class="t" x="190" y="63" text-anchor="middle" font-size="14" fill="#2b2a26">3</text>
+<text class="t" x="250" y="63" text-anchor="middle" font-size="14" fill="#2b2a26">4</text>
+<text class="t" x="310" y="63" text-anchor="middle" font-size="14" fill="#2b2a26">5</text>
+<text class="t" x="370" y="63" text-anchor="middle" font-size="14" fill="#2b2a26">6</text>
+<text class="ts" x="440" y="63" text-anchor="middle" font-size="12" fill="#6b675e">……</text>
+<text class="t" x="520" y="63" text-anchor="middle" font-size="14" fill="#2b2a26">29</text>
+<text class="t" x="580" y="63" text-anchor="middle" font-size="14" fill="#2b2a26">30</text>
+<text class="ts" x="330" y="96" text-anchor="middle" font-size="12" fill="#6b675e">分区内 = 全局：严格递增</text>
+<text class="ts" x="20" y="128" font-size="12" fill="#6b675e">3 分区：各自内部有序，全局交错（这 30 条只落进了 p0、p1）</text>
+<text class="t" x="60" y="161" text-anchor="end" font-size="14" fill="#2b2a26">p0</text>
+<rect class="bx-q" x="80" y="140" width="540" height="32" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="350" y="161" text-anchor="middle" font-size="12" fill="#6b675e">1  4  7  10  13  16  19  22  25  28（10 条，分区内有序）</text>
+<text class="t" x="60" y="201" text-anchor="end" font-size="14" fill="#2b2a26">p1</text>
+<rect class="bx-q" x="80" y="180" width="540" height="32" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="350" y="201" text-anchor="middle" font-size="12" fill="#6b675e">2  3  5  6  8  9  ……  29  30（20 条，分区内有序）</text>
+<text class="t" x="60" y="241" text-anchor="end" font-size="14" fill="#2b2a26">p2</text>
+<rect class="bx-gone" x="80" y="220" width="540" height="32" rx="4" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<text class="ts" x="350" y="241" text-anchor="middle" font-size="12" fill="#6b675e">0 条：分区数只是上限，用不用得满看 key 的分布</text>
+<text class="ts" x="20" y="276" font-size="12" fill="#6b675e">单个消费者读出的全局顺序：2 3 5 6 8 9 …… 29 30 1 4 7 10 …… 25 28，交错</text>
+<text class="tc" x="20" y="296" font-size="12" fill="#b03a2e">顺序承诺的单位是 topic-partition，不是 topic</text>
+</svg>
+</figure>
+
 **第二样是并行的上限。**一个分区在同一消费组里至多分给一个消费者（旅程篇提过一句，消费者组篇展开），所以 topic 有几个分区，同时就有几个人能干活。9000 条消息、每条处理 1ms，三种配置竞速：
 
 ```text
@@ -65,6 +127,25 @@ $ echo "u2:from-java-cli" | kafka-console-producer.sh --topic kmap \
 ```
 
 第三行最冷：多出来的两个人一条消息都摸不到，建组的协商照跑，活还是一个人干。第一行的数字没到理想的三分之一，因为三个消费者挤在同一个 Node 进程里共享一个事件循环，拆成三个进程会更接近；方向没有疑问，加分区确实买到并行，不加分区加人买不到。生产端不是瓶颈：9000 条灌进 3 分区只花了 128ms，慢的从来是消化。
+
+三种配置放在同一根标尺上：
+
+<figure class="mq-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 190" role="img" aria-label="9000 条消息排空竞速条形图：3 分区 3 消费者 6.4 秒每人 3000 条；3 分区 1 消费者 13.1 秒一人 9000 条；1 分区 3 消费者 13.2 秒，一人 9000 条另两人 0 条" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">9000 条 × 1ms/条的排空竞速：条越长，排空越慢</text>
+<text class="ts" x="20" y="59" font-size="12" fill="#6b675e">3 分区 × 3 个消费者</text>
+<rect class="bar" x="210" y="44" width="184" height="22" fill="#2b2a26"/>
+<text class="onbar" x="302" y="59" text-anchor="middle" font-size="12" fill="#f6f3ec">6.4s · 每人 3000 条</text>
+<text class="ts" x="20" y="91" font-size="12" fill="#6b675e">3 分区 × 1 个消费者</text>
+<rect class="bar" x="210" y="76" width="377" height="22" fill="#2b2a26"/>
+<text class="onbar" x="398" y="91" text-anchor="middle" font-size="12" fill="#f6f3ec">13.1s · 一人 9000 条</text>
+<text class="ts" x="20" y="123" font-size="12" fill="#6b675e">1 分区 × 3 个消费者</text>
+<rect class="bar" x="210" y="108" width="380" height="22" fill="#2b2a26"/>
+<text class="onbar" x="400" y="123" text-anchor="middle" font-size="12" fill="#f6f3ec">13.2s · 一人 9000 条，另两人 0 条</text>
+<text class="ts" x="20" y="156" font-size="12" fill="#6b675e">第三行最冷：建组协商照跑，多出来的两个人一条消息都摸不到</text>
+<text class="ts" x="20" y="176" font-size="12" fill="#6b675e">第一行没到理想的三分之一：三个消费者共享同一个 Node 进程的事件循环</text>
+</svg>
+</figure>
 
 对照教具看立场。RabbitMQ 的并行是多个 worker 抢同一个队列：基础篇实验四里 3 个 worker 均分 1000 单（333/333/334），队列结构一动不动；代价是处理顺序被抢食打乱，快慢 worker 手里各囤一撮消息，实验八里不限流时慢消费者囤了 10 条。顺序与并行在队列世界里是消费端自己的修行，broker 不表态。Kafka 把这个交换摆上台面写进 topic 的结构里：**分区数同时是顺序的范围和并行的上限**，想要更多并行，就得接受更粗的顺序，一个旋钮管两件事。
 
@@ -104,6 +185,54 @@ Topic: kgrow   PartitionCount: 3   ReplicationFactor: 1   …
 - seq=2 的 12 条，**9 个 key 搬家**，名单与纸面预测完全同一批：u1、u3、u5、u6、u7、u8、u10、u11、u12。
 - u1 的历史从此劈成两段：seq=1 在 p0，seq=2 在 p1。业务眼里「同一个 u1」的两条相邻记录，物理上躺在两根互不相干的日志里。
 
+搬家前后：
+
+<figure class="mq-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 312" role="img" aria-label="加分区重哈希对照：2 分区时代 u1 u12 在 p0、u5 在 p1；变 3 分区后 u1 搬到 p1，u5 u12 搬到 p2，u2 u4 u9 原地不动；12 个 key 里 9 个搬家，老消息 0 条挪动" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="mq5Ac1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-c" d="M0 0 L8 4 L0 8 Z" fill="#b03a2e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">中途加一个分区：除法的分母变了，12 个 key 里 9 个搬家</text>
+<text class="ts" x="105" y="52" text-anchor="middle" font-size="12" fill="#6b675e">2 分区时代（%2）</text>
+<text class="ts" x="495" y="52" text-anchor="middle" font-size="12" fill="#6b675e">3 分区时代（%3）</text>
+<rect class="bx-q" x="40" y="64" width="130" height="84" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="105" y="84" text-anchor="middle" font-size="14" fill="#2b2a26">p0</text>
+<rect class="bx-sick" x="52" y="92" width="40" height="20" rx="3" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="ts" x="72" y="106" text-anchor="middle" font-size="12" fill="#b03a2e">u1</text>
+<rect class="bx-sick" x="98" y="92" width="44" height="20" rx="3" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="ts" x="120" y="106" text-anchor="middle" font-size="12" fill="#b03a2e">u12</text>
+<rect class="bx" x="52" y="118" width="40" height="20" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="72" y="132" text-anchor="middle" font-size="12" fill="#6b675e">u2</text>
+<text class="ts" x="120" y="132" font-size="12" fill="#6b675e">…</text>
+<rect class="bx-q" x="40" y="160" width="130" height="64" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="105" y="180" text-anchor="middle" font-size="14" fill="#2b2a26">p1</text>
+<rect class="bx-sick" x="52" y="190" width="40" height="20" rx="3" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="ts" x="72" y="204" text-anchor="middle" font-size="12" fill="#b03a2e">u5</text>
+<text class="ts" x="120" y="204" font-size="12" fill="#6b675e">…</text>
+<rect class="bx-q" x="430" y="64" width="130" height="64" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="495" y="84" text-anchor="middle" font-size="14" fill="#2b2a26">p0</text>
+<rect class="bx" x="442" y="92" width="40" height="20" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="462" y="106" text-anchor="middle" font-size="12" fill="#6b675e">u2</text>
+<text class="ts" x="510" y="106" font-size="12" fill="#6b675e">…</text>
+<rect class="bx-q" x="430" y="140" width="130" height="64" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="495" y="160" text-anchor="middle" font-size="14" fill="#2b2a26">p1</text>
+<rect class="bx-sick" x="442" y="168" width="40" height="20" rx="3" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="ts" x="462" y="182" text-anchor="middle" font-size="12" fill="#b03a2e">u1</text>
+<text class="ts" x="510" y="182" font-size="12" fill="#6b675e">…</text>
+<rect class="bx-q" x="430" y="216" width="130" height="64" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="495" y="236" text-anchor="middle" font-size="14" fill="#2b2a26">p2</text>
+<rect class="bx-sick" x="442" y="244" width="40" height="20" rx="3" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="ts" x="462" y="258" text-anchor="middle" font-size="12" fill="#b03a2e">u5</text>
+<rect class="bx-sick" x="488" y="244" width="44" height="20" rx="3" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="ts" x="510" y="258" text-anchor="middle" font-size="12" fill="#b03a2e">u12</text>
+<path class="flc" d="M92 102 C 240 102, 260 178, 436 178" fill="none" stroke="#b03a2e" stroke-width="1.6" marker-end="url(#mq5Ac1)"/>
+<path class="flc" d="M92 204 C 240 204, 260 258, 436 258" fill="none" stroke="#b03a2e" stroke-width="1.6" marker-end="url(#mq5Ac1)"/>
+<text class="ts" x="190" y="72" font-size="12" fill="#6b675e">搬家的 9 个：</text>
+<text class="tc" x="190" y="90" font-size="12" fill="#b03a2e">u1 u3 u5 u6 u7 u8 u10 u11 u12</text>
+<text class="ts" x="20" y="300" font-size="12" fill="#6b675e">朱砂是搬家，墨色是原地（u2、u4、u9）；seq=1 的 12 条老消息 0 条挪动</text>
+</svg>
+</figure>
+
 劈开对消费者意味着什么？搭一个最小现场。1 分区的 topic，u5 写入 seq=1，落 p0；加一个分区，u5 写入 seq=2，按 %2 落 p1。两个消费者同组就位、各拿一个分区，p0 那位模拟存量积压，每条消息压 4 秒再处理：
 
 ```text
@@ -112,6 +241,35 @@ Topic: kgrow   PartitionCount: 3   ReplicationFactor: 1   …
 ```
 
 后写的消息早了 4 秒被处理完。没有任何东西出错：每个分区内部有序，消费组健康，位移提交正常，但「u5 的 seq=1 先于 seq=2」这句话从此刻起不再成立。换成账户场景，先充值后消费的两条事件，消费那条先跑。4 秒的人为延迟不是作弊：旧分区里有存量、新分区从零开始，是加分区之后最常见的现实。
+
+这 4 秒钟在时间轴上：
+
+<figure class="mq-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 236" role="img" aria-label="破序时间线：p1 新分区没有积压，seq=2 在 13:42:53.466 处理完成；p0 旧分区每条压 4 秒，seq=1 到 13:42:57.473 才完成，后写的消息早了 4 秒" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="mq5As2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+<marker id="mq5Ac2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-c" d="M0 0 L8 4 L0 8 Z" fill="#b03a2e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">u5 的破序现场：seq=2 后写，却早 4 秒处理完</text>
+<line class="grid" x1="367" y1="40" x2="367" y2="160" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 4" opacity="0.55"/>
+<line class="grid" x1="572" y1="40" x2="572" y2="160" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 4" opacity="0.55"/>
+<text class="ts" x="20" y="65" font-size="12" fill="#6b675e">p1 · 新分区，没积压</text>
+<rect class="bar" x="340" y="50" width="27" height="20" fill="#2b2a26"/>
+<text class="tc" x="375" y="65" font-size="12" fill="#b03a2e">seq=2 处理完成 · 53.466</text>
+<line class="flc" x1="367" y1="46" x2="367" y2="74" stroke="#b03a2e" stroke-width="2"/>
+<text class="ts" x="20" y="125" font-size="12" fill="#6b675e">p0 · 积压，每条 4 秒</text>
+<rect class="bar" x="148" y="110" width="424" height="20" fill="#2b2a26"/>
+<text class="onbar" x="360" y="124" text-anchor="middle" font-size="12" fill="#f6f3ec">存量挨个处理，每条压 4 秒</text>
+<line class="flc" x1="572" y1="106" x2="572" y2="134" stroke="#b03a2e" stroke-width="2"/>
+<text class="tc" x="566" y="152" text-anchor="end" font-size="12" fill="#b03a2e">seq=1 才完成 · 57.473</text>
+<line class="fl" x1="140" y1="160" x2="600" y2="160" stroke="#6b675e" stroke-width="1.6" marker-end="url(#mq5As2)"/>
+<text class="ts" x="136" y="176" text-anchor="end" font-size="12" fill="#6b675e">13:42</text>
+<text class="ts" x="367" y="176" text-anchor="middle" font-size="12" fill="#6b675e">53.466</text>
+<text class="ts" x="572" y="176" text-anchor="middle" font-size="12" fill="#6b675e">57.473</text>
+<path class="flc" d="M367 196 V204 M572 196 V204 M373 200 H566" fill="none" stroke="#b03a2e" stroke-width="1.6" marker-end="url(#mq5Ac2)"/>
+<text class="tc" x="470" y="224" text-anchor="middle" font-size="12" fill="#b03a2e">4 秒：后写的先处理完，「seq=1 先于 seq=2」不再成立</text>
+</svg>
+</figure>
 
 官方文档对这个操作写得相当重："messages with the same key may be routed to different partitions after the expansion, potentially affecting message ordering guarantees for existing keys"，同 key 的消息扩容后可能路由到不同分区，已有 key 的顺序保证随之受影响。后面还跟着一句更直白的："Kafka will not attempt to automatically redistribute existing data"，Kafka 不会试着替你重新分布已有数据。
 
