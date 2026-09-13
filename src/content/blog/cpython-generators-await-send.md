@@ -43,21 +43,37 @@ print(events)
 
 现代 CPython 的实现并不是这样。生成器函数的字节码从 `RETURN_GENERATOR` 开始。调用发生时，解释器已经建立一份初始 `_PyInterpreterFrame`；`RETURN_GENERATOR` 随即创建 `PyGenObject`，把当前 frame 复制到生成器对象内嵌的 `gi_iframe`，将 owner 改成 generator，再把 generator object 返回调用者。
 
-```text
-调用 generator function
-        ↓
-建立初始调用 frame
-        ↓
-执行 RETURN_GENERATOR
-        ↓
-创建 PyGenObject
-        ↓
-复制 frame 到 gen->gi_iframe
-        ↓
-owner = FRAME_OWNED_BY_GENERATOR
-        ↓
-弹出初始线程 frame，返回 generator object
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 180" role="img" aria-label="生成器函数调用七步：建立初始调用 frame，执行 RETURN_GENERATOR，创建 PyGenObject，把 frame 复制进 gi_iframe，owner 改为 FRAME_OWNED_BY_GENERATOR，弹出初始线程 frame，把 generator object 返回调用者" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="genA1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="22" font-size="12" fill="#6b675e">从调用到拿到 generator object</text>
+<rect class="bx-q" x="20" y="34" width="140" height="42" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="90" y="60" text-anchor="middle" font-size="10.5" fill="#2b2a26">调用生成器函数</text>
+<line class="fl" x1="160" y1="55" x2="172" y2="55" stroke="#6b675e" stroke-width="1.3" marker-end="url(#genA1)"/>
+<rect class="bx-q" x="176" y="34" width="146" height="42" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="249" y="60" text-anchor="middle" font-size="10.5" fill="#2b2a26">建立初始调用 frame</text>
+<line class="fl" x1="322" y1="55" x2="334" y2="55" stroke="#6b675e" stroke-width="1.3" marker-end="url(#genA1)"/>
+<rect class="bx" x="338" y="34" width="152" height="42" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="414" y="52" text-anchor="middle" font-size="10" fill="#2b2a26">执行</text>
+<text class="ts" x="414" y="67" text-anchor="middle" font-size="10" fill="#2b2a26">RETURN_GENERATOR</text>
+<line class="fl" x1="490" y1="55" x2="502" y2="55" stroke="#6b675e" stroke-width="1.3" marker-end="url(#genA1)"/>
+<rect class="bx-q" x="506" y="34" width="134" height="42" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="573" y="60" text-anchor="middle" font-size="10.5" fill="#2b2a26">创建 PyGenObject</text>
+<line class="fl" x1="573" y1="76" x2="573" y2="104" stroke="#6b675e" stroke-width="1.3" marker-end="url(#genA1)"/>
+<rect class="bx" x="470" y="108" width="170" height="42" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="555" y="126" text-anchor="middle" font-size="10" fill="#2b2a26">复制 frame 到</text>
+<text class="ts" x="555" y="141" text-anchor="middle" font-size="10" fill="#2b2a26">gen->gi_iframe</text>
+<line class="fl" x1="470" y1="129" x2="444" y2="129" stroke="#6b675e" stroke-width="1.3" marker-end="url(#genA1)"/>
+<rect class="bx-q" x="234" y="108" width="206" height="42" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="337" y="134" text-anchor="middle" font-size="9.5" fill="#2b2a26">owner = FRAME_OWNED_BY_GENERATOR</text>
+<line class="fl" x1="234" y1="129" x2="222" y2="129" stroke="#6b675e" stroke-width="1.3" marker-end="url(#genA1)"/>
+<rect class="bx-q" x="20" y="108" width="198" height="42" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="119" y="126" text-anchor="middle" font-size="10" fill="#2b2a26">弹出初始线程 frame</text>
+<text class="ts" x="119" y="141" text-anchor="middle" font-size="10" fill="#2b2a26">返回 generator object</text>
+</svg>
+</figure>
 
 所以正文中的第一条业务语句尚未运行，但足以恢复正文的现场已经装进对象。CPython 3.14.7 对一只新生成器的公开观察是：
 
@@ -78,12 +94,40 @@ gi_frame.f_lasti 4
 
 用 `inspect.getgeneratorstate()` 可以观察语言层状态：
 
-```text
-GEN_CREATED
-GEN_RUNNING
-GEN_SUSPENDED
-GEN_CLOSED
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 254" role="img" aria-label="生成器四站点状态机：GEN_CREATED 经首次 next 或 send(None) 进入 GEN_RUNNING；RUNNING 遇 YIELD_VALUE 到 GEN_SUSPENDED，SUSPENDED 被 send 或 throw 拉回 RUNNING；RUNNING 正常 return 或 SUSPENDED 被 close 注入 GeneratorExit 都到 GEN_CLOSED；RUNNING 期间重入会被 ValueError 拒绝" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="genA2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+<marker id="genA2c" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-c" d="M0 0 L8 4 L0 8 Z" fill="#b03a2e"/></marker>
+</defs>
+<rect class="bx-q" x="20" y="100" width="110" height="48" rx="6" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="ts" x="75" y="120" text-anchor="middle" font-size="10" fill="#2b2a26">GEN_CREATED</text>
+<text class="ts" x="75" y="138" text-anchor="middle" font-size="9.5" fill="#6b675e">created</text>
+<rect class="bx" x="205" y="100" width="110" height="48" rx="6" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="260" y="120" text-anchor="middle" font-size="10" fill="#2b2a26">GEN_RUNNING</text>
+<text class="ts" x="260" y="138" text-anchor="middle" font-size="9.5" fill="#6b675e">executing</text>
+<rect class="bx" x="390" y="100" width="110" height="48" rx="6" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="445" y="120" text-anchor="middle" font-size="10" fill="#2b2a26">GEN_SUSPENDED</text>
+<text class="ts" x="445" y="138" text-anchor="middle" font-size="9.5" fill="#6b675e">suspended</text>
+<rect class="bx-gone" x="545" y="100" width="100" height="48" rx="6" fill="#ece9e2" stroke="#a29d90" stroke-width="1.3"/>
+<text class="ts" x="595" y="120" text-anchor="middle" font-size="10" fill="#2b2a26">GEN_CLOSED</text>
+<text class="ts" x="595" y="138" text-anchor="middle" font-size="9.5" fill="#6b675e">closed</text>
+<line class="fl" x1="130" y1="124" x2="201" y2="124" stroke="#6b675e" stroke-width="1.3" marker-end="url(#genA2)"/>
+<text class="ts" x="165" y="102" text-anchor="middle" font-size="9.5" fill="#6b675e">首次 next()</text>
+<text class="ts" x="165" y="115" text-anchor="middle" font-size="9.5" fill="#6b675e">或 send(None)</text>
+<line class="fl" x1="315" y1="114" x2="386" y2="114" stroke="#6b675e" stroke-width="1.3" marker-end="url(#genA2)"/>
+<text class="ts" x="350" y="104" text-anchor="middle" font-size="9" fill="#6b675e">YIELD_VALUE</text>
+<line class="fl" x1="386" y1="136" x2="315" y2="136" stroke="#6b675e" stroke-width="1.3" marker-end="url(#genA2)"/>
+<text class="ts" x="350" y="154" text-anchor="middle" font-size="9" fill="#6b675e">send() / throw()</text>
+<path class="fl" d="M 260 148 C 280 212 540 212 592 152" fill="none" stroke="#6b675e" stroke-width="1.3" marker-end="url(#genA2)"/>
+<text class="ts" x="420" y="204" text-anchor="middle" font-size="9.5" fill="#6b675e">return · 最终值经 StopIteration.value 交出</text>
+<line class="fl" x1="500" y1="116" x2="541" y2="116" stroke="#6b675e" stroke-width="1.3" marker-end="url(#genA2)"/>
+<text class="ts" x="520" y="106" text-anchor="middle" font-size="9" fill="#6b675e">close()</text>
+<path class="flc" d="M 236 100 C 236 70 284 70 284 100" fill="none" stroke="#b03a2e" stroke-width="1.2" marker-end="url(#genA2c)"/>
+<text class="tc" x="260" y="60" text-anchor="middle" font-size="9.5" fill="#b03a2e">重入：ValueError already executing</text>
+<text class="ts" x="20" y="240" font-size="10.5" fill="#6b675e">close() 从暂停点注入 GeneratorExit · 协程的 CORO_* 四站点同构</text>
+</svg>
+</figure>
 
 CPython 内部还保存更细的 frame state，用于区分 created、executing、普通 suspended、处在 yield-from 链上的 suspended，以及 cleared/finished 等情况。当前 3.16 free-threaded 实现甚至增加了读取 `gi_yieldfrom` 时的锁定状态，避免并发读写 frame 产生竞争。
 
@@ -132,10 +176,24 @@ generator.send("wake")
 
 `"wake"` 不是新一次函数调用的参数。它成为上一次暂停处 `yield "first"` 表达式的结果：
 
-```text
-第一次向外：yield "first"  → 调用者得到 "first"
-恢复时向内：send("wake")  → incoming 得到 "wake"
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 146" role="img" aria-label="yield 的双向运输：向外一趟把 yield value first 交给调用者，向内一趟把 send value wake 送回暂停的 yield 表达式，成为 incoming 的结果" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="genA3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="22" font-size="12" fill="#6b675e">同一个 yield，两趟运输</text>
+<rect class="bx-q" x="30" y="50" width="160" height="56" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="t" x="110" y="83" text-anchor="middle" font-size="11.5" fill="#2b2a26">调用者</text>
+<rect class="bx" x="430" y="50" width="200" height="56" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="530" y="74" text-anchor="middle" font-size="11" fill="#2b2a26">generator</text>
+<text class="ts" x="530" y="93" text-anchor="middle" font-size="9.5" fill="#6b675e">停在 yield "first" 处</text>
+<line class="fl" x1="430" y1="66" x2="194" y2="66" stroke="#6b675e" stroke-width="1.4" marker-end="url(#genA3)"/>
+<text class="ts" x="312" y="58" text-anchor="middle" font-size="10.5" fill="#6b675e">向外：yield value "first"</text>
+<line class="flc" x1="190" y1="92" x2="426" y2="92" stroke="#b03a2e" stroke-width="1.4" marker-end="url(#genA3)"/>
+<text class="tc" x="308" y="112" text-anchor="middle" font-size="10.5" fill="#b03a2e">向内：send value "wake" → incoming</text>
+<text class="ts" x="30" y="136" font-size="10.5" fill="#6b675e">两趟之间，frame 一直嵌在 generator 对象里等着</text>
+</svg>
+</figure>
 
 生成器继续执行：
 
@@ -160,21 +218,36 @@ gi_frame         None
 
 C 层主路径可以压缩成：
 
-```text
-next(gen) / gen.send(value)
-        ↓
-gen_send_ex()
-        ↓
-检查 frame state，设为 EXECUTING
-        ↓
-gen_send_ex2()
-        ↓
-将 value 压入 gen->gi_iframe 的 value stack
-        ↓
-接回 generator exception state
-        ↓
-_PyEval_EvalFrame(tstate, &gen->gi_iframe, exc)
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 190" role="img" aria-label="send 的 C 层主路径：next 或 send 进入 gen_send_ex 检查 frame state 并设为 EXECUTING，再由 gen_send_ex2 把 value 压入 gi_iframe 的操作数栈顶、接回 generator 的异常状态，最后 _PyEval_EvalFrame 从内嵌 frame 的保存位置继续执行" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="genA4" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="22" font-size="12" fill="#6b675e">恢复的一趟：值压回原栈，frame 接回原链</text>
+<rect class="bx-q" x="20" y="34" width="170" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="ts" x="105" y="61" text-anchor="middle" font-size="10.5" fill="#2b2a26">next(gen) / send(value)</text>
+<line class="fl" x1="190" y1="56" x2="202" y2="56" stroke="#6b675e" stroke-width="1.3" marker-end="url(#genA4)"/>
+<rect class="bx-q" x="206" y="34" width="200" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="306" y="52" text-anchor="middle" font-size="10.5" fill="#2b2a26">gen_send_ex()</text>
+<text class="ts" x="306" y="69" text-anchor="middle" font-size="9.5" fill="#6b675e">检查 frame state · 设为 EXECUTING</text>
+<line class="fl" x1="406" y1="56" x2="418" y2="56" stroke="#6b675e" stroke-width="1.3" marker-end="url(#genA4)"/>
+<rect class="bx-q" x="422" y="34" width="150" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="497" y="61" text-anchor="middle" font-size="10.5" fill="#2b2a26">gen_send_ex2()</text>
+<line class="fl" x1="497" y1="78" x2="497" y2="106" stroke="#6b675e" stroke-width="1.3" marker-end="url(#genA4)"/>
+<rect class="bx" x="410" y="110" width="230" height="44" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="525" y="128" text-anchor="middle" font-size="10" fill="#2b2a26">value 压入 gi_iframe 栈顶</text>
+<text class="ts" x="525" y="145" text-anchor="middle" font-size="9.5" fill="#6b675e">暂停的 yield 从这里取结果</text>
+<line class="fl" x1="410" y1="132" x2="394" y2="132" stroke="#6b675e" stroke-width="1.3" marker-end="url(#genA4)"/>
+<rect class="bx-q" x="210" y="110" width="180" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="300" y="128" text-anchor="middle" font-size="10" fill="#2b2a26">接回异常状态</text>
+<text class="ts" x="300" y="145" text-anchor="middle" font-size="9.5" fill="#6b675e">线程 exc_info ↔ generator</text>
+<line class="fl" x1="210" y1="132" x2="194" y2="132" stroke="#6b675e" stroke-width="1.3" marker-end="url(#genA4)"/>
+<rect class="bx-q" x="20" y="110" width="170" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="105" y="128" text-anchor="middle" font-size="10" fill="#2b2a26">_PyEval_EvalFrame</text>
+<text class="ts" x="105" y="145" text-anchor="middle" font-size="9.5" fill="#6b675e">从保存位置继续执行</text>
+<text class="ts" x="20" y="178" font-size="10.5" fill="#6b675e">与前文的 RETURN_GENERATOR 一来一回：那边把现场装进对象，这边把现场装回调用链</text>
+</svg>
+</figure>
 
 第一次 `next()` 送入的是 `None`。生成器从初始 `RESUME` 之后开始运行；后来 `send("wake")` 则把 `"wake"` 放在暂停 frame 的操作数栈顶，恢复后的 `yield` 表达式从那里取得结果。
 
@@ -191,23 +264,37 @@ _PyEval_EvalFrame(tstate, &gen->gi_iframe, exc)
 
 当前实现的核心步骤是：
 
-```text
-取出要 yield 的值
-    ↓
-推进 instr_ptr，使恢复位置越过当前 YIELD_VALUE
-    ↓
-保存 stackpointer
-    ↓
-保存并切回调用者 exception state
-    ↓
-将 generator frame 从 tstate->current_frame 链撤下
-    ↓
-frame->previous = NULL
-    ↓
-设置 frame state 为 SUSPENDED
-    ↓
-调用者取得 yield value
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 168" role="img" aria-label="YIELD_VALUE 八步：取出 yield 值，推进 instr_ptr 越过当前指令，保存 stackpointer，保存并切回调用者异常状态，把 frame 从 tstate current_frame 链撤下，previous 置 NULL，frame state 设为 SUSPENDED，调用者取得 yield value" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="genA5" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="22" font-size="12" fill="#6b675e">暂停的一趟：交出值，收好现场</text>
+<rect class="bx-q" x="20" y="34" width="140" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="90" y="61" text-anchor="middle" font-size="10" fill="#2b2a26">取出 yield 的值</text>
+<line class="fl" x1="160" y1="56" x2="172" y2="56" stroke="#6b675e" stroke-width="1.3" marker-end="url(#genA5)"/>
+<rect class="bx-q" x="176" y="34" width="170" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="261" y="52" text-anchor="middle" font-size="10" fill="#2b2a26">推进 instr_ptr</text>
+<text class="ts" x="261" y="69" text-anchor="middle" font-size="9.5" fill="#6b675e">恢复位置越过 YIELD_VALUE</text>
+<line class="fl" x1="346" y1="56" x2="358" y2="56" stroke="#6b675e" stroke-width="1.3" marker-end="url(#genA5)"/>
+<rect class="bx-q" x="362" y="34" width="130" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="427" y="61" text-anchor="middle" font-size="10" fill="#2b2a26">保存 stackpointer</text>
+<line class="fl" x1="492" y1="56" x2="504" y2="56" stroke="#6b675e" stroke-width="1.3" marker-end="url(#genA5)"/>
+<rect class="bx-q" x="508" y="34" width="132" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="574" y="52" text-anchor="middle" font-size="10" fill="#2b2a26">切回调用者的</text>
+<text class="ts" x="574" y="69" text-anchor="middle" font-size="10" fill="#2b2a26">exception state</text>
+<line class="fl" x1="574" y1="78" x2="574" y2="106" stroke="#6b675e" stroke-width="1.3" marker-end="url(#genA5)"/>
+<rect class="bx" x="440" y="110" width="200" height="44" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="540" y="128" text-anchor="middle" font-size="10" fill="#2b2a26">frame 撤下 current_frame 链</text>
+<text class="ts" x="540" y="145" text-anchor="middle" font-size="9.5" fill="#6b675e">previous = NULL</text>
+<line class="fl" x1="440" y1="132" x2="418" y2="132" stroke="#6b675e" stroke-width="1.3" marker-end="url(#genA5)"/>
+<rect class="bx-q" x="230" y="110" width="184" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="322" y="137" text-anchor="middle" font-size="10" fill="#2b2a26">frame state = SUSPENDED</text>
+<line class="fl" x1="230" y1="132" x2="208" y2="132" stroke="#6b675e" stroke-width="1.3" marker-end="url(#genA5)"/>
+<rect class="bx-q" x="20" y="110" width="184" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="112" y="137" text-anchor="middle" font-size="10" fill="#2b2a26">调用者取得 yield value</text>
+</svg>
+</figure>
 
 frame 没有清理，也没有从 generator object 释放。局部变量与剩余操作数继续留在内嵌 frame 中，下一次 `send()` 再把它接回当前调用链。
 
@@ -257,15 +344,27 @@ gi_yieldfrom        指向 child generator
 
 第二次恢复让 child 执行 `return 42`。从 Python 迭代协议看，生成器 return 的最终值表现为 `StopIteration.value`，于是父生成器中 `yield from child()` 表达式得到 42：
 
-```text
-child return 42
-      ↓ StopIteration.value
-parent result = 42
-      ↓
-parent return 43
-      ↓ StopIteration.value
-外层驱动者得到 43
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 258" role="img" aria-label="返回值沿委托链向外传：child return 42 经 StopIteration.value 成为 parent 中 result 的值 42，parent 计算 result + 1 后 return 43，再经 StopIteration.value 交给外层驱动者" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="genA6" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-q" x="190" y="26" width="240" height="38" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="310" y="50" text-anchor="middle" font-size="11" fill="#2b2a26">child return 42</text>
+<line class="fl" x1="310" y1="64" x2="310" y2="82" stroke="#6b675e" stroke-width="1.3" marker-end="url(#genA6)"/>
+<text class="ts" x="324" y="78" font-size="10" fill="#6b675e">StopIteration.value</text>
+<rect class="bx" x="190" y="86" width="240" height="38" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="310" y="110" text-anchor="middle" font-size="11" fill="#2b2a26">parent：result = 42</text>
+<line class="fl" x1="310" y1="124" x2="310" y2="142" stroke="#6b675e" stroke-width="1.3" marker-end="url(#genA6)"/>
+<text class="ts" x="324" y="138" font-size="10" fill="#6b675e">执行 return result + 1</text>
+<rect class="bx-q" x="190" y="146" width="240" height="38" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="310" y="170" text-anchor="middle" font-size="11" fill="#2b2a26">parent return 43</text>
+<line class="fl" x1="310" y1="184" x2="310" y2="202" stroke="#6b675e" stroke-width="1.3" marker-end="url(#genA6)"/>
+<text class="ts" x="324" y="198" font-size="10" fill="#6b675e">StopIteration.value</text>
+<rect class="bx" x="190" y="206" width="240" height="38" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="t" x="310" y="230" text-anchor="middle" font-size="11" fill="#2b2a26">外层驱动者得到 43</text>
+</svg>
+</figure>
 
 完成后，父生成器的 `gi_yieldfrom` 和 `gi_frame` 都变为 `None`，状态是 `GEN_CLOSED`。
 
@@ -303,13 +402,33 @@ CLEANUP_THROW
 
 两者共享的核心回路是：
 
-```text
-send current value to receiver
-        ↓
-receiver 又产生一个值？
-        ├── 是：YIELD_VALUE 向外暂停，恢复后继续 SEND
-        └── 否：得到最终 return value，跳向 END_SEND
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 216" role="img" aria-label="SEND 委托回路：把当前值发给 receiver；receiver 又产生值则 YIELD_VALUE 向外暂停、恢复后循环回 SEND；receiver 正常结束则跳向 END_SEND 取得最终 return value" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="genA7" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-q" x="30" y="40" width="190" height="50" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="ts" x="125" y="61" text-anchor="middle" font-size="10.5" fill="#2b2a26">SEND</text>
+<text class="ts" x="125" y="78" text-anchor="middle" font-size="9.5" fill="#6b675e">把当前值发给 receiver</text>
+<line class="fl" x1="220" y1="65" x2="291" y2="65" stroke="#6b675e" stroke-width="1.3" marker-end="url(#genA7)"/>
+<polygon class="bx" points="390,33 485,65 390,97 295,65" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="390" y="61" text-anchor="middle" font-size="10" fill="#2b2a26">receiver 又产生</text>
+<text class="ts" x="390" y="76" text-anchor="middle" font-size="10" fill="#2b2a26">一个值？</text>
+<line class="fl" x1="485" y1="65" x2="505" y2="65" stroke="#6b675e" stroke-width="1.3" marker-end="url(#genA7)"/>
+<text class="ts" x="495" y="55" text-anchor="middle" font-size="9.5" fill="#6b675e">否</text>
+<rect class="bx" x="509" y="41" width="130" height="48" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="574" y="61" text-anchor="middle" font-size="10.5" fill="#2b2a26">END_SEND</text>
+<text class="ts" x="574" y="78" text-anchor="middle" font-size="9.5" fill="#6b675e">取得最终值</text>
+<line class="fl" x1="390" y1="97" x2="390" y2="138" stroke="#6b675e" stroke-width="1.3" marker-end="url(#genA7)"/>
+<text class="ts" x="400" y="122" font-size="9.5" fill="#6b675e">是 · 再 yield</text>
+<rect class="bx-q" x="295" y="142" width="190" height="44" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="390" y="160" text-anchor="middle" font-size="10.5" fill="#2b2a26">YIELD_VALUE 向外暂停</text>
+<text class="ts" x="390" y="177" text-anchor="middle" font-size="9.5" fill="#6b675e">值交给更外层的驱动者</text>
+<path class="fl" d="M 295 164 L 125 164 L 125 94" fill="none" stroke="#6b675e" stroke-width="1.3" marker-end="url(#genA7)"/>
+<text class="ts" x="210" y="156" text-anchor="middle" font-size="9.5" fill="#6b675e">恢复后继续 SEND</text>
+<text class="ts" x="30" y="206" font-size="10.5" fill="#6b675e">yield from 与 await 都跑这条回路，区别只在进站前：GET_YIELD_FROM_ITER 对 GET_AWAITABLE</text>
+</svg>
+</figure>
 
 区别首先出现在进入回路之前：
 
@@ -490,13 +609,29 @@ def holder():
 
 生成器暂停后，即使外层没有 `marker` 名字，弱引用仍能取到对象：
 
-```text
-generator
-    ↓ embedded _PyInterpreterFrame
-localsplus
-    ↓ marker
-Marker object
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 136" role="img" aria-label="对象保有链四跳：暂停的 generator 内嵌 _PyInterpreterFrame，frame 的 localsplus 槽位保存 marker 引用，指向 Marker 对象本体" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="genA8" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-q" x="16" y="34" width="140" height="48" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="ts" x="86" y="54" text-anchor="middle" font-size="10.5" fill="#2b2a26">generator</text>
+<text class="ts" x="86" y="71" text-anchor="middle" font-size="9.5" fill="#6b675e">暂停中</text>
+<line class="fl" x1="156" y1="58" x2="168" y2="58" stroke="#6b675e" stroke-width="1.3" marker-end="url(#genA8)"/>
+<rect class="bx-q" x="172" y="34" width="150" height="48" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="247" y="54" text-anchor="middle" font-size="9.5" fill="#2b2a26">内嵌</text>
+<text class="ts" x="247" y="71" text-anchor="middle" font-size="9.5" fill="#2b2a26">_PyInterpreterFrame</text>
+<line class="fl" x1="322" y1="58" x2="334" y2="58" stroke="#6b675e" stroke-width="1.3" marker-end="url(#genA8)"/>
+<rect class="bx-q" x="338" y="34" width="140" height="48" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="408" y="54" text-anchor="middle" font-size="10.5" fill="#2b2a26">localsplus</text>
+<text class="ts" x="408" y="71" text-anchor="middle" font-size="9.5" fill="#6b675e">marker 槽位</text>
+<line class="fl" x1="478" y1="58" x2="490" y2="58" stroke="#6b675e" stroke-width="1.3" marker-end="url(#genA8)"/>
+<rect class="bx" x="494" y="34" width="140" height="48" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="564" y="54" text-anchor="middle" font-size="10.5" fill="#2b2a26">Marker 对象</text>
+<text class="ts" x="564" y="71" text-anchor="middle" font-size="9.5" fill="#6b675e">weakref 仍取得到</text>
+<text class="ts" x="16" y="114" font-size="10.5" fill="#6b675e">保有链共四跳：generator 不关闭，Marker 就活着</text>
+</svg>
+</figure>
 
 本机两版实验都得到：
 
@@ -522,11 +657,24 @@ coroutine.cr_frame
 
 它们返回 `PyFrameObject` 视图。生成器和协程对象真正内嵌的是 `_PyInterpreterFrame`：
 
-```text
-PyGenObject / PyCoroObject
-    ├── name / qualname / exception state / frame state
-    └── gi_iframe / cr_iframe : _PyInterpreterFrame
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 164" role="img" aria-label="两层 frame 对象：PyGenObject 或 PyCoroObject 内部保存 name、qualname、异常状态、frame state，并内嵌 gi_iframe 或 cr_iframe（_PyInterpreterFrame）；Python 层的 gi_frame 属性返回的是 PyFrameObject 视图，按需取得或创建，指向内嵌现场" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="genA9" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx" x="30" y="30" width="320" height="124" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="t" x="190" y="54" text-anchor="middle" font-size="11.5" fill="#2b2a26">PyGenObject / PyCoroObject</text>
+<text class="ts" x="190" y="76" text-anchor="middle" font-size="9.5" fill="#6b675e">name · qualname · 异常状态 · frame state</text>
+<rect class="bx-q" x="46" y="88" width="288" height="50" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="190" y="109" text-anchor="middle" font-size="10" fill="#2b2a26">gi_iframe / cr_iframe</text>
+<text class="ts" x="190" y="127" text-anchor="middle" font-size="9.5" fill="#6b675e">_PyInterpreterFrame · 内嵌的真正现场</text>
+<line class="fl" x1="350" y1="80" x2="436" y2="80" stroke="#6b675e" stroke-width="1.2" stroke-dasharray="5 3" marker-end="url(#genA9)"/>
+<text class="ts" x="393" y="70" text-anchor="middle" font-size="9.5" fill="#6b675e">gi_frame 按需建</text>
+<rect class="bx-gone" x="440" y="46" width="190" height="80" rx="5" fill="#ece9e2" stroke="#a29d90" stroke-width="1.2" stroke-dasharray="5 3"/>
+<text class="ts" x="535" y="78" text-anchor="middle" font-size="10.5" fill="#2b2a26">PyFrameObject</text>
+<text class="ts" x="535" y="98" text-anchor="middle" font-size="9.5" fill="#6b675e">Python 层拿到的视图</text>
+</svg>
+</figure>
 
 访问 `gi_frame` 或 `cr_frame` 会取得或按需创建 Python 可见 frame object，并让它指向内嵌现场。不能用 `id(gi_frame)` 去推导内嵌结构地址，也不能把两者字段画成同一只 C struct。
 
