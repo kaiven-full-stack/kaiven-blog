@@ -487,7 +487,7 @@ export const concepts: ConceptMeta[] = [
     id: 'delivery-semantics',
     label: '投递语义',
     description: 'at-most / at-least / exactly-once 三档语义与各自的代价',
-    posts: ['mq-basics-delivery-semantics'],
+    posts: ['mq-basics-delivery-semantics', 'kafka-consumer-offsets'],
   },
   {
     id: 'dead-letter',
@@ -499,7 +499,7 @@ export const concepts: ConceptMeta[] = [
     id: 'idempotency',
     label: '幂等消费',
     description: '重复投递的解药：去重表、版本与天然幂等',
-    posts: ['mq-basics-delivery-semantics'],
+    posts: ['mq-basics-delivery-semantics', 'kafka-consumer-offsets'],
   },
   {
     id: 'partition',
@@ -547,7 +547,7 @@ export const concepts: ConceptMeta[] = [
     id: 'high-watermark',
     label: '高水位',
     description: 'ISR 最小 LEO，提交与可读的边界，ack 成功不等于可见',
-    posts: ['kafka-replicas-isr'],
+    posts: ['kafka-replicas-isr', 'kafka-consumer-offsets'],
   },
   {
     id: 'unclean-election',
@@ -564,14 +564,14 @@ export const concepts: ConceptMeta[] = [
   {
     id: 'consumer-offset',
     label: '位移',
-    description: '消费者的书签：提交到 __consumer_offsets',
-    posts: ['kafka-message-journey', 'kafka-consumer-group-rebalance'],
+    description: '消费者的书签，提交进 __consumer_offsets，本身就是一条 compacted 日志',
+    posts: ['kafka-message-journey', 'kafka-consumer-group-rebalance', 'kafka-consumer-offsets'],
   },
   {
     id: 'group-coordinator',
     label: '组协调者',
     description: '管花名册的 broker：组名哈希定分区，分区 leader 出任',
-    posts: ['kafka-consumer-group-rebalance'],
+    posts: ['kafka-consumer-group-rebalance', 'kafka-consumer-offsets'],
   },
   {
     id: 'rebalance-protocol',
@@ -608,6 +608,12 @@ export const concepts: ConceptMeta[] = [
     label: '保留策略',
     description: '按时间/大小截断整段，清理线程周期巡逻',
     posts: ['kafka-log-segments'],
+  },
+  {
+    id: 'log-compaction',
+    label: '日志压实',
+    description: 'compact 按 key 只留最新值，状态型日志不被历史撑爆',
+    posts: ['kafka-consumer-offsets'],
   },
 ];
 
@@ -646,4 +652,7 @@ export const relatedLinks: RelatedLink[] = [
   { from: 'kafka-replicas-isr', to: 'redis-sentinel-failover', note: '两道多数票 vs 控制器直接指定' },
   { from: 'kafka-replicas-isr', to: 'redis-replication-sync', note: '异步复制与 acks=0：同一姿态两个名字' },
   { from: 'kafka-consumer-group-rebalance', to: 'redis-sentinel-failover', note: '会话超时与 down-after：同款旋钮' },
+  { from: 'kafka-consumer-offsets', to: 'mysql-replication-gtid', note: '提交位移与 GTID：两种断点续传' },
+  { from: 'kafka-consumer-offsets', to: 'mysql-innodb-redo-recovery', note: '协调者接管靠重放日志，同崩溃恢复' },
+  { from: 'kafka-consumer-offsets', to: 'redis-aof-append-fsync', note: 'compact 与 AOF 重写：把日志压成最新状态' },
 ];
