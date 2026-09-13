@@ -14,6 +14,37 @@ tags: [Kafka, 消息队列, 分布式]
 
 会漏的全在上游：**谁先落进去**。你以为的顺序是你调用 `send` 的顺序，日志记的却是请求到达 broker 的顺序，这两者之间隔着一段没人担保的路。第一段路就能翻车。
 
+手里的顺序和日志里的顺序，分开画：
+
+<figure class="mq-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 220" role="img" aria-label="调用顺序与日志顺序：send 1 2 3 是你以为的顺序，中间隔着网络、重试、批量在途这段没人担保的路，日志只记到达顺序，先落进去的 offset 小" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="mq6As1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">承诺绑的是落日志的顺序；你以为的，是调用 send 的顺序</text>
+<rect class="bx" x="40" y="44" width="80" height="36" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="80" y="67" text-anchor="middle" font-size="14" fill="#2b2a26">send(1)</text>
+<rect class="bx" x="140" y="44" width="80" height="36" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="180" y="67" text-anchor="middle" font-size="14" fill="#2b2a26">send(2)</text>
+<rect class="bx" x="240" y="44" width="80" height="36" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="280" y="67" text-anchor="middle" font-size="14" fill="#2b2a26">send(3)</text>
+<line class="fl" x1="120" y1="62" x2="134" y2="62" stroke="#6b675e" stroke-width="1.6" marker-end="url(#mq6As1)"/>
+<line class="fl" x1="220" y1="62" x2="234" y2="62" stroke="#6b675e" stroke-width="1.6" marker-end="url(#mq6As1)"/>
+<text class="ts" x="340" y="66" font-size="12" fill="#6b675e">调用顺序：1 → 2 → 3</text>
+<line class="fl" x1="80" y1="80" x2="80" y2="94" stroke="#6b675e" stroke-width="1.6" marker-end="url(#mq6As1)"/>
+<line class="fl" x1="180" y1="80" x2="180" y2="94" stroke="#6b675e" stroke-width="1.6" marker-end="url(#mq6As1)"/>
+<line class="fl" x1="280" y1="80" x2="280" y2="94" stroke="#6b675e" stroke-width="1.6" marker-end="url(#mq6As1)"/>
+<rect class="bx-gone" x="40" y="100" width="580" height="44" rx="4" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<text class="ts" x="330" y="126" text-anchor="middle" font-size="12" fill="#6b675e">网络、重试、批量在途、快慢不一致：一段没人担保的路</text>
+<line class="fl" x1="190" y1="144" x2="190" y2="158" stroke="#6b675e" stroke-width="1.6" marker-end="url(#mq6As1)"/>
+<rect class="bx-q" x="40" y="164" width="300" height="36" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="90" y="187" text-anchor="middle" font-size="14" fill="#2b2a26">offset 0</text>
+<text class="t" x="190" y="187" text-anchor="middle" font-size="14" fill="#2b2a26">offset 1</text>
+<text class="t" x="290" y="187" text-anchor="middle" font-size="14" fill="#2b2a26">offset 2</text>
+<text class="ts" x="360" y="186" font-size="12" fill="#6b675e">先落进去的 offset 小，读者读到的就是这个顺序</text>
+</svg>
+</figure>
+
 生产者发完一批不会干等落盘回执再发下一批：Java 客户端允许单连接上最多 5 个未确认请求同时在途（`max.in.flight.requests.per.connection` 默认 5），kafkajs 默认干脆不设上限。同时在途，就意味着同一分区的两批消息可能一起在路上飞。实验把这一点逼出来：单分区 topic，依序发 seq=1、2、3 三条，给第一个 Produce 请求注入一次可重试的失败（monkey-patch 客户端网络层，等价于 leader 选举期间 broker 回一个 NOT_LEADER_OR_FOLLOWER，真实故障没法按需上演，注入是这类实验的常规做法）：
 
 ```text
@@ -26,6 +57,49 @@ tags: [Kafka, 消息队列, 分布式]
 ```
 
 三条全在，一条没丢，每个请求最终都成功了，broker 全程健康，但日志里的顺序是 2、3、1。第一批撞上一次瞬时故障、退避 300ms 重试，第二三批一路绿灯先落进日志。官方文档在 `retries` 条目里逐字写着这个场景："Allowing retries while setting enable.idempotence to false and max.in.flight.requests.per.connection to greater than 1 will potentially change the ordering of records"，开着重试、关着幂等、在途大于 1，三个条件凑齐就可能翻序；翻法也写死了，"if two batches are sent to a single partition, and the first fails and is retried but the second succeeds, then the records in the second batch may appear first"，两个批次发往同一分区，第一批失败重试而第二批成功，第二批的记录就可能排在前面。kafkajs 的默认形态正好三个条件全中。
+
+这次翻车在时间轴上：
+
+<figure class="mq-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 284" role="img" aria-label="重试翻序时间轴：seq=1 批次 190ms 时失败一次，退避后重试到 444ms 才落盘；seq=2 在 244ms、seq=3 在 246ms 一路绿灯先落，日志顺序变成 2、3、1" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="mq6As2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">注入一次可重试的失败：第一批翻车，后两批超车</text>
+<line class="grid" x1="300" y1="40" x2="300" y2="170" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 4" opacity="0.55"/>
+<line class="grid" x1="346" y1="80" x2="346" y2="170" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 4" opacity="0.55"/>
+<line class="grid" x1="513" y1="40" x2="513" y2="170" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 4" opacity="0.55"/>
+<text class="ts" x="20" y="59" font-size="12" fill="#6b675e">批 seq=1</text>
+<rect class="bar" x="140" y="44" width="160" height="20" fill="#2b2a26"/>
+<path class="flc" d="M294 48 L306 60 M306 48 L294 60" fill="none" stroke="#b03a2e" stroke-width="2"/>
+<line class="grid" x1="300" y1="54" x2="505" y2="54" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 4" opacity="0.8"/>
+<rect class="fill-c" x="505" y="48" width="10" height="12" fill="#b03a2e"/>
+<text class="ts" x="400" y="40" text-anchor="middle" font-size="12" fill="#6b675e">失败一次，退避 300ms 重试</text>
+<text class="tc" x="513" y="36" text-anchor="middle" font-size="12" fill="#b03a2e">444ms 才落盘</text>
+<text class="ts" x="20" y="99" font-size="12" fill="#6b675e">批 seq=2</text>
+<rect class="bar" x="140" y="84" width="205" height="20" fill="#2b2a26"/>
+<text class="ts" x="353" y="99" font-size="12" fill="#6b675e">244ms，一路绿灯</text>
+<text class="ts" x="20" y="139" font-size="12" fill="#6b675e">批 seq=3</text>
+<rect class="bar" x="140" y="124" width="207" height="20" fill="#2b2a26"/>
+<text class="ts" x="355" y="139" font-size="12" fill="#6b675e">246ms，一路绿灯</text>
+<line class="fl" x1="140" y1="170" x2="600" y2="170" stroke="#6b675e" stroke-width="1.6" marker-end="url(#mq6As2)"/>
+<text class="ts" x="140" y="190" text-anchor="middle" font-size="12" fill="#6b675e">0</text>
+<text class="ts" x="300" y="190" text-anchor="middle" font-size="12" fill="#6b675e">190ms</text>
+<text class="ts" x="513" y="190" text-anchor="middle" font-size="12" fill="#6b675e">444ms</text>
+<text class="ts" x="20" y="230" font-size="12" fill="#6b675e">日志：</text>
+<text class="ts" x="132" y="212" text-anchor="middle" font-size="12" fill="#6b675e">offset 0</text>
+<text class="ts" x="200" y="212" text-anchor="middle" font-size="12" fill="#6b675e">offset 1</text>
+<text class="ts" x="268" y="212" text-anchor="middle" font-size="12" fill="#6b675e">offset 2</text>
+<rect class="bx-q" x="100" y="220" width="64" height="32" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="132" y="240" text-anchor="middle" font-size="14" fill="#2b2a26">seq 2</text>
+<rect class="bx-q" x="168" y="220" width="64" height="32" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="200" y="240" text-anchor="middle" font-size="14" fill="#2b2a26">seq 3</text>
+<rect class="bx-sick" x="236" y="220" width="64" height="32" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="268" y="240" text-anchor="middle" font-size="12" fill="#b03a2e">seq 1</text>
+<text class="tc" x="320" y="240" font-size="12" fill="#b03a2e">一条不丢，时序翻掉</text>
+<text class="ts" x="20" y="272" font-size="12" fill="#6b675e">把失败换成「压 400ms 再放行」，同一份结果：翻序不需要错误，只需要快慢不一致</text>
+</svg>
+</figure>
 
 连故障都不需要。把注入换成「第一个请求压 400ms 再放行」，模拟一批在途变慢（事件循环卡顿、GC、随便什么原因），后面两批照样超车：
 
@@ -56,6 +130,42 @@ tags: [Kafka, 消息队列, 分布式]
 
 保住了。seq=2 和 seq=3 乖乖排队 400ms，等慢的那批落完才走。kafkajs 的做法简单粗暴，源码注释写得明白：幂等生产需要每个 broker 一把互斥锁，把带序列号的请求串行化。保序是用串行换来的。Java 客户端的路不一样：不锁，靠 PID 加每分区序列号，broker 端卡门，在途最多 5 批、乱序的序列号直接拒收，两家殊途同归。序列号怎么发、僵尸实例怎么围栏，幂等生产者那篇专门拆，这里只确认一件事：**`max.in.flight` 条目里 "if retries are disabled or if enable.idempotence is set to true, ordering will be preserved" 那句是真的**，保序的两条路，要么放弃重试，要么开幂等。
 
+保序现场的样子：
+
+<figure class="mq-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 288" role="img" aria-label="幂等 producer 保序时间轴：同样的 400ms 延迟注入，seq=2 和 seq=3 排队等慢批次落盘，三批在 587ms 起按 1、2、3 顺序落地，日志顺序保住" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">同样压 400ms，idempotent=true：后两批排队等慢的那批</text>
+<text class="ts" x="20" y="59" font-size="12" fill="#6b675e">批 seq=1</text>
+<rect class="bar" x="140" y="44" width="133" height="20" fill="#2b2a26"/>
+<rect class="fill-c" x="273" y="44" width="278" height="20" fill="#b03a2e"/>
+<text class="tc" x="412" y="38" text-anchor="middle" font-size="12" fill="#b03a2e">被压 400ms</text>
+<text class="ts" x="20" y="99" font-size="12" fill="#6b675e">批 seq=2</text>
+<line class="grid" x1="140" y1="94" x2="545" y2="94" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 4" opacity="0.8"/>
+<rect class="bar" x="545" y="84" width="10" height="20" fill="#2b2a26"/>
+<text class="ts" x="345" y="78" text-anchor="middle" font-size="12" fill="#6b675e">排队：kafkajs 等每 broker 一把互斥锁，Java 靠序列号卡门</text>
+<text class="ts" x="20" y="139" font-size="12" fill="#6b675e">批 seq=3</text>
+<line class="grid" x1="140" y1="134" x2="549" y2="134" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 4" opacity="0.8"/>
+<rect class="bar" x="549" y="124" width="11" height="20" fill="#2b2a26"/>
+<line class="flk" x1="140" y1="170" x2="600" y2="170" stroke="#2b2a26" stroke-width="1.2"/>
+<line class="axis" x1="140" y1="164" x2="140" y2="176" stroke="#6b675e" stroke-width="1.2"/>
+<line class="axis" x1="551" y1="164" x2="551" y2="176" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="140" y="192" text-anchor="middle" font-size="12" fill="#6b675e">0</text>
+<text class="ts" x="551" y="192" text-anchor="middle" font-size="12" fill="#6b675e">587ms 起，三批按序落地</text>
+<text class="ts" x="20" y="230" font-size="12" fill="#6b675e">日志：</text>
+<text class="ts" x="132" y="212" text-anchor="middle" font-size="12" fill="#6b675e">offset 0</text>
+<text class="ts" x="200" y="212" text-anchor="middle" font-size="12" fill="#6b675e">offset 1</text>
+<text class="ts" x="268" y="212" text-anchor="middle" font-size="12" fill="#6b675e">offset 2</text>
+<rect class="bx-q" x="100" y="220" width="64" height="32" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="132" y="240" text-anchor="middle" font-size="14" fill="#2b2a26">seq 1</text>
+<rect class="bx-q" x="168" y="220" width="64" height="32" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="200" y="240" text-anchor="middle" font-size="14" fill="#2b2a26">seq 2</text>
+<rect class="bx-q" x="236" y="220" width="64" height="32" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="268" y="240" text-anchor="middle" font-size="14" fill="#2b2a26">seq 3</text>
+<text class="tc" x="320" y="240" font-size="12" fill="#b03a2e">保住了，代价是串行</text>
+<text class="ts" x="20" y="272" font-size="12" fill="#6b675e">边界：没发出去就失败的批次会让出序列号，后发的顶上空号先走，幂等也翻（实测 2、3、1）</text>
+</svg>
+</figure>
+
 再给两条诚实的边界，都是实测出来的。
 
 边界一：把注入换回「请求没发出去就失败一次」，幂等 producer **也翻了**（日志 2、3、1）。原因在序列号的管理上：kafkajs 对发出去之前就失败的批次会把序列号退回，后发的批次顶上空号先走，重试的那批最后拿新号落盘。幂等 producer 钉死的是「已发放序列号的相对顺序」，你调用 send 的先后如果没变成序列号的先后，它不管。业务时序从头到尾没人担保，担保的边界要看清。
@@ -74,6 +184,57 @@ seq=2 业务上是第 2 个事件，实际第 6 个到达
 ```
 
 实例 A 手快，5 条奇数连发先落进日志；实例 B 晚启动 50ms，5 条偶数全部排在后面。单分区、全成功、一条不丢，业务时序照样翻。日志忠实记录的是**两个独立写作者的到达顺序**，不是他们各自业务线上的发生顺序。
+
+两条支流汇进一根日志：
+
+<figure class="mq-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 268" role="img" aria-label="多实例各发各的：实例 A 连发 5 条奇数先落进日志，晚启动 50ms 的实例 B 的 5 条偶数全排后面，到达顺序 1 3 5 7 9 2 4 6 8 10，seq=2 业务上第 2 个、实际第 6 个到达" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="mq6As3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">单分区、key 固定 u1：两个实例，一根日志</text>
+<text class="ts" x="60" y="40" font-size="12" fill="#6b675e">实例 A · 奇数号，手快先连发 5 条</text>
+<rect class="bx" x="60" y="48" width="44" height="28" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="82" y="66" text-anchor="middle" font-size="14" fill="#2b2a26">1</text>
+<rect class="bx" x="108" y="48" width="44" height="28" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="130" y="66" text-anchor="middle" font-size="14" fill="#2b2a26">3</text>
+<rect class="bx" x="156" y="48" width="44" height="28" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="178" y="66" text-anchor="middle" font-size="14" fill="#2b2a26">5</text>
+<rect class="bx" x="204" y="48" width="44" height="28" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="226" y="66" text-anchor="middle" font-size="14" fill="#2b2a26">7</text>
+<rect class="bx" x="252" y="48" width="44" height="28" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="274" y="66" text-anchor="middle" font-size="14" fill="#2b2a26">9</text>
+<text class="ts" x="340" y="40" font-size="12" fill="#6b675e">实例 B · 偶数号，晚启动 50ms</text>
+<rect class="bx" x="340" y="48" width="44" height="28" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="362" y="66" text-anchor="middle" font-size="14" fill="#2b2a26">2</text>
+<rect class="bx" x="388" y="48" width="44" height="28" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="410" y="66" text-anchor="middle" font-size="14" fill="#2b2a26">4</text>
+<rect class="bx" x="436" y="48" width="44" height="28" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="458" y="66" text-anchor="middle" font-size="14" fill="#2b2a26">6</text>
+<rect class="bx" x="484" y="48" width="44" height="28" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="506" y="66" text-anchor="middle" font-size="14" fill="#2b2a26">8</text>
+<rect class="bx" x="532" y="48" width="44" height="28" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="554" y="66" text-anchor="middle" font-size="14" fill="#2b2a26">10</text>
+<line class="fl" x1="180" y1="80" x2="180" y2="150" stroke="#6b675e" stroke-width="1.6" marker-end="url(#mq6As3)"/>
+<line class="fl" x1="460" y1="80" x2="460" y2="150" stroke="#6b675e" stroke-width="1.6" marker-end="url(#mq6As3)"/>
+<text class="ts" x="192" y="120" font-size="12" fill="#6b675e">先落</text>
+<text class="ts" x="472" y="120" font-size="12" fill="#6b675e">全排在后面</text>
+<rect class="bx-q" x="60" y="156" width="540" height="40" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="89" y="180" text-anchor="middle" font-size="14" fill="#2b2a26">1</text>
+<text class="t" x="143" y="180" text-anchor="middle" font-size="14" fill="#2b2a26">3</text>
+<text class="t" x="197" y="180" text-anchor="middle" font-size="14" fill="#2b2a26">5</text>
+<text class="t" x="251" y="180" text-anchor="middle" font-size="14" fill="#2b2a26">7</text>
+<text class="t" x="305" y="180" text-anchor="middle" font-size="14" fill="#2b2a26">9</text>
+<text class="tc" x="359" y="180" text-anchor="middle" font-size="12" fill="#b03a2e">2</text>
+<text class="t" x="413" y="180" text-anchor="middle" font-size="14" fill="#2b2a26">4</text>
+<text class="t" x="467" y="180" text-anchor="middle" font-size="14" fill="#2b2a26">6</text>
+<text class="t" x="521" y="180" text-anchor="middle" font-size="14" fill="#2b2a26">8</text>
+<text class="t" x="575" y="180" text-anchor="middle" font-size="14" fill="#2b2a26">10</text>
+<line class="flc" x1="359" y1="200" x2="359" y2="214" stroke="#b03a2e" stroke-width="1.6"/>
+<text class="tc" x="359" y="230" text-anchor="middle" font-size="12" fill="#b03a2e">seq=2：业务上第 2 个事件，实际第 6 个到达</text>
+<text class="ts" x="20" y="256" font-size="12" fill="#6b675e">单分区、全成功、一条不丢：只要一根日志有多个写作者，「谁先写」就由各自的时钟和网络决定</text>
+</svg>
+</figure>
 
 再跑一轮把节奏排好：A 每 20ms 发一条，B 偏移 10ms 也每 20ms 一条，到达顺序恰好 1 到 10。别把这个读成保序，节奏是我人为排的，改成上面那种突发连发立刻就塌。单分区多写者的顺序是运气，不是保证。
 
@@ -109,6 +270,32 @@ seq=2 业务上是第 2 个事件，实际第 6 个到达
 - **单个生产者的写入顺序**：幂等开着，重试不翻序（Java 默认开，kafkajs 要自己开）；
 - **多个生产者的业务时序**：没人保，带业务时间戳自己重建；
 - **跨分区**：没有时序，按事件时间自己归并。
+
+这个收窄的阶梯：
+
+<figure class="mq-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 258" role="img" aria-label="顺序承诺的四级阶梯：分区日志内 offset 顺序无条件成立；单个生产者写入顺序要幂等开着；多生产者业务时序没人保，要带业务时间戳自己重建；跨分区没有时序，按事件时间自己归并。每往外一步承诺弱一级，消费端多认领一级责任" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="mq6Ac1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-c" d="M0 0 L8 4 L0 8 Z" fill="#b03a2e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">四级承诺，从日志事实到无人担保</text>
+<rect class="bx-q" x="30" y="40" width="520" height="40" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="50" y="65" font-size="14" fill="#2b2a26">分区日志内的 offset 顺序</text>
+<text class="ts" x="530" y="65" text-anchor="end" font-size="12" fill="#6b675e">无条件成立</text>
+<rect class="bx" x="70" y="88" width="440" height="40" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="90" y="113" font-size="14" fill="#2b2a26">单个生产者的写入顺序</text>
+<text class="ts" x="490" y="113" text-anchor="end" font-size="12" fill="#6b675e">幂等开着才不翻</text>
+<rect class="bx" x="110" y="136" width="360" height="40" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="130" y="161" font-size="14" fill="#2b2a26">多个生产者的业务时序</text>
+<text class="ts" x="450" y="161" text-anchor="end" font-size="12" fill="#6b675e">没人保，带业务时间戳</text>
+<rect class="bx-gone" x="150" y="184" width="280" height="40" rx="4" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<text class="t" x="170" y="209" font-size="14" fill="#2b2a26">跨分区</text>
+<text class="ts" x="410" y="209" text-anchor="end" font-size="12" fill="#6b675e">没有时序，按事件时间归并</text>
+<path class="flc" d="M590 46 V216" fill="none" stroke="#b03a2e" stroke-width="1.6" marker-end="url(#mq6Ac1)"/>
+<text class="tc" transform="rotate(90 612 131)" x="612" y="131" text-anchor="middle" font-size="12" fill="#b03a2e">一级一级变窄</text>
+<text class="ts" x="30" y="246" font-size="12" fill="#6b675e">业务要的多半是实体级有序：key 选好，分区数定好，那一档是免费的</text>
+</svg>
+</figure>
 
 每往外一步，承诺弱一级，消费端多认领一级责任。工程上的问题从来不是「怎么让 Kafka 全局有序」，而是「业务到底需要多大范围的有序」，答案十有八九是实体级，key 选好，分区数定好，剩下的是消费端自己的功课。
 
