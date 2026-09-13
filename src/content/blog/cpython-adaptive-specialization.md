@@ -6,11 +6,26 @@ category: cpython
 tags: [CPython, 编程语言, 解释器]
 ---
 
-```text
-刚创建函数          BINARY_OP
-反复传入整数        BINARY_OP_ADD_INT
-改为长期传入浮点数  BINARY_OP_ADD_FLOAT
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 118" role="img" aria-label="同一个加号操作点的三次快照：刚创建函数时显示 BINARY_OP，反复传入整数后显示 BINARY_OP_ADD_INT，改为长期传入浮点数后显示 BINARY_OP_ADD_FLOAT" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="adA1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="22" font-size="12" fill="#6b675e">同一个 + 操作点的三次快照</text>
+<rect class="bx-q" x="20" y="36" width="190" height="56" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="115" y="58" text-anchor="middle" font-size="10" fill="#6b675e">刚创建函数</text>
+<text class="t" x="115" y="80" text-anchor="middle" font-size="11" fill="#2b2a26">BINARY_OP</text>
+<line class="fl" x1="210" y1="64" x2="231" y2="64" stroke="#6b675e" stroke-width="1.3" marker-end="url(#adA1)"/>
+<rect class="bx" x="235" y="36" width="190" height="56" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="330" y="58" text-anchor="middle" font-size="10" fill="#6b675e">反复传入整数</text>
+<text class="t" x="330" y="80" text-anchor="middle" font-size="11" fill="#2b2a26">BINARY_OP_ADD_INT</text>
+<line class="fl" x1="425" y1="64" x2="446" y2="64" stroke="#6b675e" stroke-width="1.3" marker-end="url(#adA1)"/>
+<rect class="bx" x="450" y="36" width="190" height="56" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="545" y="58" text-anchor="middle" font-size="10" fill="#6b675e">改为长期传入浮点数</text>
+<text class="t" x="545" y="80" text-anchor="middle" font-size="11" fill="#2b2a26">BINARY_OP_ADD_FLOAT</text>
+<text class="ts" x="20" y="112" font-size="10.5" fill="#6b675e">函数没换、源码没改：换的是解释器为这处操作点记下的假设</text>
+</svg>
+</figure>
 
 三行观察都来自同一个函数：
 
@@ -35,15 +50,27 @@ def add(left, right):
 
 先把通用语义压缩成一张图：
 
-```text
-BINARY_OP(NB_ADD)
-    ↓
-_PyEval_BinaryOps[NB_ADD]
-    ↓
-PyNumber_Add(left, right)
-    ↓
-类型槽、正反向实现、NotImplemented、序列后备
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 252" role="img" aria-label="通用加法语义路径：BINARY_OP 带 NB_ADD 参数进入 _PyEval_BinaryOps 函数表，选出 PyNumber_Add，再走类型槽、正反向实现、NotImplemented 与序列后备的完整协商" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="adA2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-q" x="180" y="26" width="300" height="38" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="ts" x="330" y="50" text-anchor="middle" font-size="11" fill="#2b2a26">BINARY_OP(NB_ADD)</text>
+<line class="fl" x1="330" y1="64" x2="330" y2="78" stroke="#6b675e" stroke-width="1.3" marker-end="url(#adA2)"/>
+<rect class="bx-q" x="180" y="82" width="300" height="38" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="330" y="106" text-anchor="middle" font-size="11" fill="#2b2a26">_PyEval_BinaryOps[NB_ADD]</text>
+<line class="fl" x1="330" y1="120" x2="330" y2="134" stroke="#6b675e" stroke-width="1.3" marker-end="url(#adA2)"/>
+<rect class="bx-q" x="180" y="138" width="300" height="38" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="330" y="162" text-anchor="middle" font-size="11" fill="#2b2a26">PyNumber_Add(left, right)</text>
+<line class="fl" x1="330" y1="176" x2="330" y2="190" stroke="#6b675e" stroke-width="1.3" marker-end="url(#adA2)"/>
+<rect class="bx" x="140" y="194" width="380" height="46" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="330" y="213" text-anchor="middle" font-size="10.5" fill="#2b2a26">类型槽、正反向实现、</text>
+<text class="ts" x="330" y="230" text-anchor="middle" font-size="10.5" fill="#2b2a26">NotImplemented、序列后备</text>
+<text class="ts" x="540" y="106" font-size="10.5" fill="#6b675e">每次执行</text>
+<text class="ts" x="540" y="122" font-size="10.5" fill="#6b675e">都要走完的路</text>
+</svg>
+</figure>
 
 上一篇已经逐层走过这条路径。它的重要性不因特化而消失：只要专用假设不成立，解释器仍要回到这里，保证用户类、子类、动态修改后的特殊方法和异常语义全部正确。
 
@@ -134,13 +161,22 @@ True
 
 源代码经过编译时，编译器只知道这是一项二元加法：
 
-```text
-AST Add
-    ↓
-NB_ADD
-    ↓
-BINARY_OP(NB_ADD)
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 126" role="img" aria-label="编译期三步：AST 的 Add 节点映射为 NB_ADD 编号，再落成 BINARY_OP 指令；编译期不产生任何专用形态" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="adA3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-q" x="40" y="30" width="140" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="110" y="57" text-anchor="middle" font-size="11" fill="#2b2a26">AST：Add</text>
+<line class="fl" x1="180" y1="52" x2="236" y2="52" stroke="#6b675e" stroke-width="1.3" marker-end="url(#adA3)"/>
+<rect class="bx-q" x="240" y="30" width="140" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="310" y="57" text-anchor="middle" font-size="11" fill="#2b2a26">NB_ADD</text>
+<line class="fl" x1="380" y1="52" x2="436" y2="52" stroke="#6b675e" stroke-width="1.3" marker-end="url(#adA3)"/>
+<rect class="bx" x="440" y="30" width="190" height="44" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="535" y="57" text-anchor="middle" font-size="11" fill="#2b2a26">BINARY_OP(NB_ADD)</text>
+<text class="ts" x="40" y="104" font-size="10.5" fill="#6b675e">编译期到此为止：专用形态要等运行时按实际输入写下来</text>
+</svg>
+</figure>
 
 它没有运行时参数，无法断定未来传进来的是整数、浮点数、字符串，还是明天才定义的用户类。因此不会直接生成 `BINARY_OP_ADD_INT`。
 
@@ -160,15 +196,32 @@ BINARY_OP(NB_ADD)
 
 “inline”不是营销词。cache 以额外 code units 的形式紧邻所属指令，位于运行时字节码数组内部：
 
-```text
-[BINARY_OP +]
-[CACHE: counter]
-[CACHE: family-specific storage]
-[CACHE]
-[CACHE]
-[CACHE]
-[next opcode]
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 130" role="img" aria-label="运行时字节码数组内的一段：BINARY_OP 指令后面紧跟五个 CACHE code unit，第一槽是 counter，第二槽是 family 专用存储，其余备用，然后才是下一条 opcode" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="22" font-size="12" fill="#6b675e">运行时字节码数组内的一段</text>
+<rect class="bx" x="20" y="36" width="120" height="48" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="80" y="56" text-anchor="middle" font-size="10" fill="#2b2a26">BINARY_OP</text>
+<text class="ts" x="80" y="72" text-anchor="middle" font-size="9.5" fill="#6b675e">oparg = +</text>
+<rect class="bx-q" x="140" y="36" width="90" height="48" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="185" y="56" text-anchor="middle" font-size="10" fill="#2b2a26">CACHE</text>
+<text class="ts" x="185" y="72" text-anchor="middle" font-size="9.5" fill="#6b675e">counter</text>
+<rect class="bx-q" x="230" y="36" width="130" height="48" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="295" y="56" text-anchor="middle" font-size="10" fill="#2b2a26">CACHE</text>
+<text class="ts" x="295" y="72" text-anchor="middle" font-size="9.5" fill="#6b675e">family 专用存储</text>
+<rect class="bx-q" x="360" y="36" width="60" height="48" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="390" y="64" text-anchor="middle" font-size="10" fill="#2b2a26">CACHE</text>
+<rect class="bx-q" x="420" y="36" width="60" height="48" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="450" y="64" text-anchor="middle" font-size="10" fill="#2b2a26">CACHE</text>
+<rect class="bx-q" x="480" y="36" width="60" height="48" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="510" y="64" text-anchor="middle" font-size="10" fill="#2b2a26">CACHE</text>
+<rect class="bx-gone" x="540" y="36" width="100" height="48" rx="3" fill="#ece9e2" stroke="#a29d90" stroke-width="1.1" stroke-dasharray="4 3"/>
+<text class="ts" x="590" y="64" text-anchor="middle" font-size="10" fill="#6b675e">next opcode</text>
+<line class="axis" x1="140" y1="96" x2="540" y2="96" stroke="#a29d90" stroke-width="1.2"/>
+<line class="axis" x1="140" y1="92" x2="140" y2="100" stroke="#a29d90" stroke-width="1.2"/>
+<line class="axis" x1="540" y1="92" x2="540" y2="100" stroke="#a29d90" stroke-width="1.2"/>
+<text class="ts" x="340" y="118" text-anchor="middle" font-size="10.5" fill="#6b675e">inline cache：五个 code unit · 3.14.7 实测</text>
+</svg>
+</figure>
 
 在 CPython 3.14.7 的这项 `BINARY_OP` 实验中，`dis(..., show_caches=True)` 显示五个 cache 槽：
 
@@ -233,11 +286,28 @@ for _ in range(20_000):
 
 它至少承担几类不同工作：
 
-```text
-冷态 warmup        何时首次尝试特化
-特化后 cooldown    多少次 miss 后重新考虑形态
-失败后 backoff     下次特化失败要隔多久再试
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 158" role="img" aria-label="counter 的三种阶段语义：冷态 warmup 决定何时首次尝试特化，3.14.7 初值 17；特化后 cooldown 记录多少次 guard miss 后重新考虑形态，本机 53 次；失败后 backoff 拉长下次尝试间隔，逐级增长直到饱和" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="adA5" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-q" x="20" y="30" width="196" height="76" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="t" x="118" y="52" text-anchor="middle" font-size="11" fill="#2b2a26">warmup · 冷态</text>
+<text class="ts" x="118" y="72" text-anchor="middle" font-size="9.5" fill="#6b675e">倒数到尝试点：</text>
+<text class="ts" x="118" y="88" text-anchor="middle" font-size="9.5" fill="#6b675e">何时首次尝试特化（初值 17）</text>
+<line class="fl" x1="216" y1="68" x2="230" y2="68" stroke="#6b675e" stroke-width="1.3" marker-end="url(#adA5)"/>
+<rect class="bx-q" x="234" y="30" width="196" height="76" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="t" x="332" y="52" text-anchor="middle" font-size="11" fill="#2b2a26">cooldown · 特化后</text>
+<text class="ts" x="332" y="72" text-anchor="middle" font-size="9.5" fill="#6b675e">guard miss 逐次消费它</text>
+<text class="ts" x="332" y="88" text-anchor="middle" font-size="9.5" fill="#6b675e">数到头就重新考虑形态（53 次）</text>
+<line class="fl" x1="430" y1="68" x2="444" y2="68" stroke="#6b675e" stroke-width="1.3" marker-end="url(#adA5)"/>
+<rect class="bx-sick" x="448" y="30" width="196" height="76" rx="5" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="t" x="546" y="52" text-anchor="middle" font-size="11" fill="#b03a2e">backoff · 失败后</text>
+<text class="ts" x="546" y="72" text-anchor="middle" font-size="9.5" fill="#6b675e">拉长下次尝试的间隔</text>
+<text class="ts" x="546" y="88" text-anchor="middle" font-size="9.5" fill="#6b675e">逐级增长，直到饱和</text>
+<text class="ts" x="20" y="134" font-size="10.5" fill="#6b675e">同一个 counter 字段，分三段计时 · 括号内数值为 3.14.7/3.12.13 本机参数</text>
+</svg>
+</figure>
 
 命中专用 guard 时，并不等于把它当普通执行计数器持续加一；guard miss、重新尝试和特化失败会推动不同状态变化。数值本身还经过编码，不能直接按十进制字面解释。
 
@@ -329,11 +399,26 @@ adaptive 显示       BINARY_OP_ADD_INT
 
 因此至少要区分：
 
-```text
-guard miss          当前输入不满足假设
-本次 fallback       当前执行改走通用语义
-persistent rewrite  操作点自身改写成另一形态或通用形态
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 160" role="img" aria-label="三个时刻的区分：guard miss 指当前输入不满足假设，本次 fallback 指当次执行改走通用语义，两者发生在同一次执行内；persistent rewrite 指操作点自身改写成另一形态或通用形态，要等足够多次 miss 之后才发生" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<rect class="bx-q" x="20" y="26" width="196" height="72" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="t" x="118" y="48" text-anchor="middle" font-size="11" fill="#2b2a26">guard miss</text>
+<text class="ts" x="118" y="68" text-anchor="middle" font-size="9.5" fill="#6b675e">当前输入不满足假设</text>
+<text class="ts" x="118" y="84" text-anchor="middle" font-size="9.5" fill="#6b675e">一次事件，不是状态改名</text>
+<rect class="bx-q" x="232" y="26" width="196" height="72" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="t" x="330" y="48" text-anchor="middle" font-size="11" fill="#2b2a26">本次 fallback</text>
+<text class="ts" x="330" y="68" text-anchor="middle" font-size="9.5" fill="#6b675e">当次执行改走通用语义</text>
+<text class="ts" x="330" y="84" text-anchor="middle" font-size="9.5" fill="#6b675e">opcode 可以仍是专用形态</text>
+<rect class="bx" x="444" y="26" width="196" height="72" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="t" x="542" y="48" text-anchor="middle" font-size="11" fill="#2b2a26">persistent rewrite</text>
+<text class="ts" x="542" y="68" text-anchor="middle" font-size="9.5" fill="#6b675e">操作点自身改写形态</text>
+<text class="ts" x="542" y="84" text-anchor="middle" font-size="9.5" fill="#6b675e">改学另一条路，或退回通用</text>
+<line class="axis" x1="20" y1="112" x2="428" y2="112" stroke="#a29d90" stroke-width="1.2"/>
+<line class="axis" x1="444" y1="112" x2="640" y2="112" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="ts" x="224" y="132" text-anchor="middle" font-size="10" fill="#6b675e">同一次执行之内</text>
+<text class="tc" x="542" y="132" text-anchor="middle" font-size="10" fill="#b03a2e">足够多 miss 之后（本机 53 次）</text>
+</svg>
+</figure>
 
 三者不是同一个时刻。一次 guard miss 不等于永久 deoptimization；`dis` 仍显示专用 opcode，也不等于刚才那只异型对象真的命中了快路。
 
@@ -374,6 +459,48 @@ class Box:
 ```
 
 用户类从第一次起就执行正确的 `__add__`。当前没有适合这类普通 heap type 的加法专用形态；积累足够 miss 后，操作点回到通用 `BINARY_OP`，特化失败又进入 backoff，稍后再尝试，而不是从此永远关掉观察。
+
+这段历史连成一条时间线：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 212" role="img" aria-label="同一操作点的形态时间线：冷态 BINARY_OP；两万次整数期间为 ADD_INT；浮点第 1 到 52 次显示仍是 ADD_INT 但每次 guard miss 走通用；第 53 次改学 ADD_FLOAT；Box 输入前 52 次显示 ADD_FLOAT 实际走用户 __add__；第 53 次起回到通用 BINARY_OP 并进入 backoff" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="adA6" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-q" x="30" y="22" width="16" height="12" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="52" y="32" font-size="10" fill="#6b675e">显示即实际</text>
+<rect class="bx-sick" x="150" y="22" width="16" height="12" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/>
+<text class="ts" x="172" y="32" font-size="10" fill="#6b675e">显示滞后于实际（每次 guard miss 走通用）</text>
+<rect class="bx-q" x="30" y="118" width="60" height="26" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="60" y="135" text-anchor="middle" font-size="9" fill="#2b2a26">BINARY_OP</text>
+<rect class="bx-q" x="90" y="118" width="180" height="26" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="180" y="135" text-anchor="middle" font-size="9.5" fill="#2b2a26">BINARY_OP_ADD_INT</text>
+<rect class="bx-sick" x="270" y="118" width="120" height="26" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="ts" x="330" y="135" text-anchor="middle" font-size="9" fill="#b03a2e">仍显示 ADD_INT</text>
+<rect class="bx-q" x="390" y="118" width="90" height="26" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="435" y="135" text-anchor="middle" font-size="9" fill="#2b2a26">ADD_FLOAT</text>
+<rect class="bx-sick" x="480" y="118" width="90" height="26" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="ts" x="525" y="135" text-anchor="middle" font-size="9" fill="#b03a2e">仍显示 FLOAT</text>
+<rect class="bx" x="570" y="118" width="60" height="26" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="600" y="135" text-anchor="middle" font-size="9" fill="#2b2a26">通用+退避</text>
+<line class="flc" x1="390" y1="96" x2="390" y2="150" stroke="#b03a2e" stroke-width="1.2" stroke-dasharray="4 3"/>
+<line class="flc" x1="570" y1="96" x2="570" y2="150" stroke="#b03a2e" stroke-width="1.2" stroke-dasharray="4 3"/>
+<text class="tc" x="390" y="88" text-anchor="middle" font-size="9.5" fill="#b03a2e">第 53 次 float</text>
+<text class="tc" x="570" y="88" text-anchor="middle" font-size="9.5" fill="#b03a2e">第 53 次 Box</text>
+<line class="axis" x1="30" y1="152" x2="630" y2="152" stroke="#a29d90" stroke-width="1.2" marker-end="url(#adA6)"/>
+<text class="ts" x="60" y="172" text-anchor="middle" font-size="9" fill="#6b675e">冷态</text>
+<text class="ts" x="180" y="172" text-anchor="middle" font-size="9" fill="#6b675e">int × 20000</text>
+<text class="ts" x="330" y="172" text-anchor="middle" font-size="9" fill="#6b675e">float 第 1..52 次</text>
+<text class="ts" x="330" y="186" text-anchor="middle" font-size="9" fill="#6b675e">返回 3.0 · 走通用</text>
+<text class="ts" x="435" y="172" text-anchor="middle" font-size="9" fill="#6b675e">float 第 53 次起</text>
+<text class="ts" x="435" y="186" text-anchor="middle" font-size="9" fill="#6b675e">改学 FLOAT</text>
+<text class="ts" x="525" y="172" text-anchor="middle" font-size="9" fill="#6b675e">Box 第 1..52 次</text>
+<text class="ts" x="525" y="186" text-anchor="middle" font-size="9" fill="#6b675e">走用户 __add__</text>
+<text class="ts" x="600" y="172" text-anchor="middle" font-size="9" fill="#6b675e">Box 第 53 次起</text>
+<text class="ts" x="600" y="186" text-anchor="middle" font-size="9" fill="#6b675e">backoff 拉长重试</text>
+<text class="ts" x="30" y="206" font-size="10" fill="#a29d90">横轴为调用次序，宽度不按比例 · 语言结果每一段都正确</text>
+</svg>
+</figure>
 
 现在动态修改类：
 
