@@ -71,6 +71,29 @@ EXEC 返回  1) OK  2) (error) ...  3) OK
 
 k1 被 SET 成功改写，错误只属于 INCR 那一条。**Redis 在这里选择的是「报告，不收拾」**：每条命令的回复按原顺序放回一个数组，对错由客户端自己看。理由值得原味转述：能通过第一道门的命令，执行期错误只剩「逻辑错误对错误的数据类型」（编程错误）和「内存不足」两类；前者该在开发期修，后者回滚也救不了，Redis 5.0 起内存不足时连实例都会拒绝写入。为这两种场景维护一套撤销日志，官方的判断是不值得。
 
+两道门的分工：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 240" role="img" aria-label="事务的两道检查门：第一道在入队时查命令名、参数数量、内存，任何一条不通过就打上 CLIENT_DIRTY_EXEC，EXEC 直接 EXECABORT 整单弃掉；第二道在 EXEC 循环里查类型与权限，出错只作废当前条目，批不散，其余命令照常执行" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">错误检查分两道门，行为完全不同</text>
+<rect class="bx-sick" x="20" y="44" width="300" height="150" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="t" x="170" y="68" text-anchor="middle" font-size="13" fill="#2b2a26">第一道门 · 入队时</text>
+<text class="ts" x="36" y="94" font-size="11" fill="#6b675e">查：命令名存在？参数数量对？内存够？</text>
+<text class="ts" x="36" y="116" font-size="11" fill="#6b675e">一条不过：打上 CLIENT_DIRTY_EXEC</text>
+<text class="ts" x="36" y="138" font-size="11" fill="#6b675e">后续排队直接忽略，EXEC 一到就终审</text>
+<text class="tc" x="36" y="162" font-size="12" fill="#b03a2e">结局：EXECABORT，整单弃掉</text>
+<text class="ts" x="36" y="182" font-size="11" fill="#6b675e">语法错误是全有全无的</text>
+<rect class="bx" x="340" y="44" width="300" height="150" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="490" y="68" text-anchor="middle" font-size="13" fill="#2b2a26">第二道门 · EXEC 循环里</text>
+<text class="ts" x="356" y="94" font-size="11" fill="#6b675e">查：类型对不对得上、权限改没改</text>
+<text class="ts" x="356" y="116" font-size="11" fill="#6b675e">出错：只作废当前条目，按序回错误</text>
+<text class="ts" x="356" y="138" font-size="11" fill="#6b675e">循环不停摆，后面的命令照常跑</text>
+<text class="tc" x="356" y="162" font-size="12" fill="#b03a2e">结局：批不散，报告、不收拾</text>
+<text class="ts" x="356" y="182" font-size="11" fill="#6b675e">没有回滚，也没有撤销日志</text>
+<text class="ts" x="20" y="224" font-size="12" fill="#6b675e">写代码只依赖第一道门；第二道门兜的是程序 bug，不是语义承诺</text>
+</svg>
+</figure>
+
 ## 隔离：单线程模型的副产品
 
 「事务执行期间没有其他客户端插队」，这个性质听起来昂贵，实际上没花一分钱。
@@ -97,18 +120,62 @@ EXEC
 
 完整走一遍经典的「读-算-写」竞争：
 
-```text
-客户端 A                          客户端 B（插队者）
-WATCH bal
-GET bal → 100
-                                  SET bal 75
-MULTI
-SET bal 300        （基于过期值 100 算出）
-EXEC → (nil)  ← 整单作废
-GET bal → 75                       ← 300 从未落盘
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 268" role="img" aria-label="WATCH 竞争的双泳道时间线：客户端 A 先 WATCH bal 再 GET 得 100；客户端 B 插队 SET bal 75，touchWatchedKey 给 A 打上 CLIENT_DIRTY_CAS；A 基于旧值算出的 SET bal 300 入队后 EXEC 返回 nil，整单作废，300 从未写入，bal 保持 75" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="red7Ac2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-c" d="M0 0 L8 4 L0 8 Z" fill="#b03a2e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">读-算-写被插队：EXEC 那一刻才发现值已经旧了</text>
+<text class="ts" x="20" y="64" font-size="12" fill="#6b675e">客户端 A</text>
+<line class="axis" x1="90" y1="80" x2="630" y2="80" stroke="#6b675e" stroke-width="1.2"/>
+<line class="flk" x1="120" y1="70" x2="120" y2="90" stroke="#2b2a26" stroke-width="2"/>
+<text class="ts" x="120" y="62" text-anchor="middle" font-size="11" fill="#6b675e">WATCH bal</text>
+<line class="flk" x1="200" y1="70" x2="200" y2="90" stroke="#2b2a26" stroke-width="2"/>
+<text class="ts" x="200" y="112" text-anchor="middle" font-size="11" fill="#6b675e">GET → 100</text>
+<line class="flk" x1="360" y1="70" x2="360" y2="90" stroke="#2b2a26" stroke-width="2"/>
+<text class="ts" x="360" y="62" text-anchor="middle" font-size="11" fill="#6b675e">MULTI</text>
+<line class="flk" x1="440" y1="70" x2="440" y2="90" stroke="#2b2a26" stroke-width="2"/>
+<text class="ts" x="440" y="112" text-anchor="middle" font-size="11" fill="#6b675e">SET bal 300 入队（基于旧值 100）</text>
+<line class="flc" x1="530" y1="68" x2="530" y2="92" stroke="#b03a2e" stroke-width="2"/>
+<text class="tc" x="530" y="60" text-anchor="middle" font-size="11" fill="#b03a2e">EXEC → (nil)</text>
+<line class="flk" x1="600" y1="70" x2="600" y2="90" stroke="#2b2a26" stroke-width="2"/>
+<text class="ts" x="600" y="112" text-anchor="middle" font-size="11" fill="#6b675e">GET → 75</text>
+<text class="ts" x="20" y="176" font-size="12" fill="#6b675e">客户端 B</text>
+<line class="axis" x1="90" y1="190" x2="630" y2="190" stroke="#6b675e" stroke-width="1.2"/>
+<line class="flc" x1="280" y1="180" x2="280" y2="200" stroke="#b03a2e" stroke-width="2"/>
+<text class="tc" x="280" y="222" text-anchor="middle" font-size="11" fill="#b03a2e">SET bal 75（插队）</text>
+<line class="flc" x1="280" y1="176" x2="280" y2="86" stroke="#b03a2e" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#red7Ac2)"/>
+<text class="tc" x="290" y="140" font-size="11" fill="#b03a2e">动了被观察的键：touchWatchedKey 给 A 打 CLIENT_DIRTY_CAS</text>
+<text class="ts" x="20" y="252" font-size="12" fill="#6b675e">bal 全程：100 → 75（B 写的）→ 75；A 算出的 300 从未写入</text>
+</svg>
+</figure>
 
 关键在最后一步：A 基于陈旧的 100 算出的 300 **没有写入**，余额保持在 B 写入的 75。这就是 CHECK-AND-SET 的完整闭环：不是防住别人改，而是**别人改了我就放弃**。客户端拿到 nil 后重新读值、重新计算、重新提交，循环直到成功。高竞争下这套协议会反复重试，但 Redis 的负载画像（短命令、低冲突）让它比悲观锁便宜：不用维护等待队列，不用处理死锁，冲突的代价只是一次重试。
+
+重试闭环：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 172" role="img" aria-label="CHECK-AND-SET 重试闭环：读旧值 WATCH 加 GET，本地计算，MULTI 到 EXEC 提交；EXEC 返回 nil 说明值被人改过，整圈重来，成功则退出；循环里没有等待队列，冲突不阻塞任何人" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="red7As3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+<marker id="red7Ac3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-c" d="M0 0 L8 4 L0 8 Z" fill="#b03a2e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">客户端拿到 nil 之后的标准动作</text>
+<rect class="bx" x="30" y="44" width="150" height="44" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="105" y="70" text-anchor="middle" font-size="12" fill="#6b675e">读：WATCH + GET</text>
+<line class="fl" x1="180" y1="66" x2="226" y2="66" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red7As3)"/>
+<rect class="bx" x="230" y="44" width="130" height="44" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="295" y="70" text-anchor="middle" font-size="12" fill="#6b675e">算：本地</text>
+<line class="fl" x1="360" y1="66" x2="406" y2="66" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red7As3)"/>
+<rect class="bx-q" x="410" y="44" width="160" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="490" y="70" text-anchor="middle" font-size="12" fill="#6b675e">写：MULTI…EXEC</text>
+<line class="fl" x1="570" y1="66" x2="616" y2="66" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red7As3)"/>
+<text class="ts" x="620" y="52" text-anchor="end" font-size="11" fill="#6b675e">成功</text>
+<path class="flc" d="M490 88 L490 124 L105 124 L105 92" fill="none" stroke="#b03a2e" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#red7Ac3)"/>
+<text class="tc" x="300" y="118" text-anchor="middle" font-size="11" fill="#b03a2e">返回 nil：值被人改过，整圈重来</text>
+<text class="ts" x="20" y="156" font-size="12" fill="#6b675e">循环里没有等待队列：冲突不阻塞任何人，只是自己多走一圈</text>
+</svg>
+</figure>
 
 被修改污染是单向的：一旦 DIRTY_CAS，`touchWatchedKey` 顺手把该客户端的所有观察注销，反正 EXEC 必弃，留着观察只浪费内存。UNWATCH 和 DISCARD 也会清空；EXEC 结束（无论成败）事务状态一律复位。
 
@@ -131,6 +198,37 @@ MULTI / SET gone resurrect / EXEC
 
 这行为看着像 bug，其实是「逻辑不存在」与「物理删除」分离的又一次出现：过期篇里为 TTL 讲过的那对概念，在 WATCH 的语义里原样重现。
 
+两种情形的分岔点在登记那一刻：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 236" role="img" aria-label="WATCH 过期键的两种情形：左图 WATCH 时键还活着、之后才到期，EXEC 检查发现已过期，打 DIRTY_CAS 弃单；右图 WATCH 时键已经过期，逻辑上等于不存在，其后的物理回收不算变化，EXEC 成功提交" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">判据在 WATCH 登记那一刻就写进了 wk-&gt;expired 快照</text>
+<rect class="bx" x="20" y="44" width="300" height="140" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="170" y="66" text-anchor="middle" font-size="12" fill="#2b2a26">WATCH 时键活着，之后才到期</text>
+<line class="axis" x1="40" y1="110" x2="300" y2="110" stroke="#6b675e" stroke-width="1.2"/>
+<line class="flk" x1="70" y1="102" x2="70" y2="118" stroke="#2b2a26" stroke-width="2"/>
+<text class="ts" x="70" y="96" text-anchor="middle" font-size="10" fill="#6b675e">WATCH</text>
+<line class="flc" x1="170" y1="102" x2="170" y2="118" stroke="#b03a2e" stroke-width="2"/>
+<text class="ts" x="170" y="96" text-anchor="middle" font-size="10" fill="#6b675e">键到期</text>
+<line class="flk" x1="265" y1="102" x2="265" y2="118" stroke="#2b2a26" stroke-width="2"/>
+<text class="ts" x="265" y="96" text-anchor="middle" font-size="10" fill="#6b675e">EXEC</text>
+<text class="tc" x="170" y="144" text-anchor="middle" font-size="11" fill="#b03a2e">弃单：DIRTY_CAS</text>
+<text class="ts" x="170" y="166" text-anchor="middle" font-size="10" fill="#6b675e">观察的是会消失的值，消失了就算被改过</text>
+<rect class="bx-q" x="340" y="44" width="300" height="140" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="490" y="66" text-anchor="middle" font-size="12" fill="#2b2a26">WATCH 时键已经过期</text>
+<line class="axis" x1="360" y1="110" x2="620" y2="110" stroke="#6b675e" stroke-width="1.2"/>
+<line class="flk" x1="390" y1="102" x2="390" y2="118" stroke="#2b2a26" stroke-width="2"/>
+<text class="ts" x="390" y="96" text-anchor="middle" font-size="10" fill="#6b675e">WATCH</text>
+<line class="flk" x1="490" y1="102" x2="490" y2="118" stroke="#2b2a26" stroke-width="1.6" stroke-dasharray="3 2"/>
+<text class="ts" x="490" y="96" text-anchor="middle" font-size="10" fill="#6b675e">物理回收</text>
+<line class="flk" x1="585" y1="102" x2="585" y2="118" stroke="#2b2a26" stroke-width="2"/>
+<text class="ts" x="585" y="96" text-anchor="middle" font-size="10" fill="#6b675e">EXEC</text>
+<text class="tc" x="490" y="144" text-anchor="middle" font-size="11" fill="#b03a2e">提交成功</text>
+<text class="ts" x="490" y="166" text-anchor="middle" font-size="10" fill="#6b675e">观察的本来就是「无」：不存在 → 不存在，没有转移</text>
+<text class="ts" x="20" y="216" font-size="12" fill="#6b675e">两种「键没了」，只有一种算修改：分界线是 WATCH 时刻的键状态</text>
+</svg>
+</figure>
+
 ## 与 Lua 对比：官方为什么说脚本更好
 
 Redis 官方文档在 MULTI/EXEC 一节的末尾放了段不那么客气的建议：除了历史原因，**用 Lua 脚本更简单更快**。拆完两边机制，可以给这句建议一个结构性解释。
@@ -146,6 +244,28 @@ EVAL "if redis.call('GET', KEYS[1]) == '100' then
 ```
 
 脚本整体和一条命令同权：主线程执行期间不插队，读和算发生在服务端本地，不存在「读算之间被插队」的窗口，也就**不需要 WATCH、不需要重试**。网络往返也从五次坍缩成一次。
+
+五步与一步：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 196" role="img" aria-label="同一件读算写任务的两种做法对照：MULTI 方案要 WATCH、GET、MULTI、SET、EXEC 五次网络往返，冲突时整组重来；Lua 方案一次 EVAL 往返，读算写都在服务端单命令边界内完成，插队窗口不存在" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">同一件「读-算-写」：五个来回 vs 一个来回</text>
+<rect class="bx" x="30" y="52" width="104" height="30" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="82" y="71" text-anchor="middle" font-size="11" fill="#6b675e">① WATCH</text>
+<rect class="bx" x="150" y="52" width="104" height="30" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="202" y="71" text-anchor="middle" font-size="11" fill="#6b675e">② GET 读</text>
+<rect class="bx" x="270" y="52" width="104" height="30" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="322" y="71" text-anchor="middle" font-size="11" fill="#6b675e">③ MULTI</text>
+<rect class="bx" x="390" y="52" width="104" height="30" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="442" y="71" text-anchor="middle" font-size="11" fill="#6b675e">④ SET 入队</text>
+<rect class="bx" x="510" y="52" width="104" height="30" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="562" y="71" text-anchor="middle" font-size="11" fill="#6b675e">⑤ EXEC</text>
+<text class="tc" x="30" y="104" font-size="11" fill="#b03a2e">五个来回；EXEC 撞上 DIRTY_CAS 时，整组从头再来</text>
+<rect class="bx-sick" x="30" y="128" width="584" height="34" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="322" y="150" text-anchor="middle" font-size="12" fill="#b03a2e">EVAL 一个来回：读、算、写都在服务端的单命令边界内</text>
+<text class="ts" x="20" y="184" font-size="12" fill="#6b675e">省掉的不止四个来回：读与算之间不存在插队窗口，WATCH 和重试一起消失</text>
+</svg>
+</figure>
 
 代价在别处：脚本是排他资源（同一时刻只有一个脚本在跑），长脚本会把串行柜台堵成事件循环篇里那条队；EVAL 的文本每次都要传输，缓存 EVALSHA 又引入脚本丢失的边角；调试也远不如客户端代码方便。所以那句官方建议的完整版应该是：**短小、读算写交织的逻辑用 Lua；纯粹想把一批写打包、或需要配合 WATCH 做乐观锁的，MULTI/EXEC 仍然是对的工具**。
 
