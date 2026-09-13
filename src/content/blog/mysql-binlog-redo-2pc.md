@@ -51,16 +51,68 @@ skip-log-bin：  837.8 μs/提交，redo fsync 555 次（每事务恰好 1 次�
 
 关掉 binlog 后，**两阶段提交整个消失了**：没有 binlog 这个「第二参与者」，redo 不需要 prepare/commit 两段式，一笔 fsync 直达提交，快了 1.2ms。源码上这是 `total_ha_2pc`（具备两阶段能力的日志/引擎数）从 2 降到 1：协调者不需要裁决，事务单阶段完成。**binlog 的存在本身就是提交变慢的原因**，复制和恢复是一对明码标价的取舍。
 
+六种配置的单价：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 248" role="img" aria-label="六种落盘配置的每笔提交耗时条形图：双 1 默认 2063.8 微秒最贵，binlog0 加 redo1 是 1025.1，关 binlog 837.8，binlog1 加 redo0 是 810，binlog1000 加 redo2 是 42.6，双 0 只要 20.4 微秒；每撤掉一次 fsync 条就短一截" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">500 笔单行自动提交：μs/笔（条长同一比例尺）</text>
+<text class="ts" x="20" y="58" font-size="11" fill="#6b675e">双 1（默认）</text>
+<rect class="bar" x="170" y="44" width="423" height="18" fill="#2b2a26"/>
+<text class="onbar" x="178" y="57" font-size="10" fill="#f6f3ec">2063.8 · 两次 fsync 全上</text>
+<text class="ts" x="20" y="86" font-size="11" fill="#6b675e">binlog=0, redo=1</text>
+<rect class="bar" x="170" y="72" width="210" height="18" fill="#2b2a26"/>
+<text class="ts" x="388" y="85" font-size="10" fill="#6b675e">1025.1 · binlog 只进 OS 缓存</text>
+<text class="ts" x="20" y="114" font-size="11" fill="#6b675e">关 binlog</text>
+<rect class="bar" x="170" y="100" width="172" height="18" fill="#6b675e"/>
+<text class="ts" x="350" y="113" font-size="10" fill="#6b675e">837.8 · 单阶段，每事务恰好 1 次 fsync</text>
+<text class="ts" x="20" y="142" font-size="11" fill="#6b675e">binlog=1, redo=0</text>
+<rect class="bar" x="170" y="128" width="166" height="18" fill="#2b2a26"/>
+<text class="ts" x="344" y="141" font-size="10" fill="#6b675e">810.0 · redo 靠每秒刷</text>
+<text class="ts" x="20" y="170" font-size="11" fill="#6b675e">binlog=1000, redo=2</text>
+<rect class="bar" x="170" y="156" width="9" height="18" fill="#2b2a26"/>
+<text class="tc" x="187" y="169" font-size="10" fill="#b03a2e">42.6 · 攒批 fsync：便宜的近似安全</text>
+<text class="ts" x="20" y="198" font-size="11" fill="#6b675e">双 0</text>
+<rect class="bar" x="170" y="184" width="4" height="18" fill="#2b2a26"/>
+<text class="tc" x="182" y="197" font-size="10" fill="#b03a2e">20.4 · 纯代码路径：fsync 全部消失</text>
+<text class="ts" x="20" y="226" font-size="12" fill="#6b675e">一次 fsync 的单价约 1ms：每撤掉一次，条就短一截</text>
+<text class="ts" x="20" y="244" font-size="12" fill="#6b675e">双 0 与 (1000,2) 的差距不在速度，在崩溃那天怎么结算</text>
+</svg>
+</figure>
+
 ## 中间态长什么样：一条提交的四步
 
 把 2.06ms 切开，一笔事务提交的真实次序（8.4 源码 `MYSQL_BIN_LOG::ordered_commit`）：
 
-```text
-① 引擎层写 redo（prepare 段）并落盘        ← innodb_flush_log_at_trx_commit=1 的 fsync
-② 事务的事件流写进 binlog 并落盘            ← sync_binlog=1 的 fsync
-③ 引擎层写 redo（commit 段）                ← 不用立刻落盘
-④ 客户端收到 OK
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 216" role="img" aria-label="一笔提交的四步：第一步引擎写 redo prepare 段并 fsync，第二步事务事件流写进 binlog 并 fsync，这两步各值约 1 毫秒、占掉 2.06 毫秒的 99%；第三步引擎写 redo commit 段不必立刻落盘；第四步客户端收到 OK" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="my8As1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">2.06ms 切开：四步里两步在等盘</text>
+<rect class="bx-sick" x="12" y="44" width="145" height="80" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="t" x="84" y="66" text-anchor="middle" font-size="12" fill="#2b2a26">① redo prepare</text>
+<text class="ts" x="84" y="86" text-anchor="middle" font-size="10" fill="#6b675e">引擎日志写 + fsync</text>
+<text class="tc" x="84" y="106" text-anchor="middle" font-size="11" fill="#b03a2e">≈1ms</text>
+<line class="fl" x1="157" y1="84" x2="173" y2="84" stroke="#6b675e" stroke-width="1.6" marker-end="url(#my8As1)"/>
+<rect class="bx-sick" x="177" y="44" width="145" height="80" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="t" x="249" y="66" text-anchor="middle" font-size="12" fill="#2b2a26">② binlog 落盘</text>
+<text class="ts" x="249" y="86" text-anchor="middle" font-size="10" fill="#6b675e">事件流写 + fsync</text>
+<text class="tc" x="249" y="106" text-anchor="middle" font-size="11" fill="#b03a2e">≈1ms</text>
+<line class="fl" x1="322" y1="84" x2="338" y2="84" stroke="#6b675e" stroke-width="1.6" marker-end="url(#my8As1)"/>
+<rect class="bx" x="342" y="44" width="145" height="80" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="414" y="66" text-anchor="middle" font-size="12" fill="#2b2a26">③ redo commit</text>
+<text class="ts" x="414" y="86" text-anchor="middle" font-size="10" fill="#6b675e">写 commit 段</text>
+<text class="ts" x="414" y="106" text-anchor="middle" font-size="10" fill="#6b675e">不用立刻落盘 · 微秒级</text>
+<line class="fl" x1="487" y1="84" x2="503" y2="84" stroke="#6b675e" stroke-width="1.6" marker-end="url(#my8As1)"/>
+<rect class="bx-q" x="507" y="44" width="141" height="80" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="577" y="66" text-anchor="middle" font-size="12" fill="#2b2a26">④ ack</text>
+<text class="ts" x="577" y="86" text-anchor="middle" font-size="10" fill="#6b675e">客户端收到 OK</text>
+<path class="flc" d="M12 138 L12 146 L322 146 L322 138" fill="none" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="167" y="164" text-anchor="middle" font-size="11" fill="#b03a2e">2.06ms 的 99% 花在这两次 fsync</text>
+<text class="ts" x="20" y="190" font-size="12" fill="#6b675e">顺序是地基：① 必须先于 ②；关掉 binlog 后 ② 消失、①③ 并成单阶段，实测 0.84ms</text>
+<text class="ts" x="20" y="208" font-size="12" fill="#6b675e">④ 排在 ③ 之后：崩溃裁决只认 ② 的凭证，ack 发没发不参与判定</text>
+</svg>
+</figure>
 
 关键在 ①②③ 的**顺序**：redo 的 prepare 必须先于 binlog 落盘。为什么？看崩溃后重启时恢复程序手里的两张牌：引擎侧扫描 redo，找出所有 **prepared 状态**的事务（改动的页已在、但没走到 commit 段）；binlog 侧顺序扫描文件，收集每个 `Xid` 事件（= 事务在 binlog 里完整落盘的凭证）。然后裁决。8.4 的裁决逻辑在 `sql/xa/recovery.cc`，核心就一句：
 
@@ -76,6 +128,33 @@ if (info.commit_list ? info.commit_list->count(xid) != 0 : ...) {
 
 那 binlog 里收集 XID 的具体位置在哪？`sql/binlog/log_sanitizer.cc` 的 `process_xid_event`：恢复程序逐事件读 binlog，每读到一个 `Xid_log_event`，就 `m_internal_xids.insert(ev.xid)`。这份集合传给 `ha_recover(&m_internal_xids, ...)`，就是上面那句裁决的 `commit_list`。整个「binlog 是裁决书」在源码里就这几行，朴素得惊人。
 
+裁决的全流程：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 252" role="img" aria-label="崩溃恢复的裁决流程：引擎侧扫 redo 找出所有 prepared 状态的事务，binlog 侧顺序读 Xid 事件收集落盘凭证名单；recovery.cc 拿 prepared 事务的 XID 查名单，在名单里就 commit_by_xid 补提交，不在就 rollback_by_xid 回滚" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="my8As3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">重启后的裁决：两张牌，一个名单</text>
+<rect class="bx" x="20" y="44" width="280" height="56" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="160" y="66" text-anchor="middle" font-size="12" fill="#2b2a26">引擎侧 · 扫 redo</text>
+<text class="ts" x="160" y="86" text-anchor="middle" font-size="10" fill="#6b675e">找出所有 prepared 状态的事务</text>
+<rect class="bx" x="360" y="44" width="280" height="56" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="500" y="66" text-anchor="middle" font-size="12" fill="#2b2a26">binlog 侧 · 顺序读</text>
+<text class="ts" x="500" y="86" text-anchor="middle" font-size="10" fill="#6b675e">收集每个 Xid 事件 = 落盘凭证名单</text>
+<line class="fl" x1="160" y1="100" x2="290" y2="132" stroke="#6b675e" stroke-width="1.5" marker-end="url(#my8As3)"/>
+<line class="fl" x1="500" y1="100" x2="370" y2="132" stroke="#6b675e" stroke-width="1.5" marker-end="url(#my8As3)"/>
+<rect class="bx-sick" x="190" y="136" width="280" height="40" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="330" y="160" text-anchor="middle" font-size="12" fill="#b03a2e">recovery.cc：XID 在名单里吗？</text>
+<line class="fl" x1="260" y1="176" x2="180" y2="200" stroke="#6b675e" stroke-width="1.5" marker-end="url(#my8As3)"/>
+<line class="fl" x1="400" y1="176" x2="480" y2="200" stroke="#6b675e" stroke-width="1.5" marker-end="url(#my8As3)"/>
+<rect class="bx-q" x="40" y="204" width="270" height="34" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="175" y="225" text-anchor="middle" font-size="11" fill="#6b675e">在 → commit_by_xid：补提交</text>
+<rect class="bx" x="350" y="204" width="270" height="34" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="485" y="225" text-anchor="middle" font-size="11" fill="#6b675e">不在 → rollback_by_xid：回滚</text>
+</svg>
+</figure>
+
 ## kill -9：ack、行数、XID 三个数字
 
 机制讲完，来真的。外部脚本经 TCP 连接逐笔 INSERT（autocommit），每收到一个 ack 就落一次盘计数；3 秒后 `kill -9` mysqld（容器里 PID 1，一击毙命，buffer pool、OS 里 MySQL 自己的缓存都救不了它）。重启后核对三个数字：
@@ -87,6 +166,29 @@ binlog Xid 事件数：  2,085   ← 与行数严丝合缝
 ```
 
 **2085 个提交，客户端只确认了 2084 个。** 多出来的那笔是崩溃窗口里的事务：引擎 redo 已 prepare（落盘）、binlog 的 Xid 事件已落盘、**唯独 ack 还没发回客户端**。重启时裁决逻辑翻 binlog：XID 在名单里 → `commit_by_xid`。**表里多出一行客户端从不知道自己拥有的数据**。对应用程序这是一记警钟：**「没收到 OK」不等于「没发生」**。重试插行前先 SELECT（或 INSERT ... ON DUPLICATE KEY），别把「超时」直接当「失败」。双 1 下的结算规则就是这样：不丢已 ack 的、可能多出没 ack 的。
+
+那笔事务的时间线：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 208" role="img" aria-label="第 2085 笔事务的时间线：redo prepare 落盘、binlog Xid 落盘之后，kill -9 落在 ack 发出之前；重启裁决查 binlog 名单命中，commit_by_xid 补提交，于是表行数与 XID 数都是 2085，比客户端 ack 的 2084 多一笔" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">kill -9 落在 ② 与 ④ 之间：崩溃窗口</text>
+<line class="axis" x1="40" y1="80" x2="620" y2="80" stroke="#6b675e" stroke-width="1.2"/>
+<line class="flk" x1="120" y1="68" x2="120" y2="92" stroke="#2b2a26" stroke-width="2"/>
+<text class="ts" x="120" y="58" text-anchor="middle" font-size="10" fill="#6b675e">① redo prepare 落盘</text>
+<line class="flk" x1="270" y1="68" x2="270" y2="92" stroke="#2b2a26" stroke-width="2"/>
+<text class="ts" x="270" y="58" text-anchor="middle" font-size="10" fill="#6b675e">② binlog Xid 落盘</text>
+<line class="flc" x1="420" y1="62" x2="420" y2="98" stroke="#b03a2e" stroke-width="2.4"/>
+<text class="tc" x="420" y="52" text-anchor="middle" font-size="11" fill="#b03a2e">kill -9</text>
+<line class="fl" x1="550" y1="68" x2="550" y2="92" stroke="#6b675e" stroke-width="1.6" stroke-dasharray="4 3"/>
+<text class="tc" x="550" y="58" text-anchor="middle" font-size="10" fill="#b03a2e">④ ack：永远没发出</text>
+<text class="ts" x="120" y="120" text-anchor="middle" font-size="10" fill="#6b675e">引擎有了 prepared 凭证</text>
+<text class="ts" x="270" y="120" text-anchor="middle" font-size="10" fill="#6b675e">裁决书已写下</text>
+<text class="ts" x="420" y="120" text-anchor="middle" font-size="10" fill="#6b675e">mysqld 一击毙命</text>
+<text class="ts" x="20" y="152" font-size="12" fill="#6b675e">重启裁决：XID 2085 在 binlog 名单里 → commit_by_xid 补提交</text>
+<text class="tc" x="20" y="176" font-size="12" fill="#b03a2e">ack 2084 · 行数 2085 · XID 2085：没收到 OK，不等于没发生</text>
+<text class="ts" x="20" y="198" font-size="12" fill="#6b675e">客户端侧的纪律：把超时当「结果未知」，先 SELECT 再决定重试</text>
+</svg>
+</figure>
 
 同一实验里还有一个隐藏角色：**TC 日志**（事务协调者的备忘）。MySQL 在 binlog 开启时用 binlog 本身当 TC；关 binlog 且引擎不认账的极端场景才退回 `TC_LOG_MMAP`（内存映射文件）。8.4 把这套 XID 记录挪进了 binlog 的恢复流程（`Binlog_recovery`），旧版本散在 `tc_log.cc` 的逻辑收拢成了 `log_sanitizer` + `recovery.cc` 两个文件。这也是 8.4 源码里这一段突然变好读的原因。
 
@@ -108,6 +210,38 @@ binlog Xid 事件数：  71,122   ← 比行数多 2,085 个！
 
 这就是双 0 真正的代价：**不是「丢一秒数据」这么体面，是「复制流里长出主库没有的事务」**。双 1 丢的是什么都不丢（引擎裁决书完整）；双 0 丢的是 binlog 与引擎的一致性。参数表格里那行「崩溃时丢什么」，写「主从一致性」比写「1 秒事务」准确得多。
 
+幽灵是怎么长出来的：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 240" role="img" aria-label="双 0 崩溃的幽灵事务机制：mysqld 被 kill 时 binlog 的 write 还停在 OS 缓存里，内核照常把它写完，文件里多出 2085 个 Xid 事件；引擎侧因组提交 leader 在 binlog 落盘前批量刷过 redo prepare，行数基本守恒在 69037；从库重演 binlog 会多出主库没有的 2085 行" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="my8As5" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">kill -9 杀死的是 mysqld，不是内核</text>
+<rect class="bx-sick" x="20" y="40" width="180" height="52" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="ts" x="110" y="60" text-anchor="middle" font-size="11" fill="#6b675e">mysqld 死</text>
+<text class="ts" x="110" y="78" text-anchor="middle" font-size="10" fill="#6b675e">binlog 只在 OS 缓存里</text>
+<line class="fl" x1="200" y1="66" x2="236" y2="66" stroke="#6b675e" stroke-width="1.5" marker-end="url(#my8As5)"/>
+<rect class="bx" x="240" y="40" width="180" height="52" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="330" y="60" text-anchor="middle" font-size="11" fill="#6b675e">内核照常写盘</text>
+<text class="ts" x="330" y="78" text-anchor="middle" font-size="10" fill="#6b675e">缓存里的字节落了地</text>
+<line class="fl" x1="420" y1="66" x2="456" y2="66" stroke="#6b675e" stroke-width="1.5" marker-end="url(#my8As5)"/>
+<rect class="bx-sick" x="460" y="40" width="180" height="52" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="550" y="60" text-anchor="middle" font-size="11" fill="#b03a2e">binlog 多出 2085 个 Xid</text>
+<text class="ts" x="550" y="78" text-anchor="middle" font-size="10" fill="#6b675e">xid 69038..71183</text>
+<rect class="bx-q" x="40" y="126" width="240" height="56" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="160" y="148" text-anchor="middle" font-size="12" fill="#2b2a26">重启后的主库</text>
+<text class="ts" x="160" y="168" text-anchor="middle" font-size="11" fill="#6b675e">行数 69037：引擎从没提交过它们</text>
+<line class="flc" x1="280" y1="154" x2="376" y2="154" stroke="#b03a2e" stroke-width="1.6" stroke-dasharray="5 4"/>
+<text class="tc" x="328" y="144" text-anchor="middle" font-size="11" fill="#b03a2e">2085 行的缝</text>
+<rect class="bx-sick" x="380" y="126" width="240" height="56" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="t" x="500" y="148" text-anchor="middle" font-size="12" fill="#2b2a26">接上的从库</text>
+<text class="ts" x="500" y="168" text-anchor="middle" font-size="11" fill="#6b675e">忠实重演 binlog：多出行来</text>
+<text class="ts" x="20" y="212" font-size="12" fill="#6b675e">引擎侧为何基本守恒：binlog 落盘前，组提交 leader 先批量刷全队的 redo prepare</text>
+<text class="ts" x="20" y="232" font-size="12" fill="#6b675e">这道缝不报错、不告警，只等某天 SELECT 出不一致才现形</text>
+</svg>
+</figure>
+
 ## 组提交：fsync 的拼车
 
 2ms 一笔、99% 在 fsync，高并发下这买卖怎么做？答案是人多好办事：**组提交（group commit）**。多个并发事务的 binlog 写入拼成一班，一次 fsync 全带走。8 路 docker-exec 并发、每路 250 笔、双 1：
@@ -118,6 +252,42 @@ binlog Xid 事件数：  71,122   ← 比行数多 2,085 个！
 ```
 
 **同样双 1，并发把 fsync 摊薄到 0.38 次/事务**：三笔事务拼一辆车，每笔均摊成本掉到 1/4。机制在 `ordered_commit` 的三阶段流水线：flush 阶段（收队列、刷引擎日志、写 binlog 缓存）→ sync 阶段（leader 独自 fsync，follower 等待）→ commit 阶段（挨个做引擎 commit）。第一个到的当 leader，后到的一批 follower。**等待 fsync 的时间本身就是攒批窗口**，fsync 越慢、批越大，天然负反馈。
+
+拼车的机制与账单：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 236" role="img" aria-label="组提交三阶段流水线：flush 阶段收队列刷引擎日志写 binlog 缓存，sync 阶段 leader 独自 fsync 而 follower 等待，commit 阶段挨个做引擎 commit；串行 500 事务花 711 次 redo fsync 每事务 1.42 次，8 路并发 2000 事务只花 757 次每事务 0.38 次" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="my8As6" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">ordered_commit 的三阶段流水线</text>
+<rect class="bx" x="20" y="40" width="190" height="64" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="115" y="62" text-anchor="middle" font-size="12" fill="#2b2a26">flush</text>
+<text class="ts" x="115" y="82" text-anchor="middle" font-size="10" fill="#6b675e">收队列 · 刷引擎日志</text>
+<text class="ts" x="115" y="96" text-anchor="middle" font-size="10" fill="#6b675e">写 binlog 缓存</text>
+<line class="fl" x1="210" y1="72" x2="228" y2="72" stroke="#6b675e" stroke-width="1.5" marker-end="url(#my8As6)"/>
+<rect class="bx-sick" x="232" y="40" width="190" height="64" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="t" x="327" y="62" text-anchor="middle" font-size="12" fill="#2b2a26">sync</text>
+<text class="ts" x="327" y="82" text-anchor="middle" font-size="10" fill="#6b675e">leader 独自 fsync</text>
+<text class="ts" x="327" y="96" text-anchor="middle" font-size="10" fill="#6b675e">follower 等待 = 攒批窗口</text>
+<line class="fl" x1="422" y1="72" x2="440" y2="72" stroke="#6b675e" stroke-width="1.5" marker-end="url(#my8As6)"/>
+<rect class="bx" x="444" y="40" width="190" height="64" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="539" y="62" text-anchor="middle" font-size="12" fill="#2b2a26">commit</text>
+<text class="ts" x="539" y="82" text-anchor="middle" font-size="10" fill="#6b675e">挨个做引擎 commit</text>
+<text class="ts" x="539" y="96" text-anchor="middle" font-size="10" fill="#6b675e">之后发 ack</text>
+<text class="ts" x="20" y="140" font-size="11" fill="#6b675e">串行 1 路 × 500 笔：</text>
+<rect class="bar" x="170" y="128" width="20" height="14" fill="#2b2a26"/>
+<rect class="bar" x="196" y="128" width="20" height="14" fill="#2b2a26"/>
+<rect class="bar" x="222" y="128" width="20" height="14" fill="#2b2a26"/>
+<text class="ts" x="252" y="140" font-size="11" fill="#6b675e">…每事务一趟车：711 次 fsync，1.42 次/事务</text>
+<text class="ts" x="20" y="176" font-size="11" fill="#6b675e">并发 8 路 × 250 笔：</text>
+<rect class="bar" x="170" y="164" width="60" height="14" fill="#2b2a26"/>
+<text class="onbar" x="200" y="175" text-anchor="middle" font-size="9" fill="#f6f3ec">拼车</text>
+<text class="ts" x="240" y="176" font-size="11" fill="#6b675e">三笔事务一辆车：757 次 fsync / 2000 事务 = 0.38 次/事务</text>
+<text class="ts" x="20" y="208" font-size="12" fill="#6b675e">binlog_group_commit_sync_delay 是手动挡：leader 故意多等一会儿攒更大的批，</text>
+<text class="ts" x="20" y="226" font-size="12" fill="#6b675e">实测 fsync 更省但有连接因尾延迟超时掉队：用尾延迟换吞吐，OLTP 慎拧</text>
+</svg>
+</figure>
 
 8.4 还给了个手动挡：`binlog_group_commit_sync_delay`（微秒）。leader 在 fsync 前故意多等这一下，攒更大的批。实测 delay=5000μs：
 
