@@ -40,6 +40,31 @@ file appendonly.aof.1.incr.aof seq 1 type i
 
 为什么要把单文件拆成目录？旧架构里 AOF 重写是「生成新文件、替换旧文件」的一次性大动作，任何一步出错都容易留下说不清的状态。拆开以后，重写只是「新写一个 base、开一个新的 incr、更新 manifest 指针」，旧文件先标记为 history 再择机清理，每一步都是可恢复的小事务。后文重写实验会看到这套轮转的完整过程。
 
+三个文件的分工：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 240" role="img" aria-label="appendonlydir 的三个角色：base 是上次重写时刻的完整快照（RDB 格式），incr 是重写之后逐条追加的 RESP 协议流水，manifest 是清单记录哪个文件什么顺序；重启加载时读 manifest，先重放 base 再按序号重放每个 incr" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">Redis 7 的 AOF：一个目录，三种角色</text>
+<rect class="bx" x="30" y="40" width="600" height="116" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="50" y="62" font-size="13" fill="#2b2a26">/data/appendonlydir/</text>
+<rect class="bx-q" x="50" y="74" width="180" height="64" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="140" y="94" text-anchor="middle" font-size="11" fill="#6b675e">appendonly.aof.1.base.rdb</text>
+<text class="ts" x="140" y="112" text-anchor="middle" font-size="10" fill="#6b675e">上次重写时刻的完整快照</text>
+<text class="ts" x="140" y="128" text-anchor="middle" font-size="10" fill="#6b675e">RDB 格式</text>
+<rect class="bx-q" x="250" y="74" width="180" height="64" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="340" y="94" text-anchor="middle" font-size="11" fill="#6b675e">appendonly.aof.1.incr.aof</text>
+<text class="ts" x="340" y="112" text-anchor="middle" font-size="10" fill="#6b675e">重写之后的命令流水</text>
+<text class="ts" x="340" y="128" text-anchor="middle" font-size="10" fill="#6b675e">RESP 协议原文，逐条追加</text>
+<rect class="bx-sick" x="450" y="74" width="160" height="64" rx="3" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="ts" x="530" y="94" text-anchor="middle" font-size="11" fill="#6b675e">appendonly.aof.manifest</text>
+<text class="ts" x="530" y="112" text-anchor="middle" font-size="10" fill="#6b675e">清单：哪个文件、</text>
+<text class="ts" x="530" y="128" text-anchor="middle" font-size="10" fill="#6b675e">什么类型、什么序号</text>
+<text class="ts" x="30" y="184" font-size="12" fill="#6b675e">重启加载：读 manifest → 先重放 base → 再按 seq 重放每个 incr</text>
+<text class="tc" x="30" y="206" font-size="12" fill="#b03a2e">数据 = 快照 + 此后的流水</text>
+<text class="ts" x="30" y="228" font-size="12" fill="#6b675e">文件名里的 seq 轮转号就是重写史：ls 一眼看出这个实例重写过几次</text>
+</svg>
+</figure>
+
 ## 打开 incr：写进去的是协议，不是 SQL，也不是快照
 
 往实例里写几条命令，然后直接 `cat` 那个 incr 文件：
@@ -62,11 +87,41 @@ file appendonly.aof.1.incr.aof seq 1 type i
 
 写命令进 AOF 分两步：`write()` 把字节交给内核页缓存，`fsync()` 要求内核把页缓存真正刷到磁盘。第一步很快，第二步要等盘，差距是数量级的。`appendfsync` 决定第二步什么时候做：
 
-```text
-always    每条命令回复前，同步 fsync
-everysec  后台线程每秒 fsync 一次（默认）
-no        从不主动 fsync，交给操作系统（约 30 秒）
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 258" role="img" aria-label="三档 appendfsync 的落盘时序对照：always 档回复之前先同步 fsync，缝宽为零；everysec 档 write 后立刻回复，fsync 由后台线程按秒节拍做，缝中位数约 0.85 秒上界 1 秒；no 档从不主动 fsync，缝上界约 30 秒由内核决定" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">同一条 SET，三种落盘时序：缝 = 回复之后、落盘之前</text>
+<text class="t" x="20" y="74" font-size="12" fill="#2b2a26">always</text>
+<line class="axis" x1="100" y1="70" x2="620" y2="70" stroke="#6b675e" stroke-width="1.2"/>
+<line class="flk" x1="140" y1="60" x2="140" y2="80" stroke="#2b2a26" stroke-width="2"/>
+<text class="ts" x="140" y="52" text-anchor="middle" font-size="10" fill="#6b675e">write()</text>
+<line class="flc" x1="240" y1="60" x2="240" y2="80" stroke="#b03a2e" stroke-width="2"/>
+<text class="tc" x="240" y="52" text-anchor="middle" font-size="10" fill="#b03a2e">fsync</text>
+<line class="flk" x1="340" y1="60" x2="340" y2="80" stroke="#2b2a26" stroke-width="2"/>
+<text class="ts" x="340" y="52" text-anchor="middle" font-size="10" fill="#6b675e">回复 OK</text>
+<text class="ts" x="360" y="94" font-size="10" fill="#6b675e">回复到达时已经落盘：缝宽 ≈ 0</text>
+<text class="t" x="20" y="144" font-size="12" fill="#2b2a26">everysec</text>
+<line class="axis" x1="100" y1="140" x2="620" y2="140" stroke="#6b675e" stroke-width="1.2"/>
+<line class="flk" x1="140" y1="130" x2="140" y2="150" stroke="#2b2a26" stroke-width="2"/>
+<text class="ts" x="140" y="122" text-anchor="middle" font-size="10" fill="#6b675e">write()</text>
+<line class="flk" x1="220" y1="130" x2="220" y2="150" stroke="#2b2a26" stroke-width="2"/>
+<text class="ts" x="220" y="122" text-anchor="middle" font-size="10" fill="#6b675e">回复 OK</text>
+<rect class="bx-sick" x="220" y="132" width="280" height="16" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/>
+<text class="tc" x="360" y="144" text-anchor="middle" font-size="10" fill="#b03a2e">缝：实测平均 0.85s，上界 1 秒</text>
+<line class="flc" x1="500" y1="130" x2="500" y2="150" stroke="#b03a2e" stroke-width="2"/>
+<text class="tc" x="500" y="122" text-anchor="middle" font-size="10" fill="#b03a2e">fsync（秒节拍）</text>
+<text class="t" x="20" y="214" font-size="12" fill="#2b2a26">no</text>
+<line class="axis" x1="100" y1="210" x2="620" y2="210" stroke="#6b675e" stroke-width="1.2"/>
+<line class="flk" x1="140" y1="200" x2="140" y2="220" stroke="#2b2a26" stroke-width="2"/>
+<text class="ts" x="140" y="192" text-anchor="middle" font-size="10" fill="#6b675e">write()</text>
+<line class="flk" x1="220" y1="200" x2="220" y2="220" stroke="#2b2a26" stroke-width="2"/>
+<text class="ts" x="220" y="192" text-anchor="middle" font-size="10" fill="#6b675e">回复 OK</text>
+<rect class="bx-sick" x="220" y="202" width="360" height="16" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/>
+<text class="tc" x="400" y="214" text-anchor="middle" font-size="10" fill="#b03a2e">缝：上界 ≈30 秒，内核想写才写</text>
+<line class="flc" x1="580" y1="200" x2="580" y2="220" stroke="#b03a2e" stroke-width="2"/>
+<text class="tc" x="580" y="192" text-anchor="middle" font-size="10" fill="#b03a2e">fsync?</text>
+<text class="ts" x="20" y="246" font-size="12" fill="#6b675e">write() 交给页缓存是微秒级，fsync 等盘是另一个量级：三档差的只是 fsync 的时机</text>
+</svg>
+</figure>
 
 三档在源码里的分岔点就是 `flushAppendOnlyFile()`：always 档在 `beforeSleep` 里先 fsync、再把回复写回 socket，所以「回复到达」与「已落盘」同时成立；everysec 档把 fsync 交给 bio 后台线程，主线程只负责 write；no 档连 fsync 都不做。
 
@@ -122,6 +177,32 @@ GET survive:kill9        → "yes"
 
 「最多丢一秒」的准确适用范围是：机器断电、内核崩溃、存储介质故障。这三类事故里页缓存也没了，最多一秒的已确认写入随之蒸发。给 everysec 做容灾评估时，要按这个口径算 RPO，不要按「Redis 进程可能崩溃」算，后者它根本不丢。
 
+两种事故，两种结局：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 224" role="img" aria-label="everysec 档两种事故对照：kill -9 只撕掉 Redis 进程，write 早已完成，内核页缓存安然无恙，重启后数据一条不丢；掉电或内核崩溃时页缓存跟着蒸发，缝里已确认的写入最多丢一秒" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">同一条已回复 OK、还没 fsync 的 SET，两种事故</text>
+<rect class="bx-q" x="20" y="40" width="300" height="130" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="170" y="62" text-anchor="middle" font-size="13" fill="#2b2a26">kill -9：进程死</text>
+<rect class="bx-gone" x="40" y="74" width="120" height="34" rx="3" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<text class="ts" x="100" y="95" text-anchor="middle" font-size="10" fill="#6b675e">Redis 进程：被撕掉</text>
+<rect class="bx-q" x="180" y="74" width="120" height="34" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="240" y="89" text-anchor="middle" font-size="10" fill="#6b675e">内核页缓存</text>
+<text class="ts" x="240" y="103" text-anchor="middle" font-size="10" fill="#6b675e">安然无恙</text>
+<text class="tc" x="170" y="138" text-anchor="middle" font-size="12" fill="#b03a2e">重启重开文件：一条不丢</text>
+<text class="ts" x="170" y="158" text-anchor="middle" font-size="10" fill="#6b675e">页缓存属于内核，不属于进程</text>
+<rect class="bx-sick" x="340" y="40" width="300" height="130" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="t" x="490" y="62" text-anchor="middle" font-size="13" fill="#2b2a26">掉电：整台机器死</text>
+<rect class="bx-gone" x="360" y="74" width="120" height="34" rx="3" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<text class="ts" x="420" y="95" text-anchor="middle" font-size="10" fill="#6b675e">Redis 进程：没了</text>
+<rect class="bx-gone" x="500" y="74" width="120" height="34" rx="3" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<text class="ts" x="560" y="95" text-anchor="middle" font-size="10" fill="#6b675e">页缓存：跟着蒸发</text>
+<text class="tc" x="490" y="138" text-anchor="middle" font-size="12" fill="#b03a2e">缝里的已确认写入消失：最多 1 秒</text>
+<text class="ts" x="490" y="158" text-anchor="middle" font-size="10" fill="#6b675e">内核崩溃、介质故障同理</text>
+<text class="ts" x="20" y="204" font-size="12" fill="#6b675e">RPO 按掉电口径算：everysec 的「丢一秒」从不覆盖进程崩溃这一栏</text>
+</svg>
+</figure>
+
 重启后的过期语义也顺带验证了：`session:42` 重放后 `TTL` 返回 9,311 秒，与写入时的 9,500 秒减去流逝的约 3 分钟吻合。`PXAT` 的绝对时间戳在重放时不重置寿命，与写入时的语义严格一致。
 
 ## 重写：把流水变回快照
@@ -148,6 +229,39 @@ GET survive:kill9        → "yes"
 
 Redis 7 拆目录的收益也在这个流程里显形：fork 前，父进程先把 manifest 切到新 incr；子进程写完 temp 文件再改名安装、更新 manifest、把旧文件标记为 history 后台清理。中途任何一步失败，manifest 指向的还是完整可用的旧组合：**不存在「重写了一半的 AOF 文件」这种东西**，只有完整的旧组合和完整的新组合。
 
+重写前后，目录长这样：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 236" role="img" aria-label="BGREWRITEAOF 前后的目录轮转：重写前 seq 1 的 base 65KB 加膨胀到 26MB 的 incr；重写后出现 seq 2 的全新 base 65KB 和 0 字节的新 incr，manifest 指向 seq 2，旧文件标记 history 择机清理；26MB 历史被压回 65KB" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="red8As4" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">一次 BGREWRITEAOF 的轮转</text>
+<rect class="bx" x="20" y="40" width="250" height="130" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="145" y="62" text-anchor="middle" font-size="12" fill="#2b2a26">重写前 · seq 1</text>
+<rect class="bx-q" x="40" y="74" width="210" height="24" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="145" y="90" text-anchor="middle" font-size="10" fill="#6b675e">1.base.rdb · 65KB</text>
+<rect class="bx-sick" x="40" y="104" width="210" height="24" rx="3" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="tc" x="145" y="120" text-anchor="middle" font-size="10" fill="#b03a2e">1.incr.aof · 膨胀到 26MB</text>
+<rect class="bx-q" x="40" y="134" width="210" height="24" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="145" y="150" text-anchor="middle" font-size="10" fill="#6b675e">manifest → seq 1</text>
+<line class="fl" x1="270" y1="105" x2="356" y2="105" stroke="#6b675e" stroke-width="1.8" marker-end="url(#red8As4)"/>
+<text class="ts" x="313" y="80" text-anchor="middle" font-size="10" fill="#6b675e">fork 子进程</text>
+<text class="ts" x="313" y="94" text-anchor="middle" font-size="10" fill="#6b675e">遍历内存写新 base</text>
+<rect class="bx" x="360" y="40" width="280" height="130" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="500" y="62" text-anchor="middle" font-size="12" fill="#2b2a26">重写后 · seq 2</text>
+<rect class="bx-q" x="380" y="74" width="240" height="24" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="500" y="90" text-anchor="middle" font-size="10" fill="#6b675e">2.base.rdb · 65KB（最终状态）</text>
+<rect class="bx-q" x="380" y="104" width="240" height="24" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="500" y="120" text-anchor="middle" font-size="10" fill="#6b675e">2.incr.aof · 0 字节，流水另起新册</text>
+<rect class="bx-q" x="380" y="134" width="240" height="24" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="500" y="150" text-anchor="middle" font-size="10" fill="#6b675e">manifest → seq 2</text>
+<rect class="bx-gone" x="380" y="178" width="240" height="22" rx="3" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<text class="ts" x="500" y="193" text-anchor="middle" font-size="10" fill="#6b675e">seq 1 旧文件：标记 history，后台清理</text>
+<text class="ts" x="20" y="226" font-size="12" fill="#6b675e">26MB 历史压回 65KB：SET 又 DEL 的键在新 base 里不存在，中间过程全部蒸发</text>
+</svg>
+</figure>
+
 ## 自动重写：两个阈值
 
 手动 `BGREWRITEAOF` 只是兜底手段，日常靠两个阈值自动触发：
@@ -168,6 +282,32 @@ auto-aof-rewrite-min-size    64MB  （默认）
 
 注意触发的时机细节：比较用的是**当前总大小**（base + incr）对 **base 大小**的增长率。也就是说 incr 自己膨胀 100% 并不够，还要总大小先过 min-size 这道门槛。低流量实例可能长期停在「incr 缓慢增长但从不触发重写」的状态，靠 min-size 避免了为几 KB 的文件反复 fork。
 
+两个条件，一道与门：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 172" role="img" aria-label="自动重写的两个条件：当前 AOF 总大小不小于 min-size（默认 64MB），且总大小对 base 的增长率不低于 percentage（默认 100%），两者同时满足才在 serverCron 里触发后台重写；连续失败 3 次进入指数退避" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="red8As5" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">serverCron 里的判断：两个条件缺一不可</text>
+<rect class="bx" x="20" y="40" width="230" height="44" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="135" y="58" text-anchor="middle" font-size="11" fill="#6b675e">总大小 ≥ min-size</text>
+<text class="ts" x="135" y="76" text-anchor="middle" font-size="10" fill="#6b675e">默认 64MB：挡住几 KB 的反复 fork</text>
+<rect class="bx" x="20" y="94" width="230" height="44" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="135" y="112" text-anchor="middle" font-size="11" fill="#6b675e">对 base 增长 ≥ percentage</text>
+<text class="ts" x="135" y="130" text-anchor="middle" font-size="10" fill="#6b675e">默认 100%：比较的是总大小对 base</text>
+<line class="fl" x1="250" y1="62" x2="306" y2="88" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red8As5)"/>
+<line class="fl" x1="250" y1="116" x2="306" y2="96" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red8As5)"/>
+<text class="ts" x="276" y="80" text-anchor="middle" font-size="11" fill="#6b675e">且</text>
+<rect class="bx-sick" x="310" y="70" width="170" height="40" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="395" y="94" text-anchor="middle" font-size="11" fill="#b03a2e">触发后台重写</text>
+<text class="ts" x="500" y="70" font-size="11" fill="#6b675e">incr 自己膨胀 100% 不算数：</text>
+<text class="ts" x="500" y="90" font-size="11" fill="#6b675e">增长率的分母是 base，</text>
+<text class="ts" x="500" y="110" font-size="11" fill="#6b675e">分子是 base + incr 的总和</text>
+<text class="ts" x="20" y="160" font-size="12" fill="#6b675e">连续失败 3 次进入指数退避：磁盘故障时不让重写循环打满 CPU</text>
+</svg>
+</figure>
+
 失败也有保护：连续失败 3 次（`AOF_REWRITE_LIMITE_THRESHOLD`）后进入指数退避，避免磁盘故障时重写循环打满 CPU。
 
 ## everysec 的慢盘自我保护
@@ -177,6 +317,26 @@ everysec 还有一段值得单独讲的防御逻辑。fsync 在后台线程做�
 源码的选择是**最多等两秒**。新的写命令到来时若发现上一次 fsync 仍在进行，先把本次 flush 推迟（记住开始时间）；下一轮再看，若仍未完成且已等满两秒，就带着数据硬写（write 不需要等 fsync），同时 `aof_delayed_fsync` 计数加一，日志里留下 "Asynchronous AOF fsync is taking too long"。
 
 这是 everysec 档最容易被误解的地方：它的设计目标不是「每秒最多丢一秒」这个承诺本身，而是**不让 fsync 阻塞主线程**。慢盘上宁可容忍短暂超出理论窗口，也不让写命令排队等磁盘。`INFO persistence` 里的 `aof_delayed_fsync` 就是这个时刻的计数器。生产实例上它持续增长，说明盘的 fsync 能力已经跟不上写入速率，那是容量问题，不是配置能解决的。
+
+这道两秒防线：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 208" role="img" aria-label="everysec 慢盘防御时间线：上一次 fsync 迟迟不完成，新写命令到来时先推迟 flush 并记住开始时间；等满两秒仍未完成就带着数据硬写（write 不等 fsync），aof_delayed_fsync 计数加一并在日志留下警告" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">fsync 迟迟不回时，主线程最多等两秒</text>
+<rect class="bx-sick" x="80" y="60" width="400" height="18" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="tc" x="280" y="74" text-anchor="middle" font-size="10" fill="#b03a2e">上一次 fsync 仍在进行（慢盘）</text>
+<line class="axis" x1="40" y1="110" x2="620" y2="110" stroke="#6b675e" stroke-width="1.2"/>
+<line class="flk" x1="80" y1="100" x2="80" y2="120" stroke="#2b2a26" stroke-width="2"/>
+<text class="ts" x="80" y="140" text-anchor="middle" font-size="10" fill="#6b675e">t=0 fsync 开始</text>
+<line class="flk" x1="240" y1="100" x2="240" y2="120" stroke="#2b2a26" stroke-width="2"/>
+<text class="ts" x="240" y="140" text-anchor="middle" font-size="10" fill="#6b675e">新写命令到来：推迟 flush，记下时刻</text>
+<line class="flc" x1="480" y1="98" x2="480" y2="122" stroke="#b03a2e" stroke-width="2"/>
+<text class="tc" x="480" y="90" text-anchor="middle" font-size="10" fill="#b03a2e">等满 2 秒：带着数据硬写</text>
+<text class="ts" x="480" y="140" text-anchor="middle" font-size="10" fill="#6b675e">aof_delayed_fsync +1，日志告警</text>
+<text class="ts" x="20" y="172" font-size="12" fill="#6b675e">底气在于 write 与 fsync 解耦：write 只管交给页缓存，不需要等上一次 fsync 完成</text>
+<text class="ts" x="20" y="194" font-size="12" fill="#6b675e">硬写的代价：这一阵的实际丢失窗口超过名义上的一秒，换来的是主线程不被盘拖住</text>
+</svg>
+</figure>
 
 实验里这个计数始终为 0（NVMe 上 fsync 太快，轮不到防御出场），这份「没观察到」本身也说明本机盘够快。
 
