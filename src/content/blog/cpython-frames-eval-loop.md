@@ -71,12 +71,25 @@ frame 回答的则是：
 
 同一个函数调用一万次，不需要复制一万份 code object；但同时存在的每次调用都需要独立现场。递归实验正好把这条边界显露出来：
 
-```text
-                     ┌── frame(level=3)
-同一 code object ────├── frame(level=2)
-                     ├── frame(level=1)
-                     └── frame(level=0)
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 176" role="img" aria-label="一份 code object 扇出四只 frame：递归四层调用的 f_code 都指向同一份编译结果，每只 frame 各自保存 level、local_value 与返回位置" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<rect class="bx" x="30" y="56" width="190" height="56" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="t" x="125" y="80" text-anchor="middle" font-size="11" fill="#2b2a26">同一 code object</text>
+<text class="ts" x="125" y="99" text-anchor="middle" font-size="9.5" fill="#6b675e">字节码 · 常量 · 名字 · 仅此一份</text>
+<line class="fl" x1="220" y1="72" x2="372" y2="32" stroke="#6b675e" stroke-width="1.2"/>
+<line class="fl" x1="220" y1="80" x2="372" y2="72" stroke="#6b675e" stroke-width="1.2"/>
+<line class="fl" x1="220" y1="88" x2="372" y2="112" stroke="#6b675e" stroke-width="1.2"/>
+<line class="fl" x1="220" y1="96" x2="372" y2="152" stroke="#6b675e" stroke-width="1.2"/>
+<rect class="bx-q" x="376" y="16" width="240" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="496" y="36" text-anchor="middle" font-size="10.5" fill="#2b2a26">frame(level=3)</text>
+<rect class="bx-q" x="376" y="56" width="240" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="496" y="76" text-anchor="middle" font-size="10.5" fill="#2b2a26">frame(level=2)</text>
+<rect class="bx-q" x="376" y="96" width="240" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="496" y="116" text-anchor="middle" font-size="10.5" fill="#2b2a26">frame(level=1)</text>
+<rect class="bx-q" x="376" y="136" width="240" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="496" y="156" text-anchor="middle" font-size="10.5" fill="#2b2a26">frame(level=0)</text>
+</svg>
+</figure>
 
 四个 frame 的 `f_code` 指向同一 code object，局部变量 `level` 与 `local_value` 却各自不同，`f_back` 还把每层调用连向自己的调用者。
 
@@ -87,6 +100,33 @@ frame 回答的则是：
 自 CPython 3.11 起，普通执行不再把每次调用都直接建成旧式、完整的堆上 `PyFrameObject`。核心现场是内部结构 `_PyInterpreterFrame`。
 
 在 CPython 3.14 与当前 3.16 开发源码中，它的字段可以按职责分成五组：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 292" role="img" aria-label="_PyInterpreterFrame 解剖图：五组字段各管一事，这段代码是谁（f_executable、f_funcobj），名字去哪里查（f_globals、f_builtins、f_locals），调用链怎样连接（previous、return_offset），现在执行到哪里（instr_ptr、stackpointer），这块现场由谁持有（owner、frame_obj）；尾部是变长的 localsplus 数组" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<rect class="bx" x="30" y="26" width="600" height="244" rx="6" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="t" x="330" y="50" text-anchor="middle" font-size="12" fill="#2b2a26">一只 _PyInterpreterFrame</text>
+<rect class="bx-q" x="46" y="64" width="180" height="58" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="136" y="84" text-anchor="middle" font-size="10" fill="#2b2a26">这段代码是谁</text>
+<text class="ts" x="136" y="104" text-anchor="middle" font-size="9.5" fill="#6b675e">f_executable · f_funcobj</text>
+<rect class="bx-q" x="240" y="64" width="180" height="58" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="330" y="84" text-anchor="middle" font-size="10" fill="#2b2a26">名字去哪里查</text>
+<text class="ts" x="330" y="104" text-anchor="middle" font-size="9.5" fill="#6b675e">f_globals · f_builtins · f_locals</text>
+<rect class="bx-q" x="434" y="64" width="180" height="58" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="524" y="84" text-anchor="middle" font-size="10" fill="#2b2a26">调用链怎样连接</text>
+<text class="ts" x="524" y="104" text-anchor="middle" font-size="9.5" fill="#6b675e">previous · return_offset</text>
+<rect class="bx-q" x="46" y="136" width="180" height="58" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="136" y="156" text-anchor="middle" font-size="10" fill="#2b2a26">现在执行到哪里</text>
+<text class="ts" x="136" y="176" text-anchor="middle" font-size="9.5" fill="#6b675e">instr_ptr · stackpointer</text>
+<rect class="bx-q" x="240" y="136" width="180" height="58" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="330" y="156" text-anchor="middle" font-size="10" fill="#2b2a26">这块现场由谁持有</text>
+<text class="ts" x="330" y="176" text-anchor="middle" font-size="9.5" fill="#6b675e">owner · frame_obj</text>
+<text class="ts" x="434" y="156" font-size="9" fill="#a29d90">3.16 快照另有 base sentinel、</text>
+<text class="ts" x="434" y="172" font-size="9" fill="#a29d90">remote profiling cache 等演进</text>
+<rect class="bx" x="46" y="208" width="568" height="46" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="330" y="227" text-anchor="middle" font-size="10.5" fill="#2b2a26">localsplus[] · 变长尾部</text>
+<text class="ts" x="330" y="245" text-anchor="middle" font-size="9.5" fill="#6b675e">前半 fast locals，后半操作数栈（下文拆开）</text>
+</svg>
+</figure>
 
 ### 这段代码是谁
 
@@ -140,14 +180,28 @@ frame_obj       已关联的 PyFrameObject，没有则为 NULL
 
 “frame stack”容易和 C 语言调用栈混为一谈。现代 CPython 把多数普通 `_PyInterpreterFrame` 连续分配在每线程的数据栈中：
 
-```text
-PyThreadState
-    └── datastack chunk
-          ├── caller _PyInterpreterFrame
-          ├── callee _PyInterpreterFrame
-          ├── deeper _PyInterpreterFrame
-          └── ...
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 196" role="img" aria-label="线程数据栈：PyThreadState 持有 datastack chunk，chunk 里连续排布 caller、callee、deeper 各只 _PyInterpreterFrame" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="frA3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-q" x="30" y="20" width="170" height="38" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="ts" x="115" y="44" text-anchor="middle" font-size="10.5" fill="#2b2a26">PyThreadState</text>
+<line class="fl" x1="200" y1="39" x2="246" y2="39" stroke="#6b675e" stroke-width="1.3" marker-end="url(#frA3)"/>
+<rect class="bx" x="250" y="20" width="200" height="38" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="350" y="44" text-anchor="middle" font-size="10.5" fill="#2b2a26">datastack chunk</text>
+<line class="fl" x1="350" y1="58" x2="350" y2="76" stroke="#6b675e" stroke-width="1.2" marker-end="url(#frA3)"/>
+<rect class="bx-q" x="250" y="80" width="330" height="28" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="264" y="99" font-size="10" fill="#2b2a26">caller _PyInterpreterFrame</text>
+<rect class="bx-q" x="250" y="112" width="330" height="28" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="264" y="131" font-size="10" fill="#2b2a26">callee _PyInterpreterFrame</text>
+<rect class="bx-q" x="250" y="144" width="330" height="28" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="264" y="163" font-size="10" fill="#2b2a26">deeper _PyInterpreterFrame …</text>
+<text class="ts" x="30" y="99" font-size="9.5" fill="#6b675e">连续排布</text>
+<text class="ts" x="30" y="115" font-size="9.5" fill="#6b675e">不逐笔堆分配</text>
+<text class="ts" x="30" y="163" font-size="9.5" fill="#6b675e">不是 C 调用栈</text>
+</svg>
+</figure>
 
 若当前 chunk 空间足够，`_PyFrame_PushUnchecked()` 直接从 `datastack_top` 取出下一段，并按 code object 的 `co_framesize` 推进栈顶；空间不足时，`_PyThreadState_PushFrame()` 再申请或复用新的 chunk。
 
@@ -170,19 +224,26 @@ _PyStackRef localsplus[1];
 
 这个 `[1]` 是 C 结构体中变长尾部的占位写法，实际 frame 会按 code object 计算好的大小取得更多槽位。逻辑布局是：
 
-```text
-localsplus
-┌───────────────────────────────┐
-│ arguments / fast locals       │
-│ cell variables                │
-│ free variables                │
-├───────────────────────────────┤ ← localsplus + co_nlocalsplus
-│ operand stack slot 0          │
-│ operand stack slot 1          │
-│ ...                           │
-│ maximum co_stacksize slots    │
-└───────────────────────────────┘
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 244" role="img" aria-label="localsplus 逻辑布局：上半段依次是 arguments 与 fast locals、cell variables、free variables，分界线在 localsplus 加 co_nlocalsplus 处，也是 stackpointer 的初始位置；下半段是操作数栈槽位，最多 co_stacksize 个" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="t" x="300" y="24" text-anchor="middle" font-size="11.5" fill="#2b2a26">localsplus（frame 的变长尾部）</text>
+<rect class="bx-q" x="150" y="36" width="300" height="98" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="ts" x="166" y="60" font-size="10.5" fill="#2b2a26">arguments / fast locals</text>
+<text class="ts" x="166" y="84" font-size="10.5" fill="#2b2a26">cell variables</text>
+<text class="ts" x="166" y="108" font-size="10.5" fill="#2b2a26">free variables</text>
+<text class="ts" x="166" y="128" font-size="9" fill="#6b675e">共 co_nlocalsplus 个槽</text>
+<line class="flc" x1="150" y1="136" x2="450" y2="136" stroke="#b03a2e" stroke-width="1.6"/>
+<line class="flc" x1="450" y1="136" x2="478" y2="136" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="tc" x="484" y="132" font-size="10" fill="#b03a2e">localsplus + co_nlocalsplus</text>
+<text class="tc" x="484" y="148" font-size="9.5" fill="#b03a2e">stackpointer 的初始位置</text>
+<rect class="bx" x="150" y="139" width="300" height="85" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="166" y="162" font-size="10.5" fill="#2b2a26">operand stack slot 0</text>
+<text class="ts" x="166" y="184" font-size="10.5" fill="#2b2a26">operand stack slot 1 …</text>
+<text class="ts" x="166" y="212" font-size="9" fill="#6b675e">最多 co_stacksize 个槽 · 向高地址增长</text>
+<text class="ts" x="30" y="80" font-size="9.5" fill="#6b675e">名字的世界</text>
+<text class="ts" x="30" y="180" font-size="9.5" fill="#6b675e">中间结果的世界</text>
+</svg>
+</figure>
 
 `co_nlocalsplus` 给出参数、普通 fast locals、cell 和 free variables 共需多少槽；编译器计算的 `co_stacksize` 则给出表达式执行时操作数栈的最大深度。frame 初始化时：
 
@@ -228,23 +289,53 @@ RETURN_VALUE
 
 3.14 将两个相邻 fast-local load 融成一条指令，并使用 `LOAD_SMALL_INT`；3.12.13 的同一源码仍显示两条 `LOAD_FAST` 与 `LOAD_CONST 2`。下面把 3.14 的融合指令概念上拆开，便于观察栈：
 
-```text
-初始 fast locals
-localsplus[0] = a = 3
-localsplus[1] = b = 4
-localsplus[2] = result = 未设置
-operand stack = []
-
-load a               stack = [3]
-load b               stack = [3, 4]
-load 2               stack = [3, 4, 2]
-binary *             stack = [3, 8]
-binary +             stack = [11]
-store result         stack = []
-                      localsplus[2] = 11
-load result          stack = [11]
-return value         将 11 交给调用者
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 388" role="img" aria-label="操作数栈推进一步步：初始 a=3、b=4、result 未设置、栈空；load a 栈为 3；load b 栈为 3、4；load 2 栈为 3、4、2；binary 乘号弹出 4 和 2 压回 8，栈为 3、8；binary 加号弹出两值压回 11；store result 清空栈并把 11 写进 localsplus 第 2 槽；load result 栈为 11；return value 把 11 跨 frame 交给调用者" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="11" fill="#6b675e">指令（3.14 融合指令已概念拆开）</text>
+<text class="ts" x="220" y="24" font-size="11" fill="#6b675e">操作数栈（左边是栈底）</text>
+<text class="ts" x="20" y="56" font-size="10" fill="#2b2a26">初始 fast locals</text>
+<text class="ts" x="220" y="56" font-size="9.5" fill="#a29d90">a=3 · b=4 · result=未设置 · 栈空</text>
+<line class="grid" x1="20" y1="66" x2="640" y2="66" stroke="#a29d90" stroke-width="1"/>
+<text class="ts" x="20" y="90" font-size="10" fill="#2b2a26">load a</text>
+<rect class="bx-q" x="220" y="74" width="44" height="24" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="242" y="90" text-anchor="middle" font-size="10" fill="#2b2a26">3</text>
+<text class="ts" x="20" y="124" font-size="10" fill="#2b2a26">load b</text>
+<rect class="bx-q" x="220" y="108" width="44" height="24" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="242" y="124" text-anchor="middle" font-size="10" fill="#2b2a26">3</text>
+<rect class="bx-q" x="268" y="108" width="44" height="24" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="290" y="124" text-anchor="middle" font-size="10" fill="#2b2a26">4</text>
+<text class="ts" x="20" y="158" font-size="10" fill="#2b2a26">load 2</text>
+<rect class="bx-q" x="220" y="142" width="44" height="24" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="242" y="158" text-anchor="middle" font-size="10" fill="#2b2a26">3</text>
+<rect class="bx-q" x="268" y="142" width="44" height="24" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="290" y="158" text-anchor="middle" font-size="10" fill="#2b2a26">4</text>
+<rect class="bx-q" x="316" y="142" width="44" height="24" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="338" y="158" text-anchor="middle" font-size="10" fill="#2b2a26">2</text>
+<text class="tc" x="376" y="158" font-size="9.5" fill="#b03a2e">← 峰值：3 槽</text>
+<text class="ts" x="20" y="192" font-size="10" fill="#2b2a26">binary *</text>
+<rect class="bx-q" x="220" y="176" width="44" height="24" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="242" y="192" text-anchor="middle" font-size="10" fill="#2b2a26">3</text>
+<rect class="bx" x="268" y="176" width="44" height="24" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="290" y="192" text-anchor="middle" font-size="10" fill="#2b2a26">8</text>
+<text class="ts" x="328" y="192" font-size="9.5" fill="#6b675e">弹出 4、2，压回 4×2</text>
+<text class="ts" x="20" y="226" font-size="10" fill="#2b2a26">binary +</text>
+<rect class="bx" x="220" y="210" width="44" height="24" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="242" y="226" text-anchor="middle" font-size="10" fill="#2b2a26">11</text>
+<text class="ts" x="280" y="226" font-size="9.5" fill="#6b675e">弹出 3、8，压回 3+8</text>
+<text class="ts" x="20" y="260" font-size="10" fill="#2b2a26">store result</text>
+<text class="ts" x="220" y="260" font-size="9.5" fill="#a29d90">栈清空</text>
+<text class="ts" x="280" y="260" font-size="9.5" fill="#6b675e">localsplus[2] = 11</text>
+<text class="ts" x="20" y="294" font-size="10" fill="#2b2a26">load result</text>
+<rect class="bx-q" x="220" y="278" width="44" height="24" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="242" y="294" text-anchor="middle" font-size="10" fill="#2b2a26">11</text>
+<text class="ts" x="20" y="328" font-size="10" fill="#2b2a26">return value</text>
+<rect class="bx-sick" x="220" y="312" width="44" height="24" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.1"/>
+<text class="tc" x="242" y="328" text-anchor="middle" font-size="10" fill="#b03a2e">11</text>
+<text class="ts" x="280" y="328" font-size="9.5" fill="#6b675e">离开本 frame 的栈，进入调用者的栈</text>
+<line class="grid" x1="20" y1="348" x2="640" y2="348" stroke="#a29d90" stroke-width="1"/>
+<text class="ts" x="20" y="372" font-size="10" fill="#6b675e">模型依据字节码、stack-effect 元数据与 frame 源码推导 · 深色格是本行新压入的值</text>
+</svg>
+</figure>
 
 最高同时出现三个操作数，所以 `co_stacksize` 是 3。`BINARY_OP` 的静态 stack effect 是 -1：它消费两个值，压回一个结果。
 
@@ -265,19 +356,34 @@ _PyStackRef *stack_pointer;
 
 概念化的主循环是：
 
-```text
-从 next_instr 取一个 16-bit code unit
-        ↓
-拆出 opcode 与 oparg
-        ↓
-推进 next_instr
-        ↓
-执行对应指令实现
-        ↓
-读取或改写 stack_pointer
-        ↓
-dispatch 下一条指令
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 238" role="img" aria-label="求值循环六步闭环：从 next_instr 取一个 16-bit code unit，拆出 opcode 与 oparg，推进 next_instr，执行对应指令实现，读取或改写 stack_pointer，dispatch 下一条指令，回到取指" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="frA6" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-q" x="30" y="40" width="180" height="44" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="120" y="58" text-anchor="middle" font-size="9.5" fill="#2b2a26">从 next_instr 取一个</text>
+<text class="ts" x="120" y="74" text-anchor="middle" font-size="9.5" fill="#2b2a26">16-bit code unit</text>
+<line class="fl" x1="210" y1="62" x2="236" y2="62" stroke="#6b675e" stroke-width="1.3" marker-end="url(#frA6)"/>
+<rect class="bx-q" x="240" y="40" width="180" height="44" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="330" y="66" text-anchor="middle" font-size="9.5" fill="#2b2a26">拆出 opcode 与 oparg</text>
+<line class="fl" x1="420" y1="62" x2="446" y2="62" stroke="#6b675e" stroke-width="1.3" marker-end="url(#frA6)"/>
+<rect class="bx-q" x="450" y="40" width="180" height="44" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="540" y="66" text-anchor="middle" font-size="9.5" fill="#2b2a26">推进 next_instr</text>
+<line class="fl" x1="540" y1="84" x2="540" y2="146" stroke="#6b675e" stroke-width="1.3" marker-end="url(#frA6)"/>
+<rect class="bx-q" x="450" y="150" width="180" height="44" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="540" y="176" text-anchor="middle" font-size="9.5" fill="#2b2a26">执行对应指令实现</text>
+<line class="fl" x1="450" y1="172" x2="424" y2="172" stroke="#6b675e" stroke-width="1.3" marker-end="url(#frA6)"/>
+<rect class="bx-q" x="240" y="150" width="180" height="44" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="330" y="168" text-anchor="middle" font-size="9.5" fill="#2b2a26">读取或改写</text>
+<text class="ts" x="330" y="184" text-anchor="middle" font-size="9.5" fill="#2b2a26">stack_pointer</text>
+<line class="fl" x1="240" y1="172" x2="214" y2="172" stroke="#6b675e" stroke-width="1.3" marker-end="url(#frA6)"/>
+<rect class="bx" x="30" y="150" width="180" height="44" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="120" y="176" text-anchor="middle" font-size="9.5" fill="#2b2a26">dispatch 下一条指令</text>
+<path class="fl" d="M 60 150 L 60 84" fill="none" stroke="#6b675e" stroke-width="1.3" marker-end="url(#frA6)"/>
+<text class="t" x="330" y="122" text-anchor="middle" font-size="10.5" fill="#6b675e">_PyEval_EvalFrameDefault 主循环</text>
+</svg>
+</figure>
 
 每个 code unit 包含 8-bit opcode 与 8-bit oparg。inline cache 也在字节码数组里占 code units，但它们是数据，不按普通 opcode/oparg 解释；相应指令负责让指令指针跳过自己的 cache 区。
 
@@ -337,23 +443,41 @@ def tracer(frame, event, arg):
 
 通用 `CALL` 发现 callable 是精确 Python function、没有 PEP 523 自定义 frame evaluator 等阻碍时，会：
 
-```text
-CALL
-  ↓
-_PyEvalFramePushAndInit(...)
-  ↓
-在线程数据栈上取得新 _PyInterpreterFrame
-  ↓
-绑定参数到 new_frame->localsplus
-  ↓
-new_frame->previous = caller frame
-  ↓
-caller->return_offset = CALL 后应继续的位置
-  ↓
-切换 tstate->current_frame 与 frame
-  ↓
-从新 frame 的开头继续 dispatch
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 260" role="img" aria-label="Python 到 Python 调用的八步：CALL 进入 _PyEvalFramePushAndInit，在线程数据栈上取得新 _PyInterpreterFrame，绑定参数到 localsplus，把 previous 指向 caller frame，在 caller 记下 return_offset，切换 tstate current_frame，从新 frame 开头继续 dispatch；全程不递归进入新的 C 层求值调用" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="frA7" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="22" font-size="12" fill="#6b675e">同一求值循环内换 frame，不递归进新的 C 层调用</text>
+<rect class="bx" x="20" y="34" width="130" height="44" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="85" y="61" text-anchor="middle" font-size="11" fill="#2b2a26">CALL</text>
+<line class="fl" x1="150" y1="56" x2="172" y2="56" stroke="#6b675e" stroke-width="1.3" marker-end="url(#frA7)"/>
+<rect class="bx-q" x="176" y="34" width="216" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="284" y="61" text-anchor="middle" font-size="9.5" fill="#2b2a26">_PyEvalFramePushAndInit(…)</text>
+<line class="fl" x1="392" y1="56" x2="414" y2="56" stroke="#6b675e" stroke-width="1.3" marker-end="url(#frA7)"/>
+<rect class="bx-q" x="418" y="34" width="222" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="529" y="52" text-anchor="middle" font-size="9.5" fill="#2b2a26">数据栈上取得新</text>
+<text class="ts" x="529" y="68" text-anchor="middle" font-size="9.5" fill="#2b2a26">_PyInterpreterFrame</text>
+<line class="fl" x1="529" y1="78" x2="529" y2="106" stroke="#6b675e" stroke-width="1.3" marker-end="url(#frA7)"/>
+<rect class="bx-q" x="418" y="110" width="222" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="529" y="128" text-anchor="middle" font-size="9.5" fill="#2b2a26">绑定参数到</text>
+<text class="ts" x="529" y="144" text-anchor="middle" font-size="9.5" fill="#2b2a26">new_frame->localsplus</text>
+<line class="fl" x1="418" y1="132" x2="396" y2="132" stroke="#6b675e" stroke-width="1.3" marker-end="url(#frA7)"/>
+<rect class="bx-q" x="176" y="110" width="216" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="284" y="128" text-anchor="middle" font-size="9.5" fill="#2b2a26">new_frame->previous</text>
+<text class="ts" x="284" y="144" text-anchor="middle" font-size="9.5" fill="#2b2a26">= caller frame</text>
+<line class="fl" x1="176" y1="132" x2="154" y2="132" stroke="#6b675e" stroke-width="1.3" marker-end="url(#frA7)"/>
+<rect class="bx-q" x="20" y="110" width="130" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="85" y="128" text-anchor="middle" font-size="9" fill="#2b2a26">caller->return_offset</text>
+<text class="ts" x="85" y="144" text-anchor="middle" font-size="9" fill="#6b675e">= CALL 后继续处</text>
+<line class="fl" x1="85" y1="154" x2="85" y2="182" stroke="#6b675e" stroke-width="1.3" marker-end="url(#frA7)"/>
+<rect class="bx-q" x="20" y="186" width="270" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="155" y="212" text-anchor="middle" font-size="9.5" fill="#2b2a26">切换 tstate->current_frame 与 frame</text>
+<line class="fl" x1="290" y1="208" x2="312" y2="208" stroke="#6b675e" stroke-width="1.3" marker-end="url(#frA7)"/>
+<rect class="bx" x="316" y="186" width="324" height="44" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="478" y="212" text-anchor="middle" font-size="9.5" fill="#2b2a26">从新 frame 的开头继续 dispatch</text>
+</svg>
+</figure>
 
 热调用点还可能走 `CALL_PY_EXACT_ARGS` 等专用宏，使用 `_PyFrame_PushUnchecked()` 直接取 frame，把位置参数写入 `localsplus`，再由 `_PUSH_FRAME` 完成切换。无论通用还是专用路径，核心都是保存调用者、初始化被调现场并把求值循环的“当前 frame”换过去。
 
@@ -363,23 +487,40 @@ caller->return_offset = CALL 后应继续的位置
 
 被调函数执行 `RETURN_VALUE` 时，返回值位于自己的操作数栈顶。3.16 当前实现把这条跨 frame 的动作写得很直白，3.14 的核心结构也一致：
 
-```text
-取出 callee 栈顶返回值
-    ↓
-保存 callee 的 stack pointer
-    ↓
-dying = current frame
-    ↓
-current frame = dying->previous
-    ↓
-清理并弹出 dying frame
-    ↓
-恢复 caller 的 stack pointer
-    ↓
-按 caller->return_offset 恢复 instruction pointer
-    ↓
-把返回值作为 CALL 的结果放进 caller 栈
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 260" role="img" aria-label="RETURN_VALUE 八步：取出 callee 栈顶返回值，保存 callee 的 stack pointer，把当前 frame 记作 dying，current frame 切到 dying 的 previous，清理并弹出 dying frame，恢复 caller 的 stack pointer，按 caller 的 return_offset 恢复指令指针，最后把返回值作为 CALL 的结果放进 caller 栈" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="frA8" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="22" font-size="12" fill="#6b675e">一次跨 frame 的交接</text>
+<rect class="bx-q" x="20" y="34" width="190" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="115" y="61" text-anchor="middle" font-size="9.5" fill="#2b2a26">取出 callee 栈顶返回值</text>
+<line class="fl" x1="210" y1="56" x2="232" y2="56" stroke="#6b675e" stroke-width="1.3" marker-end="url(#frA8)"/>
+<rect class="bx-q" x="236" y="34" width="190" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="331" y="52" text-anchor="middle" font-size="9.5" fill="#2b2a26">保存 callee 的</text>
+<text class="ts" x="331" y="68" text-anchor="middle" font-size="9.5" fill="#2b2a26">stack pointer</text>
+<line class="fl" x1="426" y1="56" x2="448" y2="56" stroke="#6b675e" stroke-width="1.3" marker-end="url(#frA8)"/>
+<rect class="bx-q" x="452" y="34" width="188" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="546" y="61" text-anchor="middle" font-size="9.5" fill="#2b2a26">dying = current frame</text>
+<line class="fl" x1="546" y1="78" x2="546" y2="106" stroke="#6b675e" stroke-width="1.3" marker-end="url(#frA8)"/>
+<rect class="bx-q" x="452" y="110" width="188" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="546" y="128" text-anchor="middle" font-size="9.5" fill="#2b2a26">current frame =</text>
+<text class="ts" x="546" y="144" text-anchor="middle" font-size="9.5" fill="#2b2a26">dying->previous</text>
+<line class="fl" x1="452" y1="132" x2="430" y2="132" stroke="#6b675e" stroke-width="1.3" marker-end="url(#frA8)"/>
+<rect class="bx-q" x="236" y="110" width="190" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="331" y="137" text-anchor="middle" font-size="9.5" fill="#2b2a26">清理并弹出 dying frame</text>
+<line class="fl" x1="236" y1="132" x2="214" y2="132" stroke="#6b675e" stroke-width="1.3" marker-end="url(#frA8)"/>
+<rect class="bx-q" x="20" y="110" width="190" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="115" y="137" text-anchor="middle" font-size="9.5" fill="#2b2a26">恢复 caller 的 stack pointer</text>
+<line class="fl" x1="115" y1="154" x2="115" y2="182" stroke="#6b675e" stroke-width="1.3" marker-end="url(#frA8)"/>
+<rect class="bx-q" x="20" y="186" width="270" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="155" y="204" text-anchor="middle" font-size="9.5" fill="#2b2a26">按 caller->return_offset</text>
+<text class="ts" x="155" y="220" text-anchor="middle" font-size="9.5" fill="#2b2a26">恢复 instruction pointer</text>
+<line class="fl" x1="290" y1="208" x2="312" y2="208" stroke="#6b675e" stroke-width="1.3" marker-end="url(#frA8)"/>
+<rect class="bx" x="316" y="186" width="324" height="44" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="478" y="212" text-anchor="middle" font-size="9.5" fill="#2b2a26">返回值作为 CALL 的结果放进 caller 栈</text>
+</svg>
+</figure>
 
 这解释了 `return_offset` 为什么属于调用者现场：CALL 发生时，调用者知道被调函数结束后应跨过多少 code units；callee 返回时切回 previous frame，再按这份偏移继续。
 
@@ -527,19 +668,32 @@ locals()         当前绑定的一份独立快照
 
 引用计数篇曾经演示：保存 traceback 会让函数局部对象继续存活。执行帧把这条引用链补完整：
 
-```text
-exception / saved traceback
-        ↓
-traceback.tb_frame
-        ↓
-PyFrameObject
-        ↓
-_PyInterpreterFrame / frame-owned copy
-        ↓
-localsplus
-        ↓
-函数局部对象
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 196" role="img" aria-label="traceback 引用链六跳：保存的 traceback 经 tb_frame 指向 PyFrameObject，再到 _PyInterpreterFrame 或其 frame-owned 副本，再到 localsplus，最后到函数局部对象；链条任何一环存在，局部对象就仍可达" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="frA9" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-sick" x="20" y="30" width="190" height="44" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="ts" x="115" y="57" text-anchor="middle" font-size="10" fill="#b03a2e">exception / 保存的 traceback</text>
+<line class="fl" x1="210" y1="52" x2="232" y2="52" stroke="#6b675e" stroke-width="1.3" marker-end="url(#frA9)"/>
+<rect class="bx-q" x="236" y="30" width="190" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="331" y="57" text-anchor="middle" font-size="10" fill="#2b2a26">traceback.tb_frame</text>
+<line class="fl" x1="426" y1="52" x2="448" y2="52" stroke="#6b675e" stroke-width="1.3" marker-end="url(#frA9)"/>
+<rect class="bx-q" x="452" y="30" width="188" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="546" y="57" text-anchor="middle" font-size="10" fill="#2b2a26">PyFrameObject</text>
+<line class="fl" x1="546" y1="74" x2="546" y2="102" stroke="#6b675e" stroke-width="1.3" marker-end="url(#frA9)"/>
+<rect class="bx-q" x="412" y="106" width="228" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="526" y="124" text-anchor="middle" font-size="9.5" fill="#2b2a26">_PyInterpreterFrame</text>
+<text class="ts" x="526" y="140" text-anchor="middle" font-size="9" fill="#6b675e">或 frame-owned copy</text>
+<line class="fl" x1="412" y1="128" x2="390" y2="128" stroke="#6b675e" stroke-width="1.3" marker-end="url(#frA9)"/>
+<rect class="bx-q" x="236" y="106" width="150" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="311" y="133" text-anchor="middle" font-size="10" fill="#2b2a26">localsplus</text>
+<line class="fl" x1="236" y1="128" x2="214" y2="128" stroke="#6b675e" stroke-width="1.3" marker-end="url(#frA9)"/>
+<rect class="bx" x="20" y="106" width="190" height="44" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="115" y="133" text-anchor="middle" font-size="10" fill="#2b2a26">函数局部对象</text>
+<text class="ts" x="20" y="180" font-size="10.5" fill="#6b675e">六跳链条，环环是真实引用：任何一环还在，末端的局部对象就仍可达</text>
+</svg>
+</figure>
 
 本次实验在函数局部创建一只可弱引用对象，随后抛出异常并只保存 traceback。两版 CPython 都观察到：
 
