@@ -16,11 +16,71 @@ tags: [Redis, 数据库]
 
 跳表的起点是一条普通有序链表：查找从头走到尾，O(n)。跳表的想法是给一部分节点加「快车道」，从高层跳过大段中间节点，像地铁的快线越站：
 
-```text
-第 3 层  H ──────────────────────→ 50 ──────────────→ NULL
-第 2 层  H ──────→ 20 ──────────→ 50 ────→ 70 ─────→ NULL
-第 1 层  H → 10 → 20 → 30 → 40 → 50 → 60 → 70 → 80 → NULL
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 248" role="img" aria-label="三层跳表与查找 60 的路径：第 3 层只有 H 和 50 两站，从 H 跳到 50；第 2 层有 H、20、50、70，从 50 看下一站 70 越过目标，退回降层；第 1 层从 50 走到 60 命中。三大步加几次下探，代替单链表 6 步行走" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="red5As1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+<marker id="red5Ac1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-c" d="M0 0 L8 4 L0 8 Z" fill="#b03a2e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">查找 60 的路径（朱砂）：高层大步跳，越过就降层</text>
+<text class="ts" x="20" y="60" font-size="11" fill="#6b675e">第 3 层</text>
+<text class="ts" x="20" y="112" font-size="11" fill="#6b675e">第 2 层</text>
+<text class="ts" x="20" y="164" font-size="11" fill="#6b675e">第 1 层</text>
+<rect class="bx" x="60" y="66" width="44" height="28" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="82" y="84" text-anchor="middle" font-size="11" fill="#6b675e">H</text>
+<rect class="bx-q" x="372" y="66" width="44" height="28" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="394" y="84" text-anchor="middle" font-size="11" fill="#2b2a26">50</text>
+<rect class="bx-gone" x="622" y="66" width="30" height="28" rx="3" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<line class="fl" x1="104" y1="80" x2="368" y2="80" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red5As1)"/>
+<line class="fl" x1="416" y1="80" x2="618" y2="80" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red5As1)"/>
+<rect class="bx" x="60" y="118" width="44" height="28" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="82" y="136" text-anchor="middle" font-size="11" fill="#6b675e">H</text>
+<rect class="bx-q" x="186" y="118" width="44" height="28" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="208" y="136" text-anchor="middle" font-size="11" fill="#2b2a26">20</text>
+<rect class="bx-q" x="372" y="118" width="44" height="28" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="394" y="136" text-anchor="middle" font-size="11" fill="#2b2a26">50</text>
+<rect class="bx-q" x="497" y="118" width="44" height="28" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="519" y="136" text-anchor="middle" font-size="11" fill="#2b2a26">70</text>
+<line class="fl" x1="104" y1="132" x2="182" y2="132" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red5As1)"/>
+<line class="fl" x1="230" y1="132" x2="368" y2="132" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red5As1)"/>
+<line class="fl" x1="416" y1="132" x2="493" y2="132" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red5As1)"/>
+<rect class="bx" x="60" y="170" width="44" height="28" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="82" y="188" text-anchor="middle" font-size="11" fill="#6b675e">H</text>
+<rect class="bx-q" x="123" y="170" width="44" height="28" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="145" y="188" text-anchor="middle" font-size="11" fill="#6b675e">10</text>
+<rect class="bx-q" x="186" y="170" width="44" height="28" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="208" y="188" text-anchor="middle" font-size="11" fill="#6b675e">20</text>
+<rect class="bx-q" x="248" y="170" width="44" height="28" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="270" y="188" text-anchor="middle" font-size="11" fill="#6b675e">30</text>
+<rect class="bx-q" x="310" y="170" width="44" height="28" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="332" y="188" text-anchor="middle" font-size="11" fill="#6b675e">40</text>
+<rect class="bx-q" x="372" y="170" width="44" height="28" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="394" y="188" text-anchor="middle" font-size="11" fill="#2b2a26">50</text>
+<rect class="bx-q" x="435" y="170" width="44" height="28" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="457" y="188" text-anchor="middle" font-size="11" fill="#2b2a26">60</text>
+<rect class="bx-q" x="497" y="170" width="44" height="28" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="519" y="188" text-anchor="middle" font-size="11" fill="#6b675e">70</text>
+<rect class="bx-q" x="560" y="170" width="44" height="28" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="582" y="188" text-anchor="middle" font-size="11" fill="#6b675e">80</text>
+<line class="fl" x1="104" y1="184" x2="119" y2="184" stroke="#6b675e" stroke-width="1.2" marker-end="url(#red5As1)"/>
+<line class="fl" x1="167" y1="184" x2="182" y2="184" stroke="#6b675e" stroke-width="1.2" marker-end="url(#red5As1)"/>
+<line class="fl" x1="230" y1="184" x2="244" y2="184" stroke="#6b675e" stroke-width="1.2" marker-end="url(#red5As1)"/>
+<line class="fl" x1="292" y1="184" x2="306" y2="184" stroke="#6b675e" stroke-width="1.2" marker-end="url(#red5As1)"/>
+<line class="fl" x1="354" y1="184" x2="368" y2="184" stroke="#6b675e" stroke-width="1.2" marker-end="url(#red5As1)"/>
+<line class="fl" x1="416" y1="184" x2="431" y2="184" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red5As1)"/>
+<line class="fl" x1="479" y1="184" x2="493" y2="184" stroke="#6b675e" stroke-width="1.2" marker-end="url(#red5As1)"/>
+<line class="fl" x1="541" y1="184" x2="556" y2="184" stroke="#6b675e" stroke-width="1.2" marker-end="url(#red5As1)"/>
+<line class="flc" x1="104" y1="76" x2="364" y2="76" stroke="#b03a2e" stroke-width="2" marker-end="url(#red5Ac1)"/>
+<text class="tc" x="230" y="68" text-anchor="middle" font-size="10" fill="#b03a2e">① 50 之前还能走</text>
+<line class="flc" x1="394" y1="94" x2="394" y2="114" stroke="#b03a2e" stroke-width="2" marker-end="url(#red5Ac1)"/>
+<line class="flc" x1="416" y1="128" x2="489" y2="128" stroke="#b03a2e" stroke-width="2" marker-end="url(#red5Ac1)"/>
+<text class="tc" x="452" y="112" text-anchor="middle" font-size="10" fill="#b03a2e">② 70 过了，退回降层</text>
+<line class="flc" x1="394" y1="146" x2="394" y2="166" stroke="#b03a2e" stroke-width="2" marker-end="url(#red5Ac1)"/>
+<line class="flc" x1="416" y1="180" x2="429" y2="180" stroke="#b03a2e" stroke-width="2.4" marker-end="url(#red5Ac1)"/>
+<text class="tc" x="452" y="216" text-anchor="middle" font-size="10" fill="#b03a2e">③ 第 1 层 50 → 60，命中</text>
+<text class="ts" x="20" y="238" font-size="12" fill="#6b675e">快车道越高层越稀疏：第 3 层只有两站，第 1 层站站都停</text>
+</svg>
+</figure>
 
 找 60：从最高层出发，50 之前还能走，50 之后下一站是 NULL，降层；第 2 层从 50 走到 70，过了，退回 50 降层；第 1 层从 50 走到 60，命中。整个过程走了 3 大步加几次层间下探，而不是 6 步单链行走。**层数堆到 log n 层，期望查找就是 O(log n)。**
 
@@ -34,16 +94,39 @@ tags: [Redis, 数据库]
 
 四分之一的概率升一层，意味着每 4 个节点大约 1 个有第 2 层，每 16 个节点 1 个有第 3 层。十万成员的期望分布：
 
-```text
-≥1 层   100,000 个（全体）
-≥2 层    25,000 个
-≥3 层     6,250 个
-≥4 层     1,562 个
-≥5 层       391 个
-≥6 层        98 个
-≥7 层        24 个
-≥8 层         6 个
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 254" role="img" aria-label="十万成员跳表的层高期望分布条形图，条长按平方根刻度：至少 1 层的 100000 个，至少 2 层 25000 个，3 层 6250，4 层 1562，5 层 391，6 层 98，7 层 24，8 层 6 个，每升一层除以四" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">十万成员的层高期望分布（条长按平方根刻度：每升一层，人数除以 4）</text>
+<text class="ts" x="20" y="57" font-size="11" fill="#6b675e">≥1 层</text>
+<rect class="bar" x="110" y="44" width="430" height="16" fill="#2b2a26"/>
+<text class="ts" x="118" y="57" font-size="10" fill="#f6f3ec">100,000 个（全体）</text>
+<text class="ts" x="20" y="81" font-size="11" fill="#6b675e">≥2 层</text>
+<rect class="bar" x="110" y="68" width="221" height="16" fill="#2b2a26"/>
+<text class="onbar" x="118" y="81" font-size="10" fill="#f6f3ec">25,000</text>
+<text class="ts" x="20" y="105" font-size="11" fill="#6b675e">≥3 层</text>
+<rect class="bar" x="110" y="92" width="110" height="16" fill="#2b2a26"/>
+<text class="onbar" x="118" y="105" font-size="10" fill="#f6f3ec">6,250</text>
+<text class="ts" x="20" y="129" font-size="11" fill="#6b675e">≥4 层</text>
+<rect class="bar" x="110" y="116" width="49" height="16" fill="#2b2a26"/>
+<text class="ts" x="167" y="129" font-size="10" fill="#6b675e">1,562</text>
+<text class="ts" x="20" y="153" font-size="11" fill="#6b675e">≥5 层</text>
+<rect class="bar" x="110" y="140" width="28" height="16" fill="#2b2a26"/>
+<text class="ts" x="146" y="153" font-size="10" fill="#6b675e">391</text>
+<text class="ts" x="20" y="177" font-size="11" fill="#6b675e">≥6 层</text>
+<rect class="bar" x="110" y="164" width="14" height="16" fill="#2b2a26"/>
+<text class="ts" x="132" y="177" font-size="10" fill="#6b675e">98</text>
+<text class="ts" x="20" y="201" font-size="11" fill="#6b675e">≥7 层</text>
+<rect class="bar" x="110" y="188" width="7" height="16" fill="#2b2a26"/>
+<text class="ts" x="125" y="201" font-size="10" fill="#6b675e">24</text>
+<text class="ts" x="20" y="225" font-size="11" fill="#6b675e">≥8 层</text>
+<rect class="bar" x="110" y="212" width="4" height="16" fill="#2b2a26"/>
+<text class="ts" x="122" y="225" font-size="10" fill="#6b675e">6</text>
+<text class="ts" x="380" y="153" font-size="12" fill="#6b675e">每升一层都要再掷一次骰子：</text>
+<text class="ts" x="380" y="173" font-size="12" fill="#6b675e">升层概率 1/4，上限 32 层</text>
+<text class="tc" x="380" y="201" font-size="12" fill="#b03a2e">极端退化在定义上存在、概率趋零：</text>
+<text class="tc" x="380" y="221" font-size="12" fill="#b03a2e">Redis 用这一点换实现简单</text>
+</svg>
+</figure>
 
 平均层高 1.33：跳表用三成多的额外指针，换回对数级的查找路径。后面的内存对比会验证这个数字。
 
@@ -53,10 +136,62 @@ tags: [Redis, 数据库]
 
 Redis 的跳表和教科书版的最大差别，是每个前进指针旁边还存了一个**跨度**（span）：从当前节点跳到下一站，越过了多少个节点。
 
-```text
-第 2 层  H ──span 2──→ 20 ──span 3──→ 50 ──span 2──→ 70
-第 1 层  H → 10 → 20 → 30 → 40 → 50 → 60 → 70
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 236" role="img" aria-label="带跨度的跳表：第 2 层每根指针旁标着 span，H 到 20 跨 2，20 到 50 跨 3，50 到 70 跨 2；查 60 的排名沿路累加跨度，H 到 20 加 2，20 到 50 加 3，降层后 50 到 60 加 1，累计 6 就是排名" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="red5As3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+<marker id="red5Ac3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-c" d="M0 0 L8 4 L0 8 Z" fill="#b03a2e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">每根前进指针旁边存着跨度：这一跳越过了几个节点</text>
+<rect class="bx" x="20" y="70" width="48" height="28" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="44" y="88" text-anchor="middle" font-size="11" fill="#6b675e">H</text>
+<rect class="bx-q" x="172" y="70" width="48" height="28" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="196" y="88" text-anchor="middle" font-size="11" fill="#2b2a26">20</text>
+<rect class="bx-q" x="400" y="70" width="48" height="28" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="424" y="88" text-anchor="middle" font-size="11" fill="#2b2a26">50</text>
+<rect class="bx-q" x="552" y="70" width="48" height="28" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="576" y="88" text-anchor="middle" font-size="11" fill="#2b2a26">70</text>
+<line class="fl" x1="68" y1="84" x2="168" y2="84" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red5As3)"/>
+<text class="ts" x="118" y="76" text-anchor="middle" font-size="10" fill="#6b675e">span 2</text>
+<line class="fl" x1="220" y1="84" x2="396" y2="84" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red5As3)"/>
+<text class="ts" x="308" y="76" text-anchor="middle" font-size="10" fill="#6b675e">span 3</text>
+<line class="fl" x1="448" y1="84" x2="548" y2="84" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red5As3)"/>
+<text class="ts" x="498" y="76" text-anchor="middle" font-size="10" fill="#6b675e">span 2</text>
+<rect class="bx" x="20" y="140" width="48" height="28" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="44" y="158" text-anchor="middle" font-size="11" fill="#6b675e">H</text>
+<rect class="bx-q" x="96" y="140" width="48" height="28" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="120" y="158" text-anchor="middle" font-size="11" fill="#6b675e">10</text>
+<rect class="bx-q" x="172" y="140" width="48" height="28" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="196" y="158" text-anchor="middle" font-size="11" fill="#2b2a26">20</text>
+<rect class="bx-q" x="248" y="140" width="48" height="28" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="272" y="158" text-anchor="middle" font-size="11" fill="#6b675e">30</text>
+<rect class="bx-q" x="324" y="140" width="48" height="28" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="348" y="158" text-anchor="middle" font-size="11" fill="#6b675e">40</text>
+<rect class="bx-q" x="400" y="140" width="48" height="28" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="424" y="158" text-anchor="middle" font-size="11" fill="#2b2a26">50</text>
+<rect class="bx-q" x="476" y="140" width="48" height="28" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="500" y="158" text-anchor="middle" font-size="11" fill="#2b2a26">60</text>
+<rect class="bx-q" x="552" y="140" width="48" height="28" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="576" y="158" text-anchor="middle" font-size="11" fill="#6b675e">70</text>
+<line class="fl" x1="68" y1="154" x2="92" y2="154" stroke="#6b675e" stroke-width="1.2" marker-end="url(#red5As3)"/>
+<line class="fl" x1="144" y1="154" x2="168" y2="154" stroke="#6b675e" stroke-width="1.2" marker-end="url(#red5As3)"/>
+<line class="fl" x1="220" y1="154" x2="244" y2="154" stroke="#6b675e" stroke-width="1.2" marker-end="url(#red5As3)"/>
+<line class="fl" x1="296" y1="154" x2="320" y2="154" stroke="#6b675e" stroke-width="1.2" marker-end="url(#red5As3)"/>
+<line class="fl" x1="372" y1="154" x2="396" y2="154" stroke="#6b675e" stroke-width="1.2" marker-end="url(#red5As3)"/>
+<line class="fl" x1="448" y1="154" x2="472" y2="154" stroke="#6b675e" stroke-width="1.2" marker-end="url(#red5As3)"/>
+<line class="fl" x1="524" y1="154" x2="548" y2="154" stroke="#6b675e" stroke-width="1.2" marker-end="url(#red5As3)"/>
+<line class="flc" x1="68" y1="80" x2="164" y2="80" stroke="#b03a2e" stroke-width="2" marker-end="url(#red5Ac3)"/>
+<line class="flc" x1="220" y1="80" x2="392" y2="80" stroke="#b03a2e" stroke-width="2" marker-end="url(#red5Ac3)"/>
+<line class="flc" x1="424" y1="98" x2="424" y2="136" stroke="#b03a2e" stroke-width="2" marker-end="url(#red5Ac3)"/>
+<line class="flc" x1="448" y1="150" x2="470" y2="150" stroke="#b03a2e" stroke-width="2.4" marker-end="url(#red5Ac3)"/>
+<text class="tc" x="118" y="112" text-anchor="middle" font-size="10" fill="#b03a2e">+2</text>
+<text class="tc" x="308" y="112" text-anchor="middle" font-size="10" fill="#b03a2e">+3</text>
+<text class="tc" x="452" y="128" font-size="10" fill="#b03a2e">降层</text>
+<text class="tc" x="462" y="190" text-anchor="middle" font-size="10" fill="#b03a2e">+1</text>
+<text class="tc" x="20" y="212" font-size="12" fill="#b03a2e">查 60 的排名 = 2 + 3 + 1 = 6：沿途把跨过的 span 加起来，到底即答案</text>
+<text class="ts" x="20" y="230" font-size="12" fill="#6b675e">span 只存「越过了几个」，不存名次本身：名次永远是从头累加的和</text>
+</svg>
+</figure>
 
 没有跨度，ZRANK 只能第 1 层一步步数。有跨度，找排名变成**把沿途跨过的 span 加起来**：从 header 出发，高层大步跳、每跳累加跨度、目标一过就降层，到底时累加值就是排名。十万成员里查第 9900 名，走的步数是「跳过的节点数」的量级，十来步，而不是九千九百步。
 
@@ -68,21 +203,36 @@ Redis 的跳表和教科书版的最大差别，是每个前进指针旁边还�
 
 现在把另一半请出来。skiplist 编码的 zset，完整结构是：
 
-```text
-zset
- ├─ dict    成员 → 分数        （不排序，只管快）
- └─ zsl     按分数排序的跳表    （带 span，管顺序和范围）
-```
-
-两份索引各答各的问题：
-
-```text
-ZSCORE  z m     → dict 一次哈希命中
-ZRANK   z m     → 跳表 span 累加
-ZRANGE  z 0 99  → 跳表定位后沿第 1 层走
-ZRANGEBYSCORE   → 跳表按分数区间定位起止
-ZADD    z s m   → 两份索引都要更新（dict 改分数，跳表按新分数挪位置）
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 296" role="img" aria-label="skiplist 编码 zset 的完整结构与命令路由：zset 内部一份 dict 管成员到分数的哈希命中，一份 zsl 跳表管顺序和范围；ZSCORE 走 dict，ZRANK、ZRANGE、ZRANGEBYSCORE 走跳表，ZADD 两份索引都要更新" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="red5As4" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">一份数据，两本索引：各答各的问题</text>
+<rect class="bx-q" x="250" y="36" width="160" height="36" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="330" y="59" text-anchor="middle" font-size="13" fill="#2b2a26">zset</text>
+<line class="fl" x1="290" y1="72" x2="180" y2="106" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red5As4)"/>
+<line class="fl" x1="370" y1="72" x2="480" y2="106" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red5As4)"/>
+<rect class="bx" x="40" y="110" width="250" height="76" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="165" y="132" text-anchor="middle" font-size="13" fill="#2b2a26">dict · 成员 → 分数</text>
+<text class="ts" x="165" y="152" text-anchor="middle" font-size="11" fill="#6b675e">不排序，只管快</text>
+<text class="ts" x="165" y="170" text-anchor="middle" font-size="11" fill="#6b675e">一次哈希答「在不在、分数多少」</text>
+<rect class="bx" x="370" y="110" width="250" height="76" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="495" y="132" text-anchor="middle" font-size="13" fill="#2b2a26">zsl · 按分数排序的跳表</text>
+<text class="ts" x="495" y="152" text-anchor="middle" font-size="11" fill="#6b675e">带 span，管顺序和范围</text>
+<text class="ts" x="495" y="170" text-anchor="middle" font-size="11" fill="#6b675e">第 1 层顺链走，backward 支持反向</text>
+<rect class="bx-q" x="40" y="210" width="180" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="130" y="229" text-anchor="middle" font-size="11" fill="#6b675e">ZSCORE：dict 一次命中</text>
+<rect class="bx-q" x="240" y="210" width="190" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="335" y="229" text-anchor="middle" font-size="11" fill="#6b675e">ZRANK：跳表 span 累加</text>
+<rect class="bx-q" x="450" y="210" width="180" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="540" y="229" text-anchor="middle" font-size="11" fill="#6b675e">ZRANGE：定位后沿链走</text>
+<rect class="bx-q" x="40" y="248" width="230" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="155" y="267" text-anchor="middle" font-size="11" fill="#6b675e">ZRANGEBYSCORE：按分数定起止</text>
+<rect class="bx-sick" x="290" y="248" width="340" height="30" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="460" y="267" text-anchor="middle" font-size="11" fill="#b03a2e">ZADD：两份索引都更新，dict 改分数、跳表挪位置</text>
+</svg>
+</figure>
 
 十万成员上的实测对比：
 
@@ -107,19 +257,58 @@ ZRANGE  取尾部 100 个（9900–9999）    74.9 微秒
 
 多出来的每成员约 33 字节，覆盖跳表节点的层指针与 span、backward 指针、按平均 1.33 层算的层数组。**zset 比 set 贵六成，买的是「有序」这件事的全部服务**：范围、排名、按分数截取。而 33 字节里还能再省一笔：dict 那份的 value 只存一个指针指向跳表节点里的分数，两份索引没有重复存分数本体，成员字符串 sds 也只有一份、被两边共享。双索引共享载荷，贵的只是导航结构。
 
+每成员的内存账：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 190" role="img" aria-label="十万成员的每成员内存条形对照：SET 纯 dict 是 54.1 字节；ZSET 是 87.3 字节，其中 dict 侧约 54.1，跳表侧多出 33.2 字节的导航开销；分数本体与成员字符串只存一份被两边共享" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">十万成员，每成员的字节数（条长同一比例尺）</text>
+<text class="ts" x="20" y="66" font-size="12" fill="#6b675e">SET · 纯 dict</text>
+<rect class="bar" x="140" y="52" width="325" height="20" fill="#2b2a26"/>
+<text class="onbar" x="150" y="67" font-size="11" fill="#f6f3ec">54.1 B</text>
+<text class="ts" x="20" y="110" font-size="12" fill="#6b675e">ZSET · 双索引</text>
+<rect class="bar" x="140" y="96" width="325" height="20" fill="#2b2a26"/>
+<text class="onbar" x="150" y="111" font-size="11" fill="#f6f3ec">dict 侧 ≈54.1 B</text>
+<rect class="bx-sick" x="465" y="96" width="199" height="20" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="475" y="111" font-size="11" fill="#b03a2e">跳表侧 +33.2 B</text>
+<text class="ts" x="20" y="148" font-size="12" fill="#6b675e">33.2 字节买的是层指针与 span、backward 指针、平均 1.33 层的层数组</text>
+<text class="tc" x="20" y="172" font-size="12" fill="#b03a2e">载荷没有双份：dict 的 value 只是一个指向跳表节点的指针</text>
+</svg>
+</figure>
+
 ## 插入：两套索引的一次协同
 
 `ZADD` 在 skiplist 编码下要走完全套协同：
 
-```text
-1. 查 dict：成员已存在？
-   ├─ 存在且分数不变 → 什么也不做，返回
-   ├─ 存在且分数变了 → dict 改值（O(1)），跳表删旧节点再插新位置
-   └─ 不存在 → 两边都插
-2. 跳表插入：逐层下探找位置（记录 update 数组和 rank 数组）
-3. 掷骰子定层高，挂进各层，修正 span
-4. dict 插入：成员 → 分数
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 282" role="img" aria-label="ZADD 的协同流程：第一步永远先查 dict 判断成员是否存在；存在且分数不变什么也不做；存在但分数变了则 dict 改值、跳表删旧插新；不存在则两边都插。跳表插入逐层下探记录 update 与 rank 数组，掷骰子定层高挂进各层，一次性修正 span，最后 dict 插入" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="red5As5" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">ZADD 的全套协同：存在性判断永远先问字典</text>
+<rect class="bx-q" x="200" y="36" width="260" height="36" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="330" y="59" text-anchor="middle" font-size="12" fill="#2b2a26">① 查 dict：成员已存在？</text>
+<line class="fl" x1="260" y1="72" x2="130" y2="106" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red5As5)"/>
+<line class="fl" x1="330" y1="72" x2="330" y2="106" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red5As5)"/>
+<line class="fl" x1="400" y1="72" x2="530" y2="106" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red5As5)"/>
+<rect class="bx" x="20" y="110" width="200" height="62" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="120" y="130" text-anchor="middle" font-size="11" fill="#6b675e">存在，分数不变</text>
+<text class="ts" x="120" y="148" text-anchor="middle" font-size="11" fill="#6b675e">什么也不做，返回</text>
+<text class="tc" x="120" y="164" text-anchor="middle" font-size="10" fill="#b03a2e">跳表的 O(log n) 没轮到出场</text>
+<rect class="bx" x="240" y="110" width="190" height="62" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="335" y="130" text-anchor="middle" font-size="11" fill="#6b675e">存在，分数变了</text>
+<text class="ts" x="335" y="148" text-anchor="middle" font-size="11" fill="#6b675e">dict 改值 O(1)</text>
+<text class="ts" x="335" y="164" text-anchor="middle" font-size="11" fill="#6b675e">跳表删旧节点、插新位置</text>
+<rect class="bx" x="450" y="110" width="190" height="62" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="545" y="130" text-anchor="middle" font-size="11" fill="#6b675e">不存在</text>
+<text class="ts" x="545" y="148" text-anchor="middle" font-size="11" fill="#6b675e">两边都插</text>
+<line class="fl" x1="335" y1="172" x2="335" y2="200" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red5As5)"/>
+<line class="fl" x1="545" y1="172" x2="420" y2="200" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red5As5)"/>
+<rect class="bx-q" x="120" y="204" width="420" height="56" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="330" y="226" text-anchor="middle" font-size="11" fill="#6b675e">② 跳表插入：逐层下探找位置，记下每层出发点与已累计排名</text>
+<text class="ts" x="330" y="244" text-anchor="middle" font-size="11" fill="#6b675e">③ 掷骰子定层高挂进各层，一次性修正 span　④ dict 插入</text>
+<text class="ts" x="20" y="276" font-size="12" fill="#6b675e">update 数组存出发点、rank 数组存累计排名：span 的修正是插入的收尾动作</text>
+</svg>
+</figure>
 
 第 1 步的顺序藏着双索引的分工宣言：**存在性判断永远先问字典**。跳表按分数排序，按成员查分数本就要 O(log n) 的爬楼外加字符串比较；字典一次哈希就把「在不在、分数是多少」都答了。这就是为什么 ZADD 更新已有成员（分数不变）能便宜到接近一次 ZSCORE：跳表那边的 O(log n) 根本没轮到出场。
 
