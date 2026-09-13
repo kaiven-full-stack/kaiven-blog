@@ -39,6 +39,31 @@ expire_at = current_unix_time_ms + 60000
 
 假设一个键在 12:00 设置十分钟 TTL，12:03 关闭 Redis，12:08 再启动，它剩下的不是七分钟，更不会重新得到十分钟，只剩两分钟。若 12:15 才启动，加载数据时它已经过期。
 
+这笔时间账画成线：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 188" role="img" aria-label="停机与截止时间的时间线：12:00 设置十分钟 TTL，截止时间钉在 12:10；12:03 关闭 Redis 到 12:08 启动期间墙上时钟照走，剩余只有两分钟；若 12:15 才启动，加载时键已过期被直接跳过" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="red2As1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">截止时间钉在墙上时钟上，停机期间照走</text>
+<line class="axis" x1="40" y1="100" x2="620" y2="100" stroke="#6b675e" stroke-width="1.2" marker-end="url(#red2As1)"/>
+<line class="flk" x1="80" y1="86" x2="80" y2="114" stroke="#2b2a26" stroke-width="2"/>
+<text class="ts" x="80" y="76" text-anchor="middle" font-size="11" fill="#6b675e">12:00 SET EX 600</text>
+<line class="flk" x1="179" y1="86" x2="179" y2="114" stroke="#2b2a26" stroke-width="2"/>
+<text class="ts" x="179" y="132" text-anchor="middle" font-size="11" fill="#6b675e">12:03 关闭</text>
+<rect class="bx-gone" x="179" y="92" width="165" height="16" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<text class="ts" x="261" y="76" text-anchor="middle" font-size="11" fill="#6b675e">停机：时间戳安静躺着，时钟照走</text>
+<line class="flk" x1="344" y1="86" x2="344" y2="114" stroke="#2b2a26" stroke-width="2"/>
+<text class="ts" x="344" y="132" text-anchor="middle" font-size="11" fill="#6b675e">12:08 启动：剩 2 分钟</text>
+<line class="flc" x1="410" y1="82" x2="410" y2="118" stroke="#b03a2e" stroke-width="2"/>
+<text class="tc" x="410" y="72" text-anchor="middle" font-size="11" fill="#b03a2e">12:10 expire_at</text>
+<line class="fl" x1="575" y1="86" x2="575" y2="114" stroke="#6b675e" stroke-width="1.6" stroke-dasharray="4 3"/>
+<text class="ts" x="575" y="132" text-anchor="middle" font-size="11" fill="#6b675e">12:15 启动：已过期</text>
+<text class="ts" x="20" y="168" font-size="12" fill="#6b675e">重启不续命也不清零：当前时钟与截止时间的差，在加载那一刻已经算好</text>
+</svg>
+</figure>
+
 Redis 7.0 以后可以直接查看这张“截止日期”：
 
 ```text
@@ -66,12 +91,30 @@ Redis 选择的是另一份承诺：
 
 可以把一次 `GET` 简化成这样：
 
-```text
-查找键
-  ├─ 没有过期时间：照常返回
-  ├─ 截止时间尚未到：照常返回
-  └─ 截止时间已过：按过期处理，向客户端表现为不存在
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 204" role="img" aria-label="GET 的过期检查决策树：查找键后三个分支，没有过期时间照常返回，截止时间尚未到照常返回，截止时间已过则按过期处理，向客户端表现为不存在，主库上还顺手执行删除与传播" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="red2As2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">每次碰键的命令都要过一遍这棵树</text>
+<rect class="bx-q" x="30" y="76" width="130" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="95" y="94" text-anchor="middle" font-size="13" fill="#2b2a26">GET 某个键</text>
+<text class="ts" x="95" y="112" text-anchor="middle" font-size="10" fill="#6b675e">查找键</text>
+<line class="fl" x1="160" y1="86" x2="316" y2="52" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red2As2)"/>
+<line class="fl" x1="160" y1="98" x2="316" y2="98" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red2As2)"/>
+<line class="fl" x1="160" y1="110" x2="316" y2="144" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red2As2)"/>
+<text class="ts" x="230" y="58" text-anchor="middle" font-size="11" fill="#6b675e">没有过期时间</text>
+<text class="ts" x="230" y="92" text-anchor="middle" font-size="11" fill="#6b675e">截止时间尚未到</text>
+<text class="tc" x="230" y="138" text-anchor="middle" font-size="11" fill="#b03a2e">截止时间已过</text>
+<rect class="bx" x="320" y="36" width="220" height="32" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="430" y="56" text-anchor="middle" font-size="12" fill="#6b675e">照常返回</text>
+<rect class="bx" x="320" y="82" width="220" height="32" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="430" y="102" text-anchor="middle" font-size="12" fill="#6b675e">照常返回</text>
+<rect class="bx-sick" x="320" y="128" width="310" height="32" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="475" y="148" text-anchor="middle" font-size="12" fill="#b03a2e">按过期处理：表现为不存在</text>
+<text class="ts" x="320" y="180" font-size="11" fill="#6b675e">第三个分支在主库上还顺手做两件事：执行删除、传播给副本与 AOF</text>
+</svg>
+</figure>
 
 所以“键已过期”至少有两种含义：
 
@@ -108,6 +151,33 @@ Redis 7.4 中有两种循环：
 “慢”和“快”描述的是调度方式与时间预算，与删除键的速度无关。两者都受预算约束，都不能为了清完过期键而无限占住主线程。
 
 默认 effort 下，主动循环每轮从一个数据库的过期索引中取有限数量的键检查。若样本里过期键比例仍高，就继续一轮；若比例已经较低，或本轮时间用完，就把执行权还给正常命令。Redis 6 起，这里从早期的随机取键改成了带游标的桶式扫描；游标留到下一轮继续，不需要每次从头找起。
+
+两条路径，一个出口：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 258" role="img" aria-label="两条清理路径汇入一个出口：左边惰性删除靠访问触发，热键下次 GET 就被收走，冷键无人访问无限期等待；右边主动过期由 SLOW 循环每 100 毫秒一轮、FAST 循环休眠前补做，带游标分桶按预算巡检；两条路都走到真正删除那一刻，才产生 expired 通知" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="red2As3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">谁替过期的键收尾：两条路径，一个出口</text>
+<rect class="bx-q" x="20" y="44" width="300" height="146" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="170" y="68" text-anchor="middle" font-size="13" fill="#2b2a26">惰性删除 · 访问才检查</text>
+<text class="ts" x="40" y="96" font-size="11" fill="#6b675e">热键：下一次 GET / EXISTS 就被收走</text>
+<text class="tc" x="40" y="120" font-size="11" fill="#b03a2e">冷键：无人访问，可以无限期占着内存</text>
+<text class="ts" x="40" y="144" font-size="11" fill="#6b675e">成本：每次碰键多一次时间比较</text>
+<text class="ts" x="40" y="168" font-size="11" fill="#6b675e">命令内用时间快照，脚本中途键不会突变</text>
+<rect class="bx" x="340" y="44" width="300" height="146" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="490" y="68" text-anchor="middle" font-size="13" fill="#2b2a26">主动过期 · 周期巡检</text>
+<text class="ts" x="360" y="96" font-size="11" fill="#6b675e">SLOW：serverCron 驱动，约每 100ms 一轮</text>
+<text class="ts" x="360" y="120" font-size="11" fill="#6b675e">FAST：事件循环休眠前补做，预算约 1ms</text>
+<text class="ts" x="360" y="144" font-size="11" fill="#6b675e">带游标分桶扫描，比例高就再来一轮</text>
+<text class="ts" x="360" y="168" font-size="11" fill="#6b675e">预算用完把执行权还给正常命令</text>
+<line class="fl" x1="170" y1="190" x2="270" y2="212" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red2As3)"/>
+<line class="fl" x1="490" y1="190" x2="390" y2="212" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red2As3)"/>
+<rect class="bx-sick" x="190" y="216" width="280" height="34" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="330" y="237" text-anchor="middle" font-size="12" fill="#b03a2e">真正删除的那一刻，才产生 expired 通知</text>
+</svg>
+</figure>
 
 默认配置大致在权衡四件事：
 
@@ -276,10 +346,26 @@ Redis 把过期删除的决定集中在主库。主库通过惰性或主动路�
 
 但副本处理读命令时，仍会用自己的逻辑时钟判断键是否已经过期，并向客户端表现为不存在。于是短时间内可能同时成立：
 
-```text
-副本内部仍保留这条数据，等待主库的删除传播；
-副本对普通读取已经不再返回它。
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 200" role="img" aria-label="主库与副本的两层状态：主库确认过期后合成 DEL 或 UNLINK 写入 AOF 并传播；删除还在路上时，副本对普通读取已经表现为键不存在，但内部数据仍然保留着，等主库的删除命令到达才物理移除" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="red2As5" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">删除传播在路上的那一小段时间</text>
+<rect class="bx-q" x="30" y="48" width="220" height="92" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="140" y="72" text-anchor="middle" font-size="13" fill="#2b2a26">主库</text>
+<text class="ts" x="140" y="94" text-anchor="middle" font-size="11" fill="#6b675e">惰性/主动确认过期</text>
+<text class="ts" x="140" y="112" text-anchor="middle" font-size="11" fill="#6b675e">合成 DEL，写 AOF 并传播</text>
+<line class="fl" x1="250" y1="94" x2="336" y2="94" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red2As5)"/>
+<text class="ts" x="293" y="84" text-anchor="middle" font-size="10" fill="#6b675e">删除在路上</text>
+<rect class="bx" x="340" y="48" width="290" height="92" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="485" y="72" text-anchor="middle" font-size="13" fill="#2b2a26">副本</text>
+<text class="ts" x="485" y="94" text-anchor="middle" font-size="11" fill="#6b675e">对普通读取：已经表现为不存在</text>
+<text class="tc" x="485" y="114" text-anchor="middle" font-size="11" fill="#b03a2e">内部：数据仍在，等主库的删除命令</text>
+<text class="ts" x="20" y="170" font-size="12" fill="#6b675e">主库的 DEL 到达，副本才物理删除：内存曲线到那一刻才动</text>
+<text class="ts" x="20" y="190" font-size="12" fill="#6b675e">观测口径：在副本上，「读不到」与「键还在」可以同时成立</text>
+</svg>
+</figure>
 
 这正是全文开头那道问题的另一份答案：键还在不在，要先问“对谁、在哪一层”。
 
@@ -299,12 +385,26 @@ Redis 把过期删除的决定集中在主库。主库通过惰性或主动路�
 
 于是“过期”到“操作系统拿回内存”之间至少有四个时刻：
 
-```text
-T1 绝对截止时间到达
-T2 某次访问或主动循环发现过期
-T3 键从数据库移除，对象被同步或异步释放
-T4 分配器或操作系统真正回收相应页面
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 196" role="img" aria-label="T1 到 T4 四个时刻的时间线：T1 绝对截止时间到达后键逻辑不可见；T2 某次访问或主动循环发现过期；T3 键从数据库移除、对象同步或异步释放；T4 分配器或操作系统真正回收页面，内存曲线才动；这段距离每个键不一样" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<line class="axis" x1="40" y1="90" x2="620" y2="90" stroke="#6b675e" stroke-width="1.2"/>
+<line class="flc" x1="100" y1="76" x2="100" y2="104" stroke="#b03a2e" stroke-width="2"/>
+<text class="tc" x="100" y="44" text-anchor="middle" font-size="12" fill="#b03a2e">T1 · 截止时间到达</text>
+<text class="ts" x="100" y="62" text-anchor="middle" font-size="10" fill="#6b675e">逻辑上不该再可见</text>
+<line class="flk" x1="250" y1="76" x2="250" y2="104" stroke="#2b2a26" stroke-width="2"/>
+<text class="ts" x="250" y="44" text-anchor="middle" font-size="12" fill="#6b675e">T2 · 被发现</text>
+<text class="ts" x="250" y="62" text-anchor="middle" font-size="10" fill="#6b675e">某次访问，或巡检走到</text>
+<line class="flk" x1="400" y1="76" x2="400" y2="104" stroke="#2b2a26" stroke-width="2"/>
+<text class="ts" x="400" y="44" text-anchor="middle" font-size="12" fill="#6b675e">T3 · 移除并释放</text>
+<text class="ts" x="400" y="62" text-anchor="middle" font-size="10" fill="#6b675e">同步或 lazyfree 异步</text>
+<line class="flk" x1="550" y1="76" x2="550" y2="104" stroke="#2b2a26" stroke-width="2"/>
+<text class="ts" x="550" y="44" text-anchor="middle" font-size="12" fill="#6b675e">T4 · 页面回收</text>
+<text class="ts" x="550" y="62" text-anchor="middle" font-size="10" fill="#6b675e">内存曲线到这才动</text>
+<path class="fl" d="M100 116 L100 128 L550 128 L550 116" fill="none" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="325" y="148" text-anchor="middle" font-size="11" fill="#6b675e">「不可见」与「已消失」的距离：每个键不一样，从几乎为零到无限期</text>
+<text class="ts" x="20" y="178" font-size="12" fill="#6b675e">看到内存没降，先分辨卡在哪一段：没被发现、排队释放中，还是分配器没还页</text>
+</svg>
+</figure>
 
 Redis 对 T1 之后的读取语义负责，却没有承诺 T1、T2、T3、T4 重合。
 
@@ -326,6 +426,37 @@ base_ttl + random(0, jitter)
 ```
 
 它缓解的是集中到期，不解决缓存击穿所需的并发重建，也不保证每个键准点删除。热点键仍可能需要请求合并、逻辑过期、后台刷新或分层缓存。
+
+集中与错开，两种刻度：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 200" role="img" aria-label="缓存雪崩与抖动的刻度对照：上排五千个键同一个 TTL，截止时间挤在同一毫秒，miss 回源、巡检预算、同步释放、删除传播一起到来；下排同样的键加随机抖动后，截止时间摊开在一个区间里，峰值被削平" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">上：五千个键，同一个 TTL</text>
+<line class="axis" x1="40" y1="66" x2="620" y2="66" stroke="#6b675e" stroke-width="1.2"/>
+<line class="flc" x1="410" y1="50" x2="410" y2="66" stroke="#b03a2e" stroke-width="1.6"/>
+<line class="flc" x1="413" y1="50" x2="413" y2="66" stroke="#b03a2e" stroke-width="1.6"/>
+<line class="flc" x1="416" y1="50" x2="416" y2="66" stroke="#b03a2e" stroke-width="1.6"/>
+<line class="flc" x1="419" y1="50" x2="419" y2="66" stroke="#b03a2e" stroke-width="1.6"/>
+<line class="flc" x1="422" y1="50" x2="422" y2="66" stroke="#b03a2e" stroke-width="1.6"/>
+<line class="flc" x1="425" y1="50" x2="425" y2="66" stroke="#b03a2e" stroke-width="1.6"/>
+<line class="flc" x1="428" y1="50" x2="428" y2="66" stroke="#b03a2e" stroke-width="1.6"/>
+<line class="flc" x1="431" y1="50" x2="431" y2="66" stroke="#b03a2e" stroke-width="1.6"/>
+<line class="flc" x1="434" y1="50" x2="434" y2="66" stroke="#b03a2e" stroke-width="1.6"/>
+<line class="flc" x1="437" y1="50" x2="437" y2="66" stroke="#b03a2e" stroke-width="1.6"/>
+<text class="tc" x="450" y="58" font-size="11" fill="#b03a2e">截止时间挤成一簇：回源、巡检、释放、传播一起到</text>
+<text class="ts" x="20" y="108" font-size="12" fill="#6b675e">下：同样的键，base_ttl + random(0, jitter)</text>
+<line class="axis" x1="40" y1="150" x2="620" y2="150" stroke="#6b675e" stroke-width="1.2"/>
+<line class="flk" x1="330" y1="134" x2="330" y2="150" stroke="#2b2a26" stroke-width="1.6"/>
+<line class="flk" x1="368" y1="134" x2="368" y2="150" stroke="#2b2a26" stroke-width="1.6"/>
+<line class="flk" x1="406" y1="134" x2="406" y2="150" stroke="#2b2a26" stroke-width="1.6"/>
+<line class="flk" x1="444" y1="134" x2="444" y2="150" stroke="#2b2a26" stroke-width="1.6"/>
+<line class="flk" x1="482" y1="134" x2="482" y2="150" stroke="#2b2a26" stroke-width="1.6"/>
+<line class="flk" x1="520" y1="134" x2="520" y2="150" stroke="#2b2a26" stroke-width="1.6"/>
+<line class="flk" x1="558" y1="134" x2="558" y2="150" stroke="#2b2a26" stroke-width="1.6"/>
+<text class="ts" x="40" y="142" font-size="11" fill="#6b675e">截止时间摊开在一个区间里，四路压力被削峰</text>
+<text class="ts" x="20" y="184" font-size="12" fill="#6b675e">抖动幅度按回源系统的承受力定：把「一起到」摊成「陆续到」就够了</text>
+</svg>
+</figure>
 
 监控时也不要只盯 `DBSIZE`。更有解释力的指标包括 `expired_keys`、过期循环 CPU 时间、延迟事件、内存碎片率、lazyfree 待处理对象，以及缓存命中率。看到内存未降时，先分清是尚未发现过期、正在异步释放，还是分配器没有把页面还给系统。
 
