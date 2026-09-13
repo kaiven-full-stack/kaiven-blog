@@ -19,15 +19,40 @@ tags: [CPython, Python]
 
 compile.c 的文件头注释把路线图写得明明白白：
 
-```text
-源码字符串
-  ↓ ①  tokenizer：字符流 → token 流
-  ↓ ②  PEG 解析器：token 流 → AST
-  ↓ ③  symtable：AST → 作用域与变量分类
-  ↓ ④  codegen：AST → 指令序列
-  ↓ ⑤  CFG 优化 + 装配：指令序列 → 字节码
-code object
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 340" role="img" aria-label="compile 的五站流水线：源码字符串经 tokenizer 变成 token 流，PEG 解析器建出 AST，symtable 判定作用域与变量分类，codegen 翻译成指令序列（常量折叠第一级在此前发生），CFG 优化加装配产出 code object；25KB 文件实测解析占掉一半时间" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="cpcAs1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">compile('x = 1 + 2 * 3')：五站，每站一个中间商</text>
+<rect class="bx-q" x="30" y="34" width="240" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="150" y="53" text-anchor="middle" font-size="11" fill="#6b675e">源码字符串</text>
+<line class="fl" x1="150" y1="64" x2="150" y2="72" stroke="#6b675e" stroke-width="1.4" marker-end="url(#cpcAs1)"/>
+<rect class="bx" x="30" y="76" width="240" height="30" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="150" y="95" text-anchor="middle" font-size="11" fill="#2b2a26">① tokenizer</text>
+<text class="ts" x="285" y="95" font-size="10" fill="#6b675e">字符流 → token 流：NAME EQ NUMBER…，纯词法无结构</text>
+<line class="fl" x1="150" y1="106" x2="150" y2="114" stroke="#6b675e" stroke-width="1.4" marker-end="url(#cpcAs1)"/>
+<rect class="bx" x="30" y="118" width="240" height="30" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="150" y="137" text-anchor="middle" font-size="11" fill="#2b2a26">② PEG 解析器</text>
+<text class="ts" x="285" y="137" font-size="10" fill="#6b675e">token → AST：BinOp 树完整，还没有任何折叠</text>
+<line class="fl" x1="150" y1="148" x2="150" y2="156" stroke="#6b675e" stroke-width="1.4" marker-end="url(#cpcAs1)"/>
+<rect class="bx" x="30" y="160" width="240" height="30" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="150" y="179" text-anchor="middle" font-size="11" fill="#2b2a26">③ symtable</text>
+<text class="ts" x="285" y="179" font-size="10" fill="#6b675e">作用域与变量分类：x → local；闭包判 cell/free</text>
+<line class="fl" x1="150" y1="190" x2="150" y2="198" stroke="#6b675e" stroke-width="1.4" marker-end="url(#cpcAs1)"/>
+<rect class="bx" x="30" y="202" width="240" height="30" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="150" y="221" text-anchor="middle" font-size="11" fill="#2b2a26">④ codegen</text>
+<text class="ts" x="285" y="221" font-size="10" fill="#6b675e">AST → 指令序列：1+2*3 进站前已折成 Constant(7)</text>
+<line class="fl" x1="150" y1="232" x2="150" y2="240" stroke="#6b675e" stroke-width="1.4" marker-end="url(#cpcAs1)"/>
+<rect class="bx" x="30" y="244" width="240" height="30" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="150" y="263" text-anchor="middle" font-size="11" fill="#2b2a26">⑤ CFG 优化 + 装配</text>
+<text class="ts" x="285" y="263" font-size="10" fill="#6b675e">清 NOP、压缩跳转、算栈深、生成异常表</text>
+<line class="fl" x1="150" y1="274" x2="150" y2="282" stroke="#6b675e" stroke-width="1.4" marker-end="url(#cpcAs1)"/>
+<rect class="bx-q" x="30" y="286" width="240" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="tc" x="150" y="305" text-anchor="middle" font-size="11" fill="#b03a2e">code object：co_consts = (None, 7)</text>
+<text class="ts" x="20" y="334" font-size="12" fill="#6b675e">25KB 真实文件实测：①+② 132.6ms，全程 133.8ms —— 解析占一半成本，.pyc 缓存砍的就是整条线</text>
+</svg>
+</figure>
 
 用 25KB 的真实文件（标准库 ast.py）给每站计时：
 
@@ -55,6 +80,42 @@ def 123func():    →  "invalid decimal literal"
 ```
 
 3.9 之前的错误信息基本只有 "invalid syntax" 一句。这第二遍解析用一次重复换来能直接指认错误的诊断，3.10 之后明显变具体的报错，出处就在这里。
+
+PEG 的两件法宝：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 252" role="img" aria-label="PEG 解析器两个机制：左边回溯加记忆化，一条规则路走不通退回来换下一条，memo 表记录位置与规则的尝试结果，把指数级回溯压回线性；右边解析失败后清空状态，带 invalid 星号规则做第二遍诊断性解析，产出 was never closed 这类具体报错" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="cpcAs2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">表达力靠回溯 + memo，错误信息靠第二遍解析</text>
+<rect class="bx" x="20" y="40" width="300" height="150" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="170" y="62" text-anchor="middle" font-size="12" fill="#2b2a26">回溯 + 记忆化</text>
+<rect class="bx-q" x="55" y="76" width="90" height="28" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="100" y="94" text-anchor="middle" font-size="10" fill="#6b675e">规则 A 尝试</text>
+<line class="flc" x1="145" y1="90" x2="186" y2="90" stroke="#b03a2e" stroke-width="1.4" stroke-dasharray="4 3"/>
+<text class="tc" x="200" y="94" font-size="10" fill="#b03a2e">✕ 走不通</text>
+<path class="fl" d="M200 100 C 200 118, 120 118, 105 108" fill="none" stroke="#6b675e" stroke-width="1.4" marker-end="url(#cpcAs2)"/>
+<text class="ts" x="150" y="128" text-anchor="middle" font-size="10" fill="#6b675e">退回来，换规则 B</text>
+<rect class="bx-q" x="55" y="134" width="90" height="28" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="100" y="152" text-anchor="middle" font-size="10" fill="#6b675e">规则 B 尝试 ✓</text>
+<text class="ts" x="170" y="152" font-size="10" fill="#6b675e">天然支持左递归、</text>
+<text class="ts" x="170" y="168" font-size="10" fill="#6b675e">match 模式匹配</text>
+<text class="ts" x="170" y="184" font-size="10" fill="#6b675e">memo 表：指数回溯压回线性</text>
+<rect class="bx" x="340" y="40" width="300" height="150" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="490" y="62" text-anchor="middle" font-size="12" fill="#2b2a26">失败后的第二遍诊断解析</text>
+<rect class="bx-q" x="360" y="76" width="120" height="28" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="420" y="94" text-anchor="middle" font-size="10" fill="#6b675e">第一遍：解析失败</text>
+<line class="fl" x1="420" y1="104" x2="420" y2="116" stroke="#6b675e" stroke-width="1.4" marker-end="url(#cpcAs2)"/>
+<rect class="bx-sick" x="360" y="120" width="260" height="28" rx="3" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="ts" x="490" y="138" text-anchor="middle" font-size="10" fill="#6b675e">清空状态，带 invalid_* 规则再解析一遍</text>
+<line class="fl" x1="420" y1="148" x2="420" y2="158" stroke="#6b675e" stroke-width="1.4" marker-end="url(#cpcAs2)"/>
+<rect class="bx-q" x="360" y="162" width="260" height="24" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="tc" x="490" y="178" text-anchor="middle" font-size="10" fill="#b03a2e">"'(' was never closed" · "expected ':'"</text>
+<text class="ts" x="20" y="218" font-size="12" fill="#6b675e">慢而精细的 invalid_* 规则专为诊断而设：一次重复解析换来能指认错误的报错</text>
+<text class="ts" x="20" y="240" font-size="12" fill="#6b675e">生成的 parser.c 有三万八千行，全部由语法文件生成</text>
+</svg>
+</figure>
 
 第二站的交付物是 AST。`ast.dump` 看一眼 `x = 1 + 2 * 3`：
 
@@ -96,6 +157,42 @@ inner.co_freevars: ('x',)     ← inner 里的 x 是 free，LOAD_DEREF 取值
 
 `inner` 的字节码开头有一条 `COPY_FREE_VARS 1`、取值用 `LOAD_DEREF`。闭包不是运行时查找，是编译期就安排好的间接寻址。帧篇讲过 cell/free 的存储布局，这里补上了它们的出身：symtable 的分类结果。
 
+四类分类与一对闭包：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 254" role="img" aria-label="symtable 的四类变量分类：local 本作用域赋值过，global 声明过，cell 本作用域赋值且被内层引用，free 只引用而赋值在外层；闭包例子里 outer 的 x 判成 cell 进 co_cellvars，inner 的 x 判成 free 进 co_freevars，取值走 LOAD_DEREF" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="cpcAs3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">第三站的交付物：每个名字的作用域与性质</text>
+<rect class="bx" x="20" y="40" width="290" height="150" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="165" y="60" text-anchor="middle" font-size="12" fill="#2b2a26">四类分类</text>
+<rect class="bx-q" x="34" y="70" width="128" height="48" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="98" y="88" text-anchor="middle" font-size="10" fill="#6b675e">local</text>
+<text class="ts" x="98" y="106" text-anchor="middle" font-size="9" fill="#6b675e">本作用域赋值过</text>
+<rect class="bx-q" x="170" y="70" width="128" height="48" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="234" y="88" text-anchor="middle" font-size="10" fill="#6b675e">global</text>
+<text class="ts" x="234" y="106" text-anchor="middle" font-size="9" fill="#6b675e">声明过 global</text>
+<rect class="bx-sick" x="34" y="126" width="128" height="48" rx="3" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="tc" x="98" y="144" text-anchor="middle" font-size="10" fill="#b03a2e">cell</text>
+<text class="ts" x="98" y="162" text-anchor="middle" font-size="9" fill="#6b675e">赋值在此 + 被内层引用</text>
+<rect class="bx-sick" x="170" y="126" width="128" height="48" rx="3" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="tc" x="234" y="144" text-anchor="middle" font-size="10" fill="#b03a2e">free</text>
+<text class="ts" x="234" y="162" text-anchor="middle" font-size="9" fill="#6b675e">只引用，赋值在外层</text>
+<rect class="bx-q" x="340" y="40" width="300" height="56" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="490" y="62" text-anchor="middle" font-size="11" fill="#6b675e">def outer(): x = 2 …</text>
+<text class="tc" x="490" y="82" text-anchor="middle" font-size="11" fill="#b03a2e">x 判 cell · co_cellvars=('x',)</text>
+<line class="fl" x1="490" y1="96" x2="490" y2="116" stroke="#6b675e" stroke-width="1.4" marker-end="url(#cpcAs3)"/>
+<text class="ts" x="498" y="110" font-size="10" fill="#6b675e">被内层引用</text>
+<rect class="bx-q" x="340" y="120" width="300" height="56" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="490" y="142" text-anchor="middle" font-size="11" fill="#6b675e">def inner(): return x</text>
+<text class="tc" x="490" y="162" text-anchor="middle" font-size="11" fill="#b03a2e">x 判 free · LOAD_DEREF 取值</text>
+<text class="ts" x="340" y="196" font-size="10" fill="#6b675e">inner 字节码开头：COPY_FREE_VARS 1</text>
+<text class="ts" x="20" y="222" font-size="12" fill="#6b675e">分类规则一句话：本作用域有赋值即 local —— UnboundLocalError 的出处</text>
+<text class="ts" x="20" y="242" font-size="12" fill="#6b675e">闭包不是运行时查找：编译期就安排好的间接寻址</text>
+</svg>
+</figure>
+
 ## 第四站之后：codegen 与两级折叠
 
 codegen（codegen.c）把 AST 翻译成指令序列。折叠从这里开始，而且分两级。
@@ -106,11 +203,22 @@ codegen（codegen.c）把 AST 翻译成指令序列。折叠从这里开始，�
 
 `-O` 系列开关也作用在这一段，且裁的是不同层的东西：
 
-```text
-optimize=0（默认）  全保留
-optimize=1（-O）    assert 语句整条消失（实测 boom 字符串从 co_consts 里消失）
-optimize=2（-OO）   再裁掉 docstring（模块和函数的都裁）
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 158" role="img" aria-label="optimize 三档各裁什么：0 档全保留；1 档 assert 语句整条消失，boom 字符串从 co_consts 里也没了；2 档再裁掉模块与函数的 docstring；三档都不做内联与循环展开" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">-O 系列：三档各裁一层，都不激进</text>
+<rect class="bx-q" x="20" y="40" width="195" height="56" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="t" x="117" y="60" text-anchor="middle" font-size="11" fill="#2b2a26">optimize=0（默认）</text>
+<text class="ts" x="117" y="80" text-anchor="middle" font-size="10" fill="#6b675e">全保留</text>
+<rect class="bx" x="232" y="40" width="195" height="56" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="329" y="60" text-anchor="middle" font-size="11" fill="#2b2a26">optimize=1（-O）</text>
+<text class="ts" x="329" y="80" text-anchor="middle" font-size="10" fill="#6b675e">assert 整条消失，boom 出 co_consts</text>
+<rect class="bx-sick" x="444" y="40" width="195" height="56" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="t" x="541" y="60" text-anchor="middle" font-size="11" fill="#2b2a26">optimize=2（-OO）</text>
+<text class="ts" x="541" y="80" text-anchor="middle" font-size="10" fill="#6b675e">再裁 docstring（模块 + 函数）</text>
+<text class="ts" x="20" y="124" font-size="12" fill="#6b675e">没有内联、没有循环展开：静态编译器没有类型信息，只敢动纯常量</text>
+<text class="ts" x="20" y="146" font-size="12" fill="#6b675e">激进优化在运行时的 Tier 2（JIT 篇）：编译期做小而安全的清理</text>
+</svg>
+</figure>
 
 值得强调：-O 从不做激进优化。没有内联，没有循环展开，那些是 JIT 篇的 Tier 2 在运行时干的事。静态编译器只做「定义上安全」的折叠与清扫，因为它没有类型信息：`x + y` 可能是任何重载，只有 `1 + 2 * 3` 这种纯常量才敢下手。这个分工与特化机制一脉相承：编译期做小而安全的清理，热路径留给运行时的自适应特化。
 
@@ -120,13 +228,31 @@ optimize=2（-OO）   再裁掉 docstring（模块和函数的都裁）
 
 同一份源码在各站的形态变化，并排放好：
 
-```text
-源码      x = 1 + 2 * 3
-AST       BinOp(1, +, BinOp(2, *, 3))     ← 树完整
-symtable  x → local
-codegen   LOAD_SMALL_INT 7; STORE_NAME x  ← 折叠完成
-CFG 优化  （本例已无可优化）
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 240" role="img" aria-label="同一份源码 x = 1 + 2 * 3 在各站的形态：AST 站是完整的 BinOp 嵌套树没有折叠；symtable 站 x 被判为 local；codegen 站折叠完成变成 LOAD_SMALL_INT 7 与 STORE_NAME x；CFG 站本例已无可优化" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">同一份源码，每站换一个形态</text>
+<rect class="bx-q" x="20" y="40" width="110" height="30" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="75" y="59" text-anchor="middle" font-size="11" fill="#6b675e">源码</text>
+<rect class="bx" x="150" y="40" width="480" height="30" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="165" y="59" font-size="11" fill="#6b675e">x = 1 + 2 * 3</text>
+<rect class="bx-q" x="20" y="78" width="110" height="30" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="75" y="97" text-anchor="middle" font-size="11" fill="#6b675e">② AST</text>
+<rect class="bx" x="150" y="78" width="480" height="30" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="165" y="97" font-size="11" fill="#6b675e">Assign(Name('x'), BinOp(1, Add, BinOp(2, Mult, 3)))　← 树完整，没折叠</text>
+<rect class="bx-q" x="20" y="116" width="110" height="30" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="75" y="135" text-anchor="middle" font-size="11" fill="#6b675e">③ symtable</text>
+<rect class="bx" x="150" y="116" width="480" height="30" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="165" y="135" font-size="11" fill="#6b675e">x → local</text>
+<rect class="bx-q" x="20" y="154" width="110" height="30" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="75" y="173" text-anchor="middle" font-size="11" fill="#6b675e">④ codegen</text>
+<rect class="bx-sick" x="150" y="154" width="480" height="30" rx="3" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="tc" x="165" y="173" font-size="11" fill="#b03a2e">LOAD_SMALL_INT 7; STORE_NAME x　← 折叠完成，1+2*3 没了</text>
+<rect class="bx-q" x="20" y="192" width="110" height="30" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="75" y="211" text-anchor="middle" font-size="11" fill="#6b675e">⑤ CFG</text>
+<rect class="bx" x="150" y="192" width="480" height="30" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="165" y="211" font-size="11" fill="#6b675e">本例已无可优化：NOP 对消、跳转压缩都轮不上</text>
+</svg>
+</figure>
 
 这四行就是整条流水线的分工：结构在第二站成型，名字的作用域在第三站判定，常量的值在第四站算出，跳转效率在第五站打磨。每一站的产物都能亲手拿到：`ast.parse` 取第二站的结果，`co_cellvars`/`co_freevars` 是第三站的输出，`dis` 看第四五站的成品。
 
