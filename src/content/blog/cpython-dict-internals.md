@@ -6,11 +6,23 @@ category: cpython
 tags: [CPython, 编程语言, 数据结构]
 ---
 
-```text
-{str 键 × 3}   getsizeof = 184 bytes
-{int 键 × 3}   getsizeof = 224 bytes
-删到只剩 1 键   getsizeof = 184 bytes，纹丝不动
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 140" role="img" aria-label="条形图：三条数据的 str 键字典 getsizeof 为 184 字节，int 键字典为 224 字节，删到只剩一键后仍是 184 字节纹丝不动" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="22" font-size="12" fill="#6b675e">同样三条数据，重量不同（sys.getsizeof，字节）</text>
+<line class="axis" x1="150" y1="32" x2="150" y2="116" stroke="#a29d90" stroke-width="1"/>
+<text class="ts" x="20" y="51" font-size="12" fill="#6b675e">str 键 × 3</text>
+<rect class="bx-q" x="150" y="36" width="329" height="20" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="487" y="51" font-size="12" fill="#6b675e">184</text>
+<text class="ts" x="20" y="77" font-size="12" fill="#6b675e">int 键 × 3</text>
+<rect class="bar" x="150" y="62" width="400" height="20" rx="2" fill="#2b2a26"/>
+<text class="onbar" x="542" y="77" text-anchor="end" font-size="12" fill="#ece9e2">224</text>
+<text class="ts" x="20" y="103" font-size="12" fill="#6b675e">删到只剩 1 键</text>
+<rect class="bx-q" x="150" y="88" width="329" height="20" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="487" y="103" font-size="12" fill="#6b675e">184</text>
+<text class="tc" x="521" y="103" font-size="12" fill="#b03a2e">−2 键，+0 字节</text>
+<text class="ts" x="20" y="132" font-size="11" fill="#6b675e">本机实测 · CPython 3.14.7</text>
+</svg>
+</figure>
 
 这三行输出来自 CPython 3.14.7：
 
@@ -38,16 +50,40 @@ print(len(d), sys.getsizeof(d))
 
 先把全文最重要的分层画出来：
 
-```text
-PyDictObject（外壳）
-    │
-    ├─ ma_used            当前条目数
-    ├─ ma_keys ──────────► PyDictKeysObject（键表）
-    │                        ├─ dk_indices[]   真正的哈希表：槽位 → 条目下标
-    │                        └─ dk_entries[]   条目数组：按插入序追加
-    │
-    └─ ma_values          split 表才有：值数组（键留在共享键表里）
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 236" role="img" aria-label="dict 分层结构：PyDictObject 外壳持有 ma_used 条目数、ma_keys 键表指针、ma_values 值数组指针；ma_keys 指向 PyDictKeysObject 键表，键表内含 dk_indices 哈希槽位数组与 dk_entries 按插入序追加的条目数组，槽位存的是条目下标；ma_values 只有 split 表才有，键留在共享键表里" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="dicA2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-q" x="30" y="36" width="250" height="92" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="155" y="58" text-anchor="middle" font-size="12" fill="#2b2a26">PyDictObject（外壳）</text>
+<text class="ts" x="46" y="80" font-size="10.5" fill="#6b675e">ma_used · 当前条目数</text>
+<text class="ts" x="46" y="97" font-size="10.5" fill="#6b675e">ma_keys · 键表指针</text>
+<text class="ts" x="46" y="114" font-size="10.5" fill="#6b675e">ma_values · 值数组指针</text>
+<line class="fl" x1="280" y1="92" x2="352" y2="92" stroke="#6b675e" stroke-width="1.3" marker-end="url(#dicA2)"/>
+<text class="ts" x="316" y="84" text-anchor="middle" font-size="10" fill="#6b675e">ma_keys</text>
+<rect class="bx" x="356" y="36" width="274" height="92" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="t" x="493" y="58" text-anchor="middle" font-size="12" fill="#2b2a26">PyDictKeysObject（键表）</text>
+<text class="ts" x="372" y="80" font-size="10.5" fill="#6b675e">dk_refcnt · 可被多个 dict 共享</text>
+<text class="ts" x="372" y="97" font-size="10.5" fill="#6b675e">dk_kind / dk_version / dk_usable …</text>
+<text class="ts" x="372" y="114" font-size="10.5" fill="#6b675e">两张数组（下面展开）</text>
+<line class="fl" x1="100" y1="128" x2="100" y2="156" stroke="#6b675e" stroke-width="1.3" marker-end="url(#dicA2)"/>
+<rect class="bx-gone" x="30" y="160" width="230" height="60" rx="5" fill="#ece9e2" stroke="#a29d90" stroke-width="1.2" stroke-dasharray="5 3"/>
+<text class="ts" x="145" y="182" text-anchor="middle" font-size="10.5" fill="#2b2a26">ma_values → 值数组</text>
+<text class="ts" x="145" y="200" text-anchor="middle" font-size="10" fill="#6b675e">仅 split 表有 · 键留在共享键表</text>
+<line class="fl" x1="430" y1="128" x2="430" y2="156" stroke="#6b675e" stroke-width="1.3" marker-end="url(#dicA2)"/>
+<line class="fl" x1="560" y1="128" x2="560" y2="156" stroke="#6b675e" stroke-width="1.3" marker-end="url(#dicA2)"/>
+<rect class="bx-q" x="356" y="160" width="148" height="60" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="430" y="180" text-anchor="middle" font-size="10.5" fill="#2b2a26">dk_indices[]</text>
+<text class="ts" x="430" y="196" text-anchor="middle" font-size="10" fill="#6b675e">真正的哈希表</text>
+<text class="ts" x="430" y="211" text-anchor="middle" font-size="10" fill="#6b675e">槽位 → 条目下标</text>
+<rect class="bx-q" x="516" y="160" width="114" height="60" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="573" y="180" text-anchor="middle" font-size="10.5" fill="#2b2a26">dk_entries[]</text>
+<text class="ts" x="573" y="196" text-anchor="middle" font-size="10" fill="#6b675e">条目数组</text>
+<text class="ts" x="573" y="211" text-anchor="middle" font-size="10" fill="#6b675e">按插入序追加</text>
+<line class="fl" x1="504" y1="190" x2="512" y2="190" stroke="#6b675e" stroke-width="1.2" marker-end="url(#dicA2)"/>
+</svg>
+</figure>
 
 哈希表不在条目数组里，条目数组也不按哈希序排列。`dk_indices` 是哈希表，它存的不是键，是下标；`dk_entries` 是一个几乎只追加的数组，插入序就是它天生的顺序。dict 的大部分行为，迭代有序、删除不缩表、共享键、版本号失效，都是这张分层的推论。
 
@@ -75,35 +111,80 @@ dict.__basicsize__         48 bytes
 
 `PyDictKeysObject` 把“哈希定位”和“存储条目”拆成两块：
 
-```text
-PyDictKeysObject
-┌────────────────────────────────┐
-│ dk_refcnt   引用计数（可共享）   │
-│ dk_log2_size        槽数 = 2^n │
-│ dk_log2_index_bytes 索引宽度    │
-│ dk_kind     键形态（见后文）    │
-│ dk_version  键集合版本号        │
-│ dk_usable   剩余可用条目        │
-│ dk_nentries 已用条目数          │
-├────────────────────────────────┤
-│ dk_indices[dk_size]  哈希槽位数组 │
-├────────────────────────────────┤
-│ dk_entries[USABLE_FRACTION]     │
-│   条目数组，按插入序追加          │
-└────────────────────────────────┘
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 330" role="img" aria-label="PyDictKeysObject 纵向结构：头部七个字段 dk_refcnt、dk_log2_size、dk_log2_index_bytes、dk_kind、dk_version、dk_usable、dk_nentries；中部 dk_indices 哈希槽位数组，每槽存 -1 空、-2 墓碑或非负条目下标；底部 dk_entries 条目数组按插入序追加" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<rect class="bx" x="40" y="30" width="360" height="286" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="t" x="220" y="54" text-anchor="middle" font-size="12" fill="#2b2a26">PyDictKeysObject</text>
+<text class="ts" x="56" y="78" font-size="10.5" fill="#6b675e">dk_refcnt · 引用计数（可共享）</text>
+<text class="ts" x="56" y="95" font-size="10.5" fill="#6b675e">dk_log2_size · 槽数 = 2 的 n 次方</text>
+<text class="ts" x="56" y="112" font-size="10.5" fill="#6b675e">dk_log2_index_bytes · 索引宽度</text>
+<text class="ts" x="56" y="129" font-size="10.5" fill="#6b675e">dk_kind · 键形态（三种，见后文）</text>
+<text class="ts" x="56" y="146" font-size="10.5" fill="#6b675e">dk_version · 键集合版本号</text>
+<text class="ts" x="56" y="163" font-size="10.5" fill="#6b675e">dk_usable · 剩余可用条目</text>
+<text class="ts" x="56" y="180" font-size="10.5" fill="#6b675e">dk_nentries · 已用条目数</text>
+<line class="axis" x1="40" y1="192" x2="400" y2="192" stroke="#a29d90" stroke-width="1.2"/>
+<text class="ts" x="56" y="212" font-size="10.5" fill="#2b2a26">dk_indices[dk_size] · 哈希槽位数组</text>
+<rect class="bx-q" x="56" y="220" width="38" height="26" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="75" y="237" text-anchor="middle" font-size="10" fill="#a29d90">-1</text>
+<rect class="bx-q" x="96" y="220" width="38" height="26" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="115" y="237" text-anchor="middle" font-size="10" fill="#2b2a26">0</text>
+<rect class="bx-q" x="136" y="220" width="38" height="26" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="155" y="237" text-anchor="middle" font-size="10" fill="#a29d90">-1</text>
+<rect class="bx-sick" x="176" y="220" width="38" height="26" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/>
+<text class="ts" x="195" y="237" text-anchor="middle" font-size="10" fill="#b03a2e">-2</text>
+<rect class="bx-q" x="216" y="220" width="38" height="26" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="235" y="237" text-anchor="middle" font-size="10" fill="#2b2a26">1</text>
+<rect class="bx-q" x="256" y="220" width="38" height="26" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="275" y="237" text-anchor="middle" font-size="10" fill="#a29d90">-1</text>
+<rect class="bx-q" x="296" y="220" width="38" height="26" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="315" y="237" text-anchor="middle" font-size="10" fill="#2b2a26">2</text>
+<rect class="bx-q" x="336" y="220" width="38" height="26" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="355" y="237" text-anchor="middle" font-size="10" fill="#a29d90">-1</text>
+<line class="axis" x1="40" y1="258" x2="400" y2="258" stroke="#a29d90" stroke-width="1.2"/>
+<text class="ts" x="56" y="278" font-size="10.5" fill="#2b2a26">dk_entries[] · 条目数组，按插入序追加</text>
+<rect class="bx-q" x="56" y="284" width="60" height="24" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="86" y="300" text-anchor="middle" font-size="10" fill="#2b2a26">[0] → a</text>
+<rect class="bx-q" x="120" y="284" width="60" height="24" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="150" y="300" text-anchor="middle" font-size="10" fill="#2b2a26">[1] → b</text>
+<rect class="bx-q" x="184" y="284" width="60" height="24" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="214" y="300" text-anchor="middle" font-size="10" fill="#2b2a26">[2] → c</text>
+<rect class="bx-gone" x="248" y="284" width="60" height="24" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="4 3"/>
+<text class="ts" x="278" y="300" text-anchor="middle" font-size="10" fill="#a29d90">[3] 洞</text>
+<text class="ts" x="420" y="230" font-size="10.5" fill="#a29d90">-1 · 空槽</text>
+<text class="tc" x="420" y="248" font-size="10.5" fill="#b03a2e">-2 · 墓碑，删除的痕迹</text>
+<text class="ts" x="420" y="266" font-size="10.5" fill="#6b675e">非负 · dk_entries 的条目下标</text>
+<text class="ts" x="420" y="300" font-size="10.5" fill="#6b675e">洞不回收：容量只数没用过的槽</text>
+</svg>
+</figure>
 
 `dk_indices` 每个槽存的是 `-1`（空）、`-2`（墓碑）或一个非负下标，指向 `dk_entries` 里的条目。槽位宽度随表大小增长：8～128 槽用 1 字节，之后依次 2、4、8 字节。所以表越大，索引表本身相对越省：槽位宽度是按需选择的，不是一律 8 字节。
 
 条目有两种规格。全是精确 str 键的表用 16 字节的 `PyDictUnicodeEntry`：
 
-```text
-PyDictUnicodeEntry          PyDictKeyEntry（通用）
-┌────────────┬──────────┐   ┌────────┬────────┬──────────┐
-│ me_key     │ me_value │   │ me_hash│ me_key │ me_value │
-│ 8 bytes    │ 8 bytes  │   │ 8      │ 8      │ 8        │
-└────────────┴──────────┘   └────────┴────────┴──────────┘
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 196" role="img" aria-label="两种条目规格对照：PyDictUnicodeEntry 只有 me_key 与 me_value 各 8 字节共 16 字节；PyDictKeyEntry 通用条目多出 me_hash 8 字节共 24 字节，用于缓存非 str 键的哈希值" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="22" font-size="12" fill="#6b675e">两种条目规格（每格 8 字节）</text>
+<text class="ts" x="40" y="52" font-size="11" fill="#2b2a26">PyDictUnicodeEntry · 全精确 str 键</text>
+<rect class="bx-q" x="40" y="60" width="110" height="40" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="95" y="77" text-anchor="middle" font-size="10.5" fill="#2b2a26">me_key</text>
+<text class="ts" x="95" y="92" text-anchor="middle" font-size="9.5" fill="#6b675e">8 字节</text>
+<rect class="bx-q" x="150" y="60" width="110" height="40" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="205" y="77" text-anchor="middle" font-size="10.5" fill="#2b2a26">me_value</text>
+<text class="ts" x="205" y="92" text-anchor="middle" font-size="9.5" fill="#6b675e">8 字节</text>
+<text class="t" x="280" y="85" font-size="11" fill="#2b2a26">= 16 字节/条</text>
+<text class="ts" x="40" y="130" font-size="11" fill="#2b2a26">PyDictKeyEntry · 通用</text>
+<rect class="bx-sick" x="40" y="138" width="110" height="40" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="ts" x="95" y="155" text-anchor="middle" font-size="10.5" fill="#b03a2e">me_hash</text>
+<text class="ts" x="95" y="170" text-anchor="middle" font-size="9.5" fill="#6b675e">8 字节</text>
+<rect class="bx-q" x="150" y="138" width="110" height="40" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="205" y="155" text-anchor="middle" font-size="10.5" fill="#2b2a26">me_key</text>
+<text class="ts" x="205" y="170" text-anchor="middle" font-size="9.5" fill="#6b675e">8 字节</text>
+<rect class="bx-q" x="260" y="138" width="110" height="40" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="315" y="155" text-anchor="middle" font-size="10.5" fill="#2b2a26">me_value</text>
+<text class="ts" x="315" y="170" text-anchor="middle" font-size="9.5" fill="#6b675e">8 字节</text>
+<text class="t" x="390" y="163" font-size="11" fill="#2b2a26">= 24 字节/条</text>
+</svg>
+</figure>
 
 通用条目多出的 `me_hash` 缓存非 str 键的哈希值；str 自带哈希缓存（下一篇的主角），不必重复存。这就解释了开场第二行：同样三条数据，int 键表用 24 字节条目、str 键表用 16 字节条目，224 对 184 的差距 40 = 5 个条目容量槽 × 8 字节的单条差。两种表的 8 槽都提供 5 条容量，差的是每条规格。
 
@@ -129,10 +210,41 @@ sys.getsizeof({'a':1})           184 ✓
 
 删除呢？条目数组原则上只追加不搬家，删除只做两件事：条目的 `me_key`、`me_value` 置 NULL，索引表对应槽位写 `-2`（DKIX_DUMMY，墓碑）。
 
-```text
-删除前：dk_entries = [a][b][c][d][e]   dk_indices: 槽6 → 条目b
-删除 b：dk_entries = [a][ ][c][d][e]   dk_indices: 槽6 → DUMMY(-2)
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 176" role="img" aria-label="删除键 b 前后对照：条目数组中 b 变成空洞但 c、d、e 不搬家，dk_nentries 不变；索引表槽 6 从指向条目 b 改写为 -2 墓碑" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="22" font-size="12" fill="#6b675e">删除 b 的前后：条目数组不搬家</text>
+<text class="ts" x="20" y="62" font-size="11" fill="#6b675e">删除前</text>
+<rect class="bx-q" x="90" y="44" width="60" height="30" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="120" y="64" text-anchor="middle" font-size="11" fill="#2b2a26">a</text>
+<rect class="bx-q" x="154" y="44" width="60" height="30" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="184" y="64" text-anchor="middle" font-size="11" fill="#2b2a26">b</text>
+<rect class="bx-q" x="218" y="44" width="60" height="30" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="248" y="64" text-anchor="middle" font-size="11" fill="#2b2a26">c</text>
+<rect class="bx-q" x="282" y="44" width="60" height="30" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="312" y="64" text-anchor="middle" font-size="11" fill="#2b2a26">d</text>
+<rect class="bx-q" x="346" y="44" width="60" height="30" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="376" y="64" text-anchor="middle" font-size="11" fill="#2b2a26">e</text>
+<text class="ts" x="424" y="64" font-size="10.5" fill="#6b675e">dk_indices：槽 6 存下标 1，指向条目 b</text>
+<text class="ts" x="20" y="128" font-size="11" fill="#6b675e">删除 b</text>
+<rect class="bx-q" x="90" y="110" width="60" height="30" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="120" y="130" text-anchor="middle" font-size="11" fill="#2b2a26">a</text>
+<rect class="bx-gone" x="154" y="110" width="60" height="30" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1.1" stroke-dasharray="4 3"/>
+<text class="ts" x="184" y="130" text-anchor="middle" font-size="10.5" fill="#a29d90">洞</text>
+<rect class="bx-q" x="218" y="110" width="60" height="30" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="248" y="130" text-anchor="middle" font-size="11" fill="#2b2a26">c</text>
+<rect class="bx-q" x="282" y="110" width="60" height="30" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="312" y="130" text-anchor="middle" font-size="11" fill="#2b2a26">d</text>
+<rect class="bx-q" x="346" y="110" width="60" height="30" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="376" y="130" text-anchor="middle" font-size="11" fill="#2b2a26">e</text>
+<text class="ts" x="424" y="124" font-size="10.5" fill="#6b675e">槽 6 改写为 -2（墓碑）</text>
+<text class="tc" x="424" y="142" font-size="10.5" fill="#b03a2e">c、d、e 的下标一个没动</text>
+<text class="ts" x="120" y="158" text-anchor="middle" font-size="9.5" fill="#a29d90">下标 0</text>
+<text class="ts" x="184" y="158" text-anchor="middle" font-size="9.5" fill="#a29d90">1</text>
+<text class="ts" x="248" y="158" text-anchor="middle" font-size="9.5" fill="#a29d90">2</text>
+<text class="ts" x="312" y="158" text-anchor="middle" font-size="9.5" fill="#a29d90">3</text>
+<text class="ts" x="376" y="158" text-anchor="middle" font-size="9.5" fill="#a29d90">4</text>
+</svg>
+</figure>
 
 墓碑保留在探测链上，这条链才不断（下一节细说）。但条目数组里留下了一个洞：`dk_nentries` 不减，`dk_usable` 也不回收。重插同一个键不会填洞，而是在尾部追加新条目、覆盖墓碑槽位：
 
@@ -161,12 +273,60 @@ print(list(d))          # ['b', 'c', 'a']
 
 本机实测的尺寸阶梯（str 键、逐个插入）：
 
-```text
-n        0     1..5   6..10  11..21  22..42  43..85  86..170  171..
-getsizeof 64     184     272     464     832    1584     3328   6576
-表大小          8      16      32      64     128      256     512
-条目容量         5     10      21      42      85      170     341
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 292" role="img" aria-label="getsizeof 随键数增长的阶梯图（纵轴对数）：0 键 64 字节，1 到 5 键 184，6 到 10 键 272，11 到 21 键 464，22 到 42 键 832，43 到 85 键 1584，86 到 170 键 3328，171 键起 6576；每级对应表大小 8、16、32、64、128、256、512 槽，条目容量 5、10、21、42、85、170、341" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="dicA7" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="26" font-size="11" fill="#6b675e">getsizeof / 字节（对数刻度）</text>
+<line class="grid" x1="126" y1="173" x2="126" y2="210" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 3"/>
+<line class="grid" x1="246" y1="159" x2="246" y2="210" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 3"/>
+<line class="grid" x1="297" y1="141" x2="297" y2="210" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 3"/>
+<line class="grid" x1="359" y1="120" x2="359" y2="210" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 3"/>
+<line class="grid" x1="422" y1="98" x2="422" y2="210" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 3"/>
+<line class="grid" x1="487" y1="72" x2="487" y2="210" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 3"/>
+<line class="grid" x1="552" y1="48" x2="552" y2="210" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 3"/>
+<polyline class="curve-k" points="60,210 126,210 126,173 246,173 246,159 297,159 297,141 359,141 359,120 422,120 422,98 487,98 487,72 552,72 552,48 620,48" fill="none" stroke="#2b2a26" stroke-width="1.8"/>
+<text class="t" x="93" y="202" text-anchor="middle" font-size="11" fill="#2b2a26">64</text>
+<text class="t" x="186" y="167" text-anchor="middle" font-size="11" fill="#2b2a26">184</text>
+<text class="t" x="271" y="153" text-anchor="middle" font-size="11" fill="#2b2a26">272</text>
+<text class="t" x="328" y="135" text-anchor="middle" font-size="11" fill="#2b2a26">464</text>
+<text class="t" x="390" y="114" text-anchor="middle" font-size="11" fill="#2b2a26">832</text>
+<text class="t" x="454" y="92" text-anchor="middle" font-size="11" fill="#2b2a26">1584</text>
+<text class="t" x="519" y="66" text-anchor="middle" font-size="11" fill="#2b2a26">3328</text>
+<text class="t" x="586" y="42" text-anchor="middle" font-size="11" fill="#2b2a26">6576</text>
+<text class="tc" x="519" y="90" text-anchor="middle" font-size="9" fill="#b03a2e">索引升 2 字节</text>
+<line class="axis" x1="60" y1="36" x2="60" y2="210" stroke="#a29d90" stroke-width="1"/>
+<line class="axis" x1="60" y1="210" x2="632" y2="210" stroke="#a29d90" stroke-width="1.2" marker-end="url(#dicA7)"/>
+<text class="ts" x="93" y="228" text-anchor="middle" font-size="9.5" fill="#6b675e">0</text>
+<text class="ts" x="186" y="228" text-anchor="middle" font-size="9.5" fill="#6b675e">1..5</text>
+<text class="ts" x="271" y="228" text-anchor="middle" font-size="9.5" fill="#6b675e">6..10</text>
+<text class="ts" x="328" y="228" text-anchor="middle" font-size="9.5" fill="#6b675e">11..21</text>
+<text class="ts" x="390" y="228" text-anchor="middle" font-size="9.5" fill="#6b675e">22..42</text>
+<text class="ts" x="454" y="228" text-anchor="middle" font-size="9.5" fill="#6b675e">43..85</text>
+<text class="ts" x="519" y="228" text-anchor="middle" font-size="9.5" fill="#6b675e">86..170</text>
+<text class="ts" x="586" y="228" text-anchor="middle" font-size="9.5" fill="#6b675e">171..</text>
+<text class="ts" x="20" y="248" font-size="10" fill="#6b675e">槽数</text>
+<text class="ts" x="93" y="248" text-anchor="middle" font-size="9.5" fill="#6b675e">–</text>
+<text class="ts" x="186" y="248" text-anchor="middle" font-size="9.5" fill="#6b675e">8</text>
+<text class="ts" x="271" y="248" text-anchor="middle" font-size="9.5" fill="#6b675e">16</text>
+<text class="ts" x="328" y="248" text-anchor="middle" font-size="9.5" fill="#6b675e">32</text>
+<text class="ts" x="390" y="248" text-anchor="middle" font-size="9.5" fill="#6b675e">64</text>
+<text class="ts" x="454" y="248" text-anchor="middle" font-size="9.5" fill="#6b675e">128</text>
+<text class="ts" x="519" y="248" text-anchor="middle" font-size="9.5" fill="#6b675e">256</text>
+<text class="ts" x="586" y="248" text-anchor="middle" font-size="9.5" fill="#6b675e">512</text>
+<text class="ts" x="20" y="266" font-size="10" fill="#6b675e">容量</text>
+<text class="ts" x="93" y="266" text-anchor="middle" font-size="9.5" fill="#6b675e">–</text>
+<text class="ts" x="186" y="266" text-anchor="middle" font-size="9.5" fill="#6b675e">5</text>
+<text class="ts" x="271" y="266" text-anchor="middle" font-size="9.5" fill="#6b675e">10</text>
+<text class="ts" x="328" y="266" text-anchor="middle" font-size="9.5" fill="#6b675e">21</text>
+<text class="ts" x="390" y="266" text-anchor="middle" font-size="9.5" fill="#6b675e">42</text>
+<text class="ts" x="454" y="266" text-anchor="middle" font-size="9.5" fill="#6b675e">85</text>
+<text class="ts" x="519" y="266" text-anchor="middle" font-size="9.5" fill="#6b675e">170</text>
+<text class="ts" x="586" y="266" text-anchor="middle" font-size="9.5" fill="#6b675e">341</text>
+<text class="ts" x="20" y="286" font-size="10.5" fill="#6b675e">横轴为键数 n · 0 键时只有外壳与共享空键表</text>
+</svg>
+</figure>
 
 每一级台阶都精确落在 2/3 线上，公式可整体验算：外壳 48 + GC 头 16 + 键表头 32 + 索引表 + 条目容量 × 16。86..170 那一级是 256 槽表，索引已升到 2 字节宽：48 + 16 + 32 + 512 + 170×16 = 3328。逆推也成立：`dict.fromkeys(range(n))` 与字面量构建都会按 `estimate_log2_keysize` 预留，一次到位不扩容。
 
@@ -201,6 +361,81 @@ class K:
 ```
 
 hash 相同，五只键在 8 槽表里只能各占一槽。按递推式手算（mask=7，perturb 初值 1，一次右移后恒 0）：槽序是 1 → 6 → 7 → 4 → 5。实际查找 `K("d")` 时，`__eq__` 依次见到 a、b、c、d，探测链 1, 6, 7, 4 上的每只键都确实被比对过。
+
+这条链画出来：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 268" role="img" aria-label="探测链示意：八个槽位中 a 占槽 1、d 占槽 4、e 占槽 5、b 占槽 6、c 占槽 7；查 d 的探测顺序为槽 1 比对 a、槽 6 比对 b、槽 7 比对 c、槽 4 命中 d；删掉 b 后槽 6 变为 -2 墓碑，探测跨过它继续，比对顺序变为 a、c、d" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="30" font-size="12" fill="#6b675e">查 d：五只键全在（hash 全是 1，槽序 1→6→7→4）</text>
+<rect class="bx-q" x="30" y="40" width="56" height="40" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="58" y="54" text-anchor="middle" font-size="8.5" fill="#a29d90">0</text>
+<text class="ts" x="58" y="72" text-anchor="middle" font-size="11" fill="#a29d90">-1</text>
+<rect class="bx-q" x="92" y="40" width="56" height="40" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="120" y="54" text-anchor="middle" font-size="8.5" fill="#a29d90">1</text>
+<text class="t" x="120" y="72" text-anchor="middle" font-size="12" fill="#2b2a26">a</text>
+<rect class="bx-q" x="154" y="40" width="56" height="40" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="182" y="54" text-anchor="middle" font-size="8.5" fill="#a29d90">2</text>
+<text class="ts" x="182" y="72" text-anchor="middle" font-size="11" fill="#a29d90">-1</text>
+<rect class="bx-q" x="216" y="40" width="56" height="40" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="244" y="54" text-anchor="middle" font-size="8.5" fill="#a29d90">3</text>
+<text class="ts" x="244" y="72" text-anchor="middle" font-size="11" fill="#a29d90">-1</text>
+<rect class="bx-sick" x="278" y="40" width="56" height="40" rx="3" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="ts" x="306" y="54" text-anchor="middle" font-size="8.5" fill="#a29d90">4</text>
+<text class="t" x="306" y="72" text-anchor="middle" font-size="12" fill="#b03a2e">d</text>
+<rect class="bx-q" x="340" y="40" width="56" height="40" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="368" y="54" text-anchor="middle" font-size="8.5" fill="#a29d90">5</text>
+<text class="t" x="368" y="72" text-anchor="middle" font-size="12" fill="#2b2a26">e</text>
+<rect class="bx-q" x="402" y="40" width="56" height="40" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="430" y="54" text-anchor="middle" font-size="8.5" fill="#a29d90">6</text>
+<text class="t" x="430" y="72" text-anchor="middle" font-size="12" fill="#2b2a26">b</text>
+<rect class="bx-q" x="464" y="40" width="56" height="40" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="492" y="54" text-anchor="middle" font-size="8.5" fill="#a29d90">7</text>
+<text class="t" x="492" y="72" text-anchor="middle" font-size="12" fill="#2b2a26">c</text>
+<rect class="bx" x="107" y="90" width="26" height="20" rx="10" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="120" y="104" text-anchor="middle" font-size="10" fill="#2b2a26">①</text>
+<rect class="bx" x="417" y="90" width="26" height="20" rx="10" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="430" y="104" text-anchor="middle" font-size="10" fill="#2b2a26">②</text>
+<rect class="bx" x="479" y="90" width="26" height="20" rx="10" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="492" y="104" text-anchor="middle" font-size="10" fill="#2b2a26">③</text>
+<rect class="bx-sick" x="278" y="90" width="56" height="20" rx="10" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/>
+<text class="tc" x="306" y="104" text-anchor="middle" font-size="10" fill="#b03a2e">④ 命中</text>
+<text class="ts" x="546" y="104" font-size="10.5" fill="#6b675e">①②③④ = 探测次序</text>
+<text class="ts" x="20" y="148" font-size="12" fill="#6b675e">再查 d：删掉 b 之后</text>
+<rect class="bx-q" x="30" y="158" width="56" height="40" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="58" y="172" text-anchor="middle" font-size="8.5" fill="#a29d90">0</text>
+<text class="ts" x="58" y="190" text-anchor="middle" font-size="11" fill="#a29d90">-1</text>
+<rect class="bx-q" x="92" y="158" width="56" height="40" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="120" y="172" text-anchor="middle" font-size="8.5" fill="#a29d90">1</text>
+<text class="t" x="120" y="190" text-anchor="middle" font-size="12" fill="#2b2a26">a</text>
+<rect class="bx-q" x="154" y="158" width="56" height="40" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="182" y="172" text-anchor="middle" font-size="8.5" fill="#a29d90">2</text>
+<text class="ts" x="182" y="190" text-anchor="middle" font-size="11" fill="#a29d90">-1</text>
+<rect class="bx-q" x="216" y="158" width="56" height="40" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="244" y="172" text-anchor="middle" font-size="8.5" fill="#a29d90">3</text>
+<text class="ts" x="244" y="190" text-anchor="middle" font-size="11" fill="#a29d90">-1</text>
+<rect class="bx-sick" x="278" y="158" width="56" height="40" rx="3" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="ts" x="306" y="172" text-anchor="middle" font-size="8.5" fill="#a29d90">4</text>
+<text class="t" x="306" y="190" text-anchor="middle" font-size="12" fill="#b03a2e">d</text>
+<rect class="bx-q" x="340" y="158" width="56" height="40" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="368" y="172" text-anchor="middle" font-size="8.5" fill="#a29d90">5</text>
+<text class="t" x="368" y="190" text-anchor="middle" font-size="12" fill="#2b2a26">e</text>
+<rect class="bx-sick" x="402" y="158" width="56" height="40" rx="3" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2" stroke-dasharray="4 3"/>
+<text class="ts" x="430" y="172" text-anchor="middle" font-size="8.5" fill="#a29d90">6</text>
+<text class="tc" x="430" y="190" text-anchor="middle" font-size="11" fill="#b03a2e">-2</text>
+<rect class="bx-q" x="464" y="158" width="56" height="40" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="492" y="172" text-anchor="middle" font-size="8.5" fill="#a29d90">7</text>
+<text class="t" x="492" y="190" text-anchor="middle" font-size="12" fill="#2b2a26">c</text>
+<rect class="bx" x="107" y="208" width="26" height="20" rx="10" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="120" y="222" text-anchor="middle" font-size="10" fill="#2b2a26">①</text>
+<rect class="bx-gone" x="404" y="208" width="52" height="20" rx="10" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="4 3"/>
+<text class="ts" x="430" y="222" text-anchor="middle" font-size="10" fill="#6b675e">② 跨过</text>
+<rect class="bx" x="479" y="208" width="26" height="20" rx="10" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="492" y="222" text-anchor="middle" font-size="10" fill="#2b2a26">③</text>
+<rect class="bx-sick" x="278" y="208" width="56" height="20" rx="10" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/>
+<text class="tc" x="306" y="222" text-anchor="middle" font-size="10" fill="#b03a2e">④ 命中</text>
+<text class="ts" x="20" y="254" font-size="11" fill="#6b675e">② 处读到 -2：不是条目，也不是终点，探测照常走下去</text>
+</svg>
+</figure>
 
 墓碑的作用在这一刻显形。删掉链中段的 b 再查 d：`__eq__` 见到 a、c、d，链上少了 b 那一环，但槽 6 的 DUMMY 让探测继续走到 4。更极端的实验：删掉链上除 e 以外的全部四只键，再查 e，一次 `__eq__` 就命中。
 
@@ -237,16 +472,43 @@ print(sys.getsizeof(d))     # 352：已转 GENERAL，16 槽表
 
 如果每只实例的 `__dict__` 都自带一份键表，一千只 Point 实例的键都是 x、y 两条，键表就要存一千份。PEP 412 起的答案是共享键表（split 表）：
 
-```text
-类 Point（所有实例共享）
-    PyDictKeysObject（SPLIT 形态，最多 30 个键）
-    dk_entries: [x][y][z]...     ← 键只存一份
-        ▲
-        │ ma_keys 指向同一张表
-   ┌────┴────┬─────────┐
-instance_1  instance_2  instance_3
-   values: [1,2]  [3,4]  [5,6]   ← 各自的值数组（inline values 或独立分配）
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 312" role="img" aria-label="共享键表结构：类 Point 持有一张 SPLIT 形态的 PyDictKeysObject，键 x、y、z 只存一份，配额 30 个；三只实例的 ma_keys 都指向同一张键表，各自的值数组分别存 1,2 与 3,4 与 5,6" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="dicA9" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-q" x="250" y="24" width="160" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="t" x="330" y="44" text-anchor="middle" font-size="12" fill="#2b2a26">类 Point</text>
+<line class="fl" x1="330" y1="54" x2="330" y2="74" stroke="#6b675e" stroke-width="1.3" marker-end="url(#dicA9)"/>
+<rect class="bx" x="170" y="78" width="320" height="94" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="t" x="330" y="100" text-anchor="middle" font-size="11.5" fill="#2b2a26">PyDictKeysObject · SPLIT 形态</text>
+<text class="ts" x="330" y="118" text-anchor="middle" font-size="10" fill="#6b675e">dk_entries：键只存一份</text>
+<rect class="bx-q" x="208" y="128" width="56" height="26" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="236" y="146" text-anchor="middle" font-size="11" fill="#2b2a26">x</text>
+<rect class="bx-q" x="272" y="128" width="56" height="26" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="300" y="146" text-anchor="middle" font-size="11" fill="#2b2a26">y</text>
+<rect class="bx-q" x="336" y="128" width="56" height="26" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="364" y="146" text-anchor="middle" font-size="11" fill="#2b2a26">z</text>
+<rect class="bx-gone" x="400" y="128" width="56" height="26" rx="3" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="4 3"/>
+<text class="ts" x="428" y="146" text-anchor="middle" font-size="11" fill="#a29d90">…</text>
+<text class="ts" x="502" y="96" font-size="10.5" fill="#6b675e">所有实例共享这张表</text>
+<text class="tc" x="502" y="114" font-size="10.5" fill="#b03a2e">键配额 30 个</text>
+<line class="fl" x1="240" y1="172" x2="140" y2="216" stroke="#6b675e" stroke-width="1.3" marker-end="url(#dicA9)"/>
+<line class="fl" x1="330" y1="172" x2="330" y2="216" stroke="#6b675e" stroke-width="1.3" marker-end="url(#dicA9)"/>
+<line class="fl" x1="420" y1="172" x2="520" y2="216" stroke="#6b675e" stroke-width="1.3" marker-end="url(#dicA9)"/>
+<text class="ts" x="338" y="200" font-size="10" fill="#6b675e">ma_keys 指向同一张表</text>
+<rect class="bx-q" x="60" y="220" width="160" height="62" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="t" x="140" y="242" text-anchor="middle" font-size="11" fill="#2b2a26">instance_1</text>
+<text class="ts" x="140" y="264" text-anchor="middle" font-size="10.5" fill="#6b675e">values: [1, 2]</text>
+<rect class="bx-q" x="250" y="220" width="160" height="62" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="t" x="330" y="242" text-anchor="middle" font-size="11" fill="#2b2a26">instance_2</text>
+<text class="ts" x="330" y="264" text-anchor="middle" font-size="10.5" fill="#6b675e">values: [3, 4]</text>
+<rect class="bx-q" x="440" y="220" width="160" height="62" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="t" x="520" y="242" text-anchor="middle" font-size="11" fill="#2b2a26">instance_3</text>
+<text class="ts" x="520" y="264" text-anchor="middle" font-size="10.5" fill="#6b675e">values: [5, 6]</text>
+<text class="ts" x="20" y="304" font-size="11" fill="#6b675e">值数组可以内联在实例主体里，也可以独立分配；键表始终只有类上这一张</text>
+</svg>
+</figure>
 
 键存在类上，值存在实例上。访问 `p.x` 时，解释器拿着共享键表查到下标 1，再从 p 自己的值数组取 values[1]。`p.__dict__` 这个真字典对象按需物化，物化时直接把实例的值数组接上去，不复制键值。
 
