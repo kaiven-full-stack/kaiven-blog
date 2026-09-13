@@ -16,13 +16,45 @@ tags: [Redis, 数据库]
 
 Redis 的键空间是一张标准的链地址哈希表。每个桶存一个指针，哈希冲突的键在同一桶里串成链：
 
-```text
-桶  0 ──> entry ──> entry
-桶  1 ──> NULL
-桶  2 ──> entry
-桶  3 ──> entry ──> entry ──> entry
-...
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 210" role="img" aria-label="链地址法哈希表：桶 0 串着两个 entry，桶 1 为空，桶 2 一个 entry，桶 3 串着三个 entry；桶数是 2 的幂，hash 与 size 减 1 做一次与运算就定位到桶" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="red3As1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">链地址法：冲突的键串在同一个桶里</text>
+<rect class="bx" x="40" y="44" width="80" height="28" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="80" y="62" text-anchor="middle" font-size="11" fill="#6b675e">桶 0</text>
+<line class="fl" x1="120" y1="58" x2="156" y2="58" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red3As1)"/>
+<rect class="bx-q" x="160" y="44" width="76" height="28" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="198" y="62" text-anchor="middle" font-size="11" fill="#6b675e">entry</text>
+<line class="fl" x1="236" y1="58" x2="262" y2="58" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red3As1)"/>
+<rect class="bx-q" x="266" y="44" width="76" height="28" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="304" y="62" text-anchor="middle" font-size="11" fill="#6b675e">entry</text>
+<rect class="bx" x="40" y="80" width="80" height="28" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="80" y="98" text-anchor="middle" font-size="11" fill="#6b675e">桶 1</text>
+<text class="ts" x="160" y="98" font-size="11" fill="#6b675e">NULL</text>
+<rect class="bx" x="40" y="116" width="80" height="28" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="80" y="134" text-anchor="middle" font-size="11" fill="#6b675e">桶 2</text>
+<line class="fl" x1="120" y1="130" x2="156" y2="130" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red3As1)"/>
+<rect class="bx-q" x="160" y="116" width="76" height="28" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="198" y="134" text-anchor="middle" font-size="11" fill="#6b675e">entry</text>
+<rect class="bx" x="40" y="152" width="80" height="28" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="80" y="170" text-anchor="middle" font-size="11" fill="#6b675e">桶 3</text>
+<line class="fl" x1="120" y1="166" x2="156" y2="166" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red3As1)"/>
+<rect class="bx-q" x="160" y="152" width="76" height="28" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="198" y="170" text-anchor="middle" font-size="11" fill="#6b675e">entry</text>
+<line class="fl" x1="236" y1="166" x2="262" y2="166" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red3As1)"/>
+<rect class="bx-q" x="266" y="152" width="76" height="28" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="304" y="170" text-anchor="middle" font-size="11" fill="#6b675e">entry</text>
+<line class="fl" x1="342" y1="166" x2="368" y2="166" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red3As1)"/>
+<rect class="bx-q" x="372" y="152" width="76" height="28" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="410" y="170" text-anchor="middle" font-size="11" fill="#6b675e">entry</text>
+<text class="ts" x="480" y="58" font-size="11" fill="#6b675e">桶数 = 1 &lt;&lt; ht_size_exp</text>
+<text class="ts" x="480" y="80" font-size="11" fill="#6b675e">hash &amp; (size−1)：一次与运算定位</text>
+<text class="tc" x="480" y="102" font-size="11" fill="#b03a2e">新库的第一张表：4 个桶</text>
+<text class="ts" x="20" y="200" font-size="12" fill="#6b675e">元素数达到桶数（负载因子 1）就翻倍：第 5 个键把 4 桶撑成 8 桶</text>
+</svg>
+</figure>
 
 桶数永远是 2 的幂，源码里不直接存尺寸，只存指数（`ht_size_exp`，尺寸即 `1 << exp`）。这样取模可以退化为位掩码：`hash & (size - 1)`，一次与运算就定位了桶。新库的第一张表是 4 个桶（`DICT_HT_INITIAL_SIZE` 为 4）。
 
@@ -62,6 +94,38 @@ Hash table 1 stats (rehashing target):
 
 此后所有操作都要先问一句「现在在搬家吗」（`dictIsRehashing`），答案决定了查找和写入的路径。
 
+冻结现场与两张表的分工：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 268" role="img" aria-label="渐进式 rehash 冻结现场：左边旧表 1048576 桶只出不进，rehashidx 之前的桶已搬空置 NULL，之后还住着 1012381 个键；右边新表 2097152 桶只进不出，已搬进 47619 个键，新写入的键直接落在这里" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="red3As2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">扩容启动只分配不搬运：两张表并存，rehashidx 记录搬到哪了</text>
+<rect class="bx" x="30" y="44" width="270" height="150" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="165" y="66" text-anchor="middle" font-size="13" fill="#2b2a26">表 0 · 旧表（1,048,576 桶）</text>
+<rect class="bx-gone" x="45" y="82" width="60" height="26" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<rect class="bx-q" x="105" y="82" width="180" height="26" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="195" y="99" text-anchor="middle" font-size="10" fill="#6b675e">还住着 1,012,381 个键</text>
+<line class="flc" x1="105" y1="76" x2="105" y2="116" stroke="#b03a2e" stroke-width="2"/>
+<text class="tc" x="110" y="132" font-size="10" fill="#b03a2e">rehashidx：下一个待搬的桶</text>
+<text class="ts" x="60" y="152" font-size="10" fill="#6b675e">已搬空，置 NULL</text>
+<text class="t" x="165" y="180" text-anchor="middle" font-size="12" fill="#2b2a26">只出不进</text>
+<line class="fl" x1="300" y1="119" x2="346" y2="119" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red3As2)"/>
+<text class="ts" x="323" y="109" text-anchor="middle" font-size="10" fill="#6b675e">一次一桶</text>
+<rect class="bx-q" x="350" y="44" width="280" height="150" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="490" y="66" text-anchor="middle" font-size="13" fill="#2b2a26">表 1 · 新表（2,097,152 桶）</text>
+<rect class="bx" x="365" y="82" width="90" height="26" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="410" y="99" text-anchor="middle" font-size="10" fill="#6b675e">已搬进 47,619</text>
+<rect class="bx-gone" x="455" y="82" width="160" height="26" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<text class="ts" x="535" y="99" text-anchor="middle" font-size="10" fill="#6b675e">空桶，等着接</text>
+<text class="ts" x="365" y="132" font-size="10" fill="#6b675e">新写入的键直接落在这里</text>
+<text class="t" x="490" y="180" text-anchor="middle" font-size="12" fill="#2b2a26">只进不出</text>
+<text class="ts" x="30" y="224" font-size="12" fill="#6b675e">_dictResize() 分配新表、rehashidx 置 0、立刻返回：触发那一刻没有任何搬运</text>
+<text class="ts" x="30" y="248" font-size="12" fill="#6b675e">rehashidx = −1 表示没在搬家；搬家期间它一直指着旧表的断点</text>
+</svg>
+</figure>
+
 ## 读写顺手搬家：每次一桶，不是每次一个键
 
 冻结状态下做一次普通读操作，看两张表的数字变化：
@@ -85,6 +149,33 @@ SET brand:new 之后   旧表 858,892 键   新表 249,685 键
 新表多 5：新键本身进了新表，插入路径顺手搬走旧表一桶里的 4 个键。旧表的计数从此只减不增：搬家期间，所有新键都直接写进新表，没有任何新条目再进旧表。
 
 这也解释了开头那个「没有后台线程」的判断：迁移的推力大头不在后台，而在每一次读写里。平时没人注意，是因为它太小了：一次一桶，微秒级，摊在命令延迟里看不见。
+
+两次操作的前后账：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 226" role="img" aria-label="读写顺手搬家的前后对照：GET m:2 之前旧表 8 键新表 1 键，之后旧表 6 键新表 3 键，因为搬家的最小单位是桶，m:2 所在桶里串着的另一个键一并搬走；SET brand:new 之后新表多 5，新键本身进新表，又顺手搬走旧表一桶里的 4 个键" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">搬家的最小单位是桶：一次命令最多带走一个非空桶</text>
+<text class="t" x="20" y="52" font-size="13" fill="#2b2a26">GET m:2（小表演示）</text>
+<text class="ts" x="20" y="78" font-size="11" fill="#6b675e">之前</text>
+<rect class="bx" x="70" y="64" width="90" height="22" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="115" y="79" text-anchor="middle" font-size="11" fill="#6b675e">旧表 8 键</text>
+<rect class="bx-q" x="170" y="64" width="90" height="22" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="215" y="79" text-anchor="middle" font-size="11" fill="#6b675e">新表 1 键</text>
+<text class="ts" x="20" y="110" font-size="11" fill="#6b675e">之后</text>
+<rect class="bx" x="70" y="96" width="90" height="22" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="115" y="111" text-anchor="middle" font-size="11" fill="#6b675e">旧表 6 键</text>
+<rect class="bx-q" x="170" y="96" width="90" height="22" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="215" y="111" text-anchor="middle" font-size="11" fill="#6b675e">新表 3 键</text>
+<text class="tc" x="20" y="142" font-size="11" fill="#b03a2e">m:2 在旧表 3 号桶，桶里还串着一个键：一桶端走，−2 / +2</text>
+<text class="t" x="20" y="176" font-size="13" fill="#2b2a26">SET brand:new（冻结现场）</text>
+<text class="ts" x="20" y="200" font-size="11" fill="#6b675e">旧表 858,896 → 858,892　新表 249,680 → 249,685</text>
+<text class="tc" x="360" y="200" font-size="11" fill="#b03a2e">新键直进新表 + 顺手搬走一桶 4 键 = +5</text>
+<text class="ts" x="360" y="52" font-size="12" fill="#6b675e">另一条腿：serverCron 每轮 1ms 预算，</text>
+<text class="ts" x="360" y="72" font-size="12" fill="#6b675e">以 100 桶为单位搬，直到预算用完；</text>
+<text class="ts" x="360" y="92" font-size="12" fill="#6b675e">没有流量的冷表靠它排空，</text>
+<text class="ts" x="360" y="112" font-size="12" fill="#6b675e">速度约每秒 1.7 万键</text>
+</svg>
+</figure>
 
 ## 大规模验证：三批 GET，搬走五十七万个键
 
@@ -127,12 +218,31 @@ t0+15s    合并完成，只剩一张 2,097,152 桶的表
 
 迁移中的一次 `GET k`，完整路径是：
 
-```text
-1. hash & (旧表 size - 1)     → 旧表定位
-2. 桶号 ≥ rehashidx？→ 扫旧表这条链
-3. 没找到 → hash & (新表 size - 1) → 扫新表这条链
-4. 还没找到 → 键不存在
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 186" role="img" aria-label="双表期间一次 GET 的查找路径四步：先用旧表尺寸掩码定位；桶号大于等于 rehashidx 且非空才扫旧表这条链；没找到再用新表尺寸掩码扫新表链；两张表都没有才判定键不存在" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="red3As4" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">迁移中的一次 GET：最多扫两张表各一条链</text>
+<rect class="bx" x="20" y="52" width="140" height="56" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="90" y="74" text-anchor="middle" font-size="11" fill="#6b675e">① hash &amp; (旧size−1)</text>
+<text class="ts" x="90" y="92" text-anchor="middle" font-size="11" fill="#6b675e">定位旧表的桶</text>
+<line class="fl" x1="160" y1="80" x2="186" y2="80" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red3As4)"/>
+<rect class="bx" x="190" y="52" width="160" height="56" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="270" y="74" text-anchor="middle" font-size="11" fill="#6b675e">② 桶号 ≥ rehashidx？</text>
+<text class="ts" x="270" y="92" text-anchor="middle" font-size="11" fill="#6b675e">没搬空才扫这条链</text>
+<line class="fl" x1="350" y1="80" x2="376" y2="80" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red3As4)"/>
+<rect class="bx" x="380" y="52" width="150" height="56" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="455" y="74" text-anchor="middle" font-size="11" fill="#6b675e">③ 没找到：</text>
+<text class="ts" x="455" y="92" text-anchor="middle" font-size="11" fill="#6b675e">换 &amp; (新size−1) 扫新表</text>
+<line class="fl" x1="530" y1="80" x2="556" y2="80" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red3As4)"/>
+<rect class="bx-sick" x="560" y="52" width="86" height="56" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="ts" x="603" y="74" text-anchor="middle" font-size="11" fill="#6b675e">④ 都没有：</text>
+<text class="tc" x="603" y="92" text-anchor="middle" font-size="11" fill="#b03a2e">键不存在</text>
+<text class="ts" x="20" y="142" font-size="12" fill="#6b675e">桶号 &lt; rehashidx 的旧表桶已经搬空，直接跳过</text>
+<text class="ts" x="20" y="164" font-size="12" fill="#6b675e">双表并存的全部固定成本：两次掩码，最多两条短链</text>
+</svg>
+</figure>
 
 要点在第 2 步：桶号小于 rehashidx 的旧表桶已经搬空，直接跳过。于是每次查找最多扫两张表各一条链。没有遍历，没有全表锁，最坏情形也只是「两条短链」。
 
@@ -155,6 +265,61 @@ t0+15s    合并完成，只剩一张 2,097,152 桶的表
 这不是从小到大加一，而是把游标反转后加一再反转。效果是**从低位向高位逐位扩张遍历**：先扫完所有第 0 位组合的桶，再扫第 1 位，再扫第 2 位。
 
 为什么偏偏是倒序？因为扩容翻倍后，旧表一个桶的键只会散到新表「桶号最高位多一个 1」的两个桶里去。从低位向高位遍历，恰好保证：**某个桶被搬走以后，它在新表的归宿桶会在这个游标路径的「未走部分」里被再次访问。** 正序遍历则没有这个性质：先扫过的桶分裂出的新桶可能落在已走过的区域，键就漏了。
+
+访问顺序与分裂去向：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 284" role="img" aria-label="倒序游标与桶分裂：8 桶表按 COUNT 1 扫描，游标依次返回 0、6、1、3、7 再归零结束；8 桶翻倍成 16 桶时，旧表 3 号桶 011 的键只会散到新表 3 号桶 0011 和 11 号桶 1011，区别只在最高位，归宿桶永远落在倒序路径未走的部分" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="red3As5" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">8 桶表、COUNT 1：圈码是游标返回的顺序</text>
+<rect class="bx-q" x="30" y="40" width="68" height="56" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="t" x="64" y="64" text-anchor="middle" font-size="12" fill="#2b2a26">桶 0</text>
+<text class="ts" x="64" y="84" text-anchor="middle" font-size="10" fill="#6b675e">000</text>
+<text class="tc" x="88" y="54" text-anchor="middle" font-size="11" fill="#b03a2e">①</text>
+<rect class="bx" x="108" y="40" width="68" height="56" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="142" y="64" text-anchor="middle" font-size="12" fill="#2b2a26">桶 1</text>
+<text class="ts" x="142" y="84" text-anchor="middle" font-size="10" fill="#6b675e">001</text>
+<text class="tc" x="166" y="54" text-anchor="middle" font-size="11" fill="#b03a2e">③</text>
+<rect class="bx" x="186" y="40" width="68" height="56" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="220" y="64" text-anchor="middle" font-size="12" fill="#2b2a26">桶 2</text>
+<text class="ts" x="220" y="84" text-anchor="middle" font-size="10" fill="#6b675e">010</text>
+<rect class="bx" x="264" y="40" width="68" height="56" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="298" y="64" text-anchor="middle" font-size="12" fill="#2b2a26">桶 3</text>
+<text class="ts" x="298" y="84" text-anchor="middle" font-size="10" fill="#6b675e">011</text>
+<text class="tc" x="322" y="54" text-anchor="middle" font-size="11" fill="#b03a2e">④</text>
+<rect class="bx" x="342" y="40" width="68" height="56" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="376" y="64" text-anchor="middle" font-size="12" fill="#2b2a26">桶 4</text>
+<text class="ts" x="376" y="84" text-anchor="middle" font-size="10" fill="#6b675e">100</text>
+<rect class="bx" x="420" y="40" width="68" height="56" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="454" y="64" text-anchor="middle" font-size="12" fill="#2b2a26">桶 5</text>
+<text class="ts" x="454" y="84" text-anchor="middle" font-size="10" fill="#6b675e">101</text>
+<rect class="bx-q" x="498" y="40" width="68" height="56" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="t" x="532" y="64" text-anchor="middle" font-size="12" fill="#2b2a26">桶 6</text>
+<text class="ts" x="532" y="84" text-anchor="middle" font-size="10" fill="#6b675e">110</text>
+<text class="tc" x="556" y="54" text-anchor="middle" font-size="11" fill="#b03a2e">②</text>
+<rect class="bx-q" x="576" y="40" width="68" height="56" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="t" x="610" y="64" text-anchor="middle" font-size="12" fill="#2b2a26">桶 7</text>
+<text class="ts" x="610" y="84" text-anchor="middle" font-size="10" fill="#6b675e">111</text>
+<text class="tc" x="634" y="54" text-anchor="middle" font-size="11" fill="#b03a2e">⑤</text>
+<text class="ts" x="20" y="122" font-size="12" fill="#6b675e">游标 0 → 6 → 1 → 3 → 7 → 0（结束）：反转、加一、再反转，从低位向高位逐位扩张</text>
+<text class="ts" x="20" y="144" font-size="12" fill="#6b675e">没带圈码的桶也在路径上：一次调用可以连扫几桶，游标是断点书签</text>
+<text class="ts" x="20" y="180" font-size="12" fill="#6b675e">8 桶翻倍成 16 桶时，3 号桶（011）的键只有两个去向：</text>
+<rect class="bx" x="60" y="196" width="140" height="40" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="130" y="220" text-anchor="middle" font-size="12" fill="#6b675e">旧表桶 3 · 011</text>
+<line class="fl" x1="200" y1="208" x2="286" y2="196" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red3As5)"/>
+<line class="fl" x1="200" y1="224" x2="286" y2="240" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red3As5)"/>
+<rect class="bx-q" x="290" y="178" width="150" height="36" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="365" y="200" text-anchor="middle" font-size="12" fill="#6b675e">新表桶 3 · 0011</text>
+<rect class="bx-q" x="290" y="224" width="150" height="36" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="365" y="246" text-anchor="middle" font-size="12" fill="#6b675e">新表桶 11 · 1011</text>
+<text class="tc" x="460" y="200" font-size="12" fill="#b03a2e">区别只在最高位长出一个 1</text>
+<text class="ts" x="460" y="222" font-size="12" fill="#6b675e">分裂去向由完整哈希值的</text>
+<text class="ts" x="460" y="240" font-size="12" fill="#6b675e">下一位决定，哈希不重算</text>
+<text class="ts" x="20" y="276" font-size="12" fill="#6b675e">倒序路径保证：桶被搬走后，它的归宿桶一定还在「未走的部分」里等着被扫到</text>
+</svg>
+</figure>
 
 双表并存的 SCAN 具体这样走：游标先在**小表**（扩容时是旧表）定位一个桶，扫完它，还要连带扫**大表**中与它对应的那些桶（桶号高位相符的一组）；然后游标按倒序规则前进。上面的 SCAN 实验发生在迁移进行中的状态，最终 `total keys seen: 9`，与 `DBSIZE` 精确相等，不多、不少、不重。
 
@@ -192,11 +357,31 @@ Hash table 1 stats (rehashing target):
 
 所以 Redis 的对策是分三档（`updateDictResizePolicy()`）：
 
-```text
-无子进程          DICT_RESIZE_ENABLE   正常扩缩容
-有子进程存活      DICT_RESIZE_AVOID    避免扩缩容
-当前进程是子进程  DICT_RESIZE_FORBID   禁止一切
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 244" role="img" aria-label="updateDictResizePolicy 三档：无子进程时 ENABLE 正常扩缩容；有子进程存活时 AVOID 避免扩缩容，扩容放宽到 4 倍负载、缩容放宽到 1/32 才强制；当前进程是子进程时 FORBID 禁止一切。实验对照：无子进程时十万次 GET 搬走约 186071 键，BGSAVE 子进程存活期间同样十万次 GET 搬走 0 键" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">搬家策略三档：看有没有子进程在场</text>
+<rect class="bx-q" x="20" y="40" width="195" height="72" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="117" y="62" text-anchor="middle" font-size="12" fill="#2b2a26">ENABLE</text>
+<text class="ts" x="117" y="82" text-anchor="middle" font-size="10" fill="#6b675e">无子进程</text>
+<text class="ts" x="117" y="100" text-anchor="middle" font-size="10" fill="#6b675e">正常扩缩容、正常搬家</text>
+<rect class="bx-sick" x="232" y="40" width="195" height="72" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="t" x="329" y="62" text-anchor="middle" font-size="12" fill="#2b2a26">AVOID</text>
+<text class="ts" x="329" y="82" text-anchor="middle" font-size="10" fill="#6b675e">有子进程存活</text>
+<text class="ts" x="329" y="100" text-anchor="middle" font-size="10" fill="#6b675e">扩容放宽到 4 倍负载才强制</text>
+<rect class="bar" x="444" y="40" width="195" height="72" rx="4" fill="#2b2a26"/>
+<text class="onbar" x="541" y="62" text-anchor="middle" font-size="12" fill="#f6f3ec">FORBID</text>
+<text class="onbar" x="541" y="82" text-anchor="middle" font-size="10" fill="#f6f3ec">当前进程就是子进程</text>
+<text class="onbar" x="541" y="100" text-anchor="middle" font-size="10" fill="#f6f3ec">禁止一切</text>
+<text class="ts" x="20" y="142" font-size="12" fill="#6b675e">AVOID 档的实验对照（冻结现场，各十万次随机 GET）：</text>
+<text class="ts" x="20" y="168" font-size="11" fill="#6b675e">无子进程</text>
+<rect class="bar" x="110" y="156" width="334" height="16" fill="#2b2a26"/>
+<text class="onbar" x="277" y="168" text-anchor="middle" font-size="10" fill="#f6f3ec">搬走约 186,071 键</text>
+<text class="ts" x="20" y="196" font-size="11" fill="#6b675e">BGSAVE 子进程存活</text>
+<rect class="bx-gone" x="110" y="184" width="334" height="16" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<text class="tc" x="120" y="196" font-size="10" fill="#b03a2e">搬走 0 键：连读驱动的顺手搬家都停了</text>
+<text class="ts" x="20" y="228" font-size="12" fill="#6b675e">activerehashing 开关只管 serverCron 那条腿；三档策略管住的是两条腿</text>
+</svg>
+</figure>
 
 AVOID 档不是硬禁止：扩容被放宽到 4 倍负载才强制执行，缩容被放宽到 1/32 才强制，最坏情况下哈希性能的退化也被限制了。
 
