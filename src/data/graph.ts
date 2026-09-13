@@ -142,6 +142,12 @@ export const concepts: ConceptMeta[] = [
     description: '槽迁数据、REORGANIZE 重排行、取模只改规则三种搬法',
     posts: ['redis-cluster-migration', 'mysql-partitioning', 'kafka-partitions-keys'],
   },
+  {
+    id: 'stdlib-loading',
+    label: '标准库加载',
+    description: '标准库代码从哪来：编译进二进制，还是磁盘上的 pyc',
+    posts: ['nodejs-runtime-layers', 'cpython-import-pyc'],
+  },
 
   // ---- Redis 系列 ----
   {
@@ -657,6 +663,20 @@ export const concepts: ConceptMeta[] = [
     description: '闭环发压随系统一起卡，遭殃的样本整体消失，p99 假好看',
     posts: ['kafka-latency-measurement'],
   },
+
+  // ---- Node.js 系列 ----
+  {
+    id: 'runtime-layers',
+    label: '运行时分层',
+    description: 'JS 标准库、C++ 绑定、依赖库与内核：一次调用的四层下穿',
+    posts: ['nodejs-runtime-layers'],
+  },
+  {
+    id: 'thread-pool',
+    label: '线程池',
+    description: 'libuv 把文件、dns、crypto 交给默认 4 线程的池子，首次用到才创建',
+    posts: ['nodejs-runtime-layers'],
+  },
 ];
 
 export const relatedLinks: RelatedLink[] = [
@@ -701,4 +721,6 @@ export const relatedLinks: RelatedLink[] = [
   { from: 'kafka-idempotent-transactions', to: 'redis-multi-exec-watch', note: '两种事务：可中止围栏 vs 即执行乐观锁' },
   { from: 'kafka-latency-measurement', to: 'mysql-performance-schema', note: '两个收官篇都先拆产生读数的仪器' },
   { from: 'kafka-latency-measurement', to: 'kernel-page-cache-writeback', note: '读端冷热差落在内核页缓存' },
+  { from: 'nodejs-runtime-layers', to: 'cpython-import-pyc', note: '标准库：二进制内 vs 磁盘 pyc' },
+  { from: 'nodejs-runtime-layers', to: 'kernel-page-cache-writeback', note: '读到的数据都坐在页缓存里' },
 ];
