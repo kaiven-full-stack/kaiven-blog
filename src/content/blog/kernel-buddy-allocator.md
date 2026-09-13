@@ -31,7 +31,61 @@ Node 0, zone   Normal  34029  24739   1734   1610    300     71     59     26   
 
 阶数到 10 为止，最大连续块 4MiB。这正是本机 buddyinfo 的列数，与源码对上了。
 
-读这张表有三个要领。第一，每列数的是「整块」：DMA32 那行的 62 指 62 个完整的 2MiB 连续块，不是 62 页。第二，低阶块再多也不能直接满足高阶需求，第 0 列的 16605 个散页凑不出一个新的 order-9 块，连续是物理要求，不是算术问题。第三，看静态结构：Normal 区是这台机器 8GiB 的主力内存区，它 order-10 那列是 **0**，order-9 只有 2，运行多日的系统，4MiB 的整块已经一块不剩。而旁边的 DMA32 区（低 4GiB）还有 61 块。碎片对这台笔记本来说已经是日常。
+读这张表有三个要领。第一，每列数的是「整块」：DMA32 那行的 62 指 62 个完整的 2MiB 连续块，不是 62 页。第二，低阶块再多也不能直接满足高阶需求，第 0 列的 16605 个散页凑不出一个新的 order-9 块，连续是物理要求，不是算术问题。第三，看静态结构：Normal 区是这台机器 8GiB 的主力内存区，它 order-10 那列是 **0**，order-9 只剩 1 块，运行多日的系统，4MiB 的整块已经一块不剩。而旁边的 DMA32 区（低 4GiB）还有 61 块。碎片对这台笔记本来说已经是日常。
+
+本机 Normal 行画成货架：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 258" role="img" aria-label="buddyinfo Normal 行的十一层货架条形图，纵轴对数刻度：order-0 有 34029 块，往后逐层递减，order-8 只剩 2 块，order-9 只剩 1 块，order-10 空仓" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">buddyinfo Normal 行：十一层货架，面额逐层翻倍</text>
+<rect class="bx" x="30" y="52" width="44" height="138" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<rect class="bx" x="86" y="56" width="44" height="134" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<rect class="bx" x="142" y="91" width="44" height="99" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<rect class="bx" x="198" y="92" width="44" height="98" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<rect class="bx" x="254" y="115" width="44" height="75" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<rect class="bx" x="310" y="133" width="44" height="57" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<rect class="bx" x="366" y="136" width="44" height="54" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<rect class="bx" x="422" y="146" width="44" height="44" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<rect class="bx" x="478" y="175" width="44" height="15" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<rect class="bx-sick" x="534" y="181" width="44" height="9" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<rect class="bx-gone" x="590" y="180" width="44" height="10" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<text class="ts" x="52" y="46" text-anchor="middle" font-size="10" fill="#6b675e">34029</text>
+<text class="ts" x="108" y="50" text-anchor="middle" font-size="10" fill="#6b675e">24739</text>
+<text class="ts" x="164" y="85" text-anchor="middle" font-size="10" fill="#6b675e">1734</text>
+<text class="ts" x="220" y="86" text-anchor="middle" font-size="10" fill="#6b675e">1610</text>
+<text class="ts" x="276" y="109" text-anchor="middle" font-size="10" fill="#6b675e">300</text>
+<text class="ts" x="332" y="127" text-anchor="middle" font-size="10" fill="#6b675e">71</text>
+<text class="ts" x="388" y="130" text-anchor="middle" font-size="10" fill="#6b675e">59</text>
+<text class="ts" x="444" y="140" text-anchor="middle" font-size="10" fill="#6b675e">26</text>
+<text class="ts" x="500" y="169" text-anchor="middle" font-size="10" fill="#6b675e">2</text>
+<text class="tc" x="556" y="175" text-anchor="middle" font-size="10" fill="#b03a2e">1</text>
+<text class="tc" x="612" y="174" text-anchor="middle" font-size="10" fill="#b03a2e">0</text>
+<line class="axis" x1="30" y1="190" x2="640" y2="190" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="52" y="208" text-anchor="middle" font-size="11" fill="#6b675e">o0</text>
+<text class="ts" x="108" y="208" text-anchor="middle" font-size="11" fill="#6b675e">o1</text>
+<text class="ts" x="164" y="208" text-anchor="middle" font-size="11" fill="#6b675e">o2</text>
+<text class="ts" x="220" y="208" text-anchor="middle" font-size="11" fill="#6b675e">o3</text>
+<text class="ts" x="276" y="208" text-anchor="middle" font-size="11" fill="#6b675e">o4</text>
+<text class="ts" x="332" y="208" text-anchor="middle" font-size="11" fill="#6b675e">o5</text>
+<text class="ts" x="388" y="208" text-anchor="middle" font-size="11" fill="#6b675e">o6</text>
+<text class="ts" x="444" y="208" text-anchor="middle" font-size="11" fill="#6b675e">o7</text>
+<text class="ts" x="500" y="208" text-anchor="middle" font-size="11" fill="#6b675e">o8</text>
+<text class="ts" x="556" y="208" text-anchor="middle" font-size="11" fill="#6b675e">o9</text>
+<text class="ts" x="612" y="208" text-anchor="middle" font-size="11" fill="#6b675e">o10</text>
+<text class="ts" x="52" y="226" text-anchor="middle" font-size="10" fill="#6b675e">4K</text>
+<text class="ts" x="108" y="226" text-anchor="middle" font-size="10" fill="#6b675e">8K</text>
+<text class="ts" x="164" y="226" text-anchor="middle" font-size="10" fill="#6b675e">16K</text>
+<text class="ts" x="220" y="226" text-anchor="middle" font-size="10" fill="#6b675e">32K</text>
+<text class="ts" x="276" y="226" text-anchor="middle" font-size="10" fill="#6b675e">64K</text>
+<text class="ts" x="332" y="226" text-anchor="middle" font-size="10" fill="#6b675e">128K</text>
+<text class="ts" x="388" y="226" text-anchor="middle" font-size="10" fill="#6b675e">256K</text>
+<text class="ts" x="444" y="226" text-anchor="middle" font-size="10" fill="#6b675e">512K</text>
+<text class="ts" x="500" y="226" text-anchor="middle" font-size="10" fill="#6b675e">1M</text>
+<text class="ts" x="556" y="226" text-anchor="middle" font-size="10" fill="#6b675e">2M</text>
+<text class="ts" x="612" y="226" text-anchor="middle" font-size="10" fill="#6b675e">4M</text>
+<text class="ts" x="20" y="248" font-size="12" fill="#6b675e">纵轴是对数刻度：o9 的 1 块与 o10 的空仓不是画错，是实测</text>
+</svg>
+</figure>
 
 三行 zone 各有各的历史使命：DMA 是远古 ISA 设备的 16MiB 特区，DMA32 是 32 位设备能摸到的 4GiB，Normal 是其余全部。每个区还配有 min/low/high 三道水位（`/proc/zoneinfo` 里 DMA 区是 16/20/24 页），低于水位的内存要留给内核自己。用户态分配越过 low 水位会触发回收，这个机制到 OOM 篇会用到。
 
@@ -51,6 +105,33 @@ for (current_order = order; current_order < NR_PAGE_ORDERS; ++current_order) {
 ```
 
 从请求的阶开始往上找，找到第一个有货的阶层，摘下一块；如果摘的块比请求大，`expand` 把它逐层劈半，劈出来的另一半挂回对应阶的空闲链表，一直劈到恰好满足。请求 order-9 而货架只有 order-10 时：劈一个 4MiB，一半成交，另一半成了新的 order-9 空闲块，**下一个同样的请求就不用再劈了**。
+
+劈半的全过程：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 216" role="img" aria-label="请求 order-9 而货架只有 order-10：expand 把 4MiB 块劈半，一半作为 2MiB 成交，另一半挂回 order-9 货架成为新的空闲块，下一个同样的请求直接摘走不用再劈" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="kern3As2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">请求 order-9（2MiB），货架只剩 order-10（4MiB）</text>
+<rect class="bx-q" x="40" y="56" width="220" height="72" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="150" y="86" text-anchor="middle" font-size="14" fill="#2b2a26">order-10 · 4MiB</text>
+<text class="ts" x="150" y="108" text-anchor="middle" font-size="11" fill="#6b675e">最高阶仅存的存货</text>
+<line class="fl" x1="260" y1="76" x2="316" y2="66" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern3As2)"/>
+<line class="fl" x1="260" y1="108" x2="316" y2="118" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern3As2)"/>
+<text class="ts" x="288" y="52" text-anchor="middle" font-size="11" fill="#6b675e">expand 劈半</text>
+<rect class="bx-sick" x="320" y="44" width="150" height="44" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="t" x="395" y="62" text-anchor="middle" font-size="13" fill="#2b2a26">成交的一半</text>
+<text class="ts" x="395" y="80" text-anchor="middle" font-size="11" fill="#6b675e">order-9 · 2MiB</text>
+<rect class="bx" x="320" y="96" width="150" height="44" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="395" y="114" text-anchor="middle" font-size="13" fill="#2b2a26">回货架的一半</text>
+<text class="ts" x="395" y="132" text-anchor="middle" font-size="11" fill="#6b675e">新的 order-9 空闲块</text>
+<text class="ts" x="490" y="114" font-size="11" fill="#6b675e">下一个 order-9 请求</text>
+<text class="ts" x="490" y="132" font-size="11" fill="#6b675e">直接摘走，不用再劈</text>
+<text class="ts" x="20" y="176" font-size="12" fill="#6b675e">分配只拆大块，从不把小块拼成大块</text>
+<text class="ts" x="20" y="198" font-size="12" fill="#6b675e">拼接是释放时的事，靠的是下一节的伙伴合并</text>
+</svg>
+</figure>
 
 反过来不成立：order-9 缺货时，order-8 及以下再富裕也帮不上忙。碎片问题从数据结构上就是「高阶饿死、低阶过剩」，与总量无关。
 
@@ -83,6 +164,41 @@ while (order < MAX_PAGE_ORDER) {
 
 伙伴也空闲，两块合成一块升一阶，继续向更高阶找伙伴，直到伙伴被占或到顶。这是伙伴系统对抗碎片的自愈机制：**只要成对的自由凑齐，零散就能自动归拢成大块。**
 
+合并链条能走多远，取决于伙伴：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 252" role="img" aria-label="伙伴合并树：底层两个空闲的 order-8 块互为伙伴，合并升成 order-9；它的伙伴 order-9 块被占用，合并链条在这里断掉，order-10 空位凑不出来。伙伴页帧号等于自身异或 2 的 order 次方" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="kern3As3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+<marker id="kern3Ac3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-c" d="M0 0 L8 4 L0 8 Z" fill="#b03a2e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">释放一块 order-8：找伙伴，成对就升级</text>
+<rect class="bx-gone" x="215" y="40" width="210" height="36" rx="4" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<text class="ts" x="320" y="62" text-anchor="middle" font-size="12" fill="#6b675e">order-10：空位，凑不出来</text>
+<line class="flc" x1="170" y1="92" x2="240" y2="74" stroke="#b03a2e" stroke-width="1.6" stroke-dasharray="4 3" marker-end="url(#kern3Ac3)"/>
+<text class="tc" x="196" y="66" font-size="11" fill="#b03a2e">伙伴不自由：到此为止</text>
+<rect class="bx-q" x="105" y="96" width="130" height="40" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="170" y="112" text-anchor="middle" font-size="11" fill="#6b675e">order-9 · 合并成功</text>
+<text class="ts" x="170" y="128" text-anchor="middle" font-size="11" fill="#6b675e">继续向上找伙伴</text>
+<rect class="bx-sick" x="385" y="96" width="130" height="40" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="ts" x="450" y="112" text-anchor="middle" font-size="11" fill="#6b675e">order-9 · 被占用</text>
+<text class="ts" x="450" y="128" text-anchor="middle" font-size="11" fill="#6b675e">不在空闲链表里</text>
+<line class="fl" x1="112" y1="178" x2="150" y2="140" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern3As3)"/>
+<line class="fl" x1="228" y1="178" x2="190" y2="140" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern3As3)"/>
+<rect class="bx-q" x="60" y="180" width="105" height="40" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="112" y="196" text-anchor="middle" font-size="11" fill="#6b675e">order-8 · 空闲</text>
+<text class="ts" x="112" y="212" text-anchor="middle" font-size="11" fill="#6b675e">本次释放的块</text>
+<rect class="bx-q" x="175" y="180" width="105" height="40" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="227" y="196" text-anchor="middle" font-size="11" fill="#6b675e">order-8 · 空闲</text>
+<text class="ts" x="227" y="212" text-anchor="middle" font-size="11" fill="#6b675e">它的伙伴</text>
+<rect class="bx-sick" x="330" y="180" width="105" height="40" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="ts" x="382" y="204" text-anchor="middle" font-size="11" fill="#6b675e">order-8 · 在用</text>
+<rect class="bx-sick" x="445" y="180" width="105" height="40" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="ts" x="497" y="204" text-anchor="middle" font-size="11" fill="#6b675e">order-8 · 在用</text>
+<text class="ts" x="20" y="244" font-size="12" fill="#6b675e">伙伴页帧号 = 自身 XOR (1 &lt;&lt; order)：配对由物理地址定死，没得挑</text>
+</svg>
+</figure>
+
 而碎片的定义也随之清楚了：伙伴被占，合并链条断在半路。下面两个实验，一个测「合不上」，一个测「合不上时申请大页会怎样」。
 
 ## 棋盘实验：回得去原阶，升不上高阶
@@ -101,6 +217,43 @@ S2 释放 96 块  89    0            3    0      计数器无变化
 S1 的数很干净：alloc 精确 +192，DMA32 的 order-9 从 61 清零、order-10 从 60 清零，61 块直接成交，60 个 4MiB 块被劈半凑数，零头由压实补齐（compact_stall +9）。Normal 区从头到尾没出货，因为它的 order-9/10 本来就是空的。
 
 S2 是实验核心。释放了 96 个 2MiB 块（192MiB），台账上回来了 92 块 order-9（89+3，±4 是系统噪声）：**释放的块精确回到了自己原来的阶层**，一块都没有升阶，order-10 那列从 0 到 0。192MiB 完整归还，却连一个 4MiB 整块都凑不出来。每一个被释放的块，物理伙伴都还压在偶数块手里；合并循环的第一步就 `goto done_merging`。
+
+棋盘现场，节选 32 块：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 188" role="img" aria-label="棋盘化示意：32 个 2MiB 块交替排列，深色为偶数块仍被占用，浅色为奇数块已释放；每对物理伙伴恰好一占一放，八对全部合并不了" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">铺满 192 块后隔块释放（此处节选前 32 块）</text>
+<rect class="bar" x="20" y="44" width="36" height="44" fill="#2b2a26"/>
+<rect class="bx-q" x="59" y="44" width="36" height="44" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<rect class="bar" x="98" y="44" width="36" height="44" fill="#2b2a26"/>
+<rect class="bx-q" x="137" y="44" width="36" height="44" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<rect class="bar" x="176" y="44" width="36" height="44" fill="#2b2a26"/>
+<rect class="bx-q" x="215" y="44" width="36" height="44" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<rect class="bar" x="254" y="44" width="36" height="44" fill="#2b2a26"/>
+<rect class="bx-q" x="293" y="44" width="36" height="44" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<rect class="bar" x="332" y="44" width="36" height="44" fill="#2b2a26"/>
+<rect class="bx-q" x="371" y="44" width="36" height="44" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<rect class="bar" x="410" y="44" width="36" height="44" fill="#2b2a26"/>
+<rect class="bx-q" x="449" y="44" width="36" height="44" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<rect class="bar" x="488" y="44" width="36" height="44" fill="#2b2a26"/>
+<rect class="bx-q" x="527" y="44" width="36" height="44" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<rect class="bar" x="566" y="44" width="36" height="44" fill="#2b2a26"/>
+<rect class="bx-q" x="605" y="44" width="36" height="44" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="tc" x="57" y="106" text-anchor="middle" font-size="12" fill="#b03a2e">✕</text>
+<text class="tc" x="135" y="106" text-anchor="middle" font-size="12" fill="#b03a2e">✕</text>
+<text class="tc" x="213" y="106" text-anchor="middle" font-size="12" fill="#b03a2e">✕</text>
+<text class="tc" x="291" y="106" text-anchor="middle" font-size="12" fill="#b03a2e">✕</text>
+<text class="tc" x="369" y="106" text-anchor="middle" font-size="12" fill="#b03a2e">✕</text>
+<text class="tc" x="447" y="106" text-anchor="middle" font-size="12" fill="#b03a2e">✕</text>
+<text class="tc" x="525" y="106" text-anchor="middle" font-size="12" fill="#b03a2e">✕</text>
+<text class="tc" x="603" y="106" text-anchor="middle" font-size="12" fill="#b03a2e">✕</text>
+<rect class="bar" x="20" y="132" width="14" height="14" fill="#2b2a26"/>
+<text class="ts" x="40" y="143" font-size="11" fill="#6b675e">偶数块：仍被占用</text>
+<rect class="bx-q" x="180" y="132" width="14" height="14" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="200" y="143" font-size="11" fill="#6b675e">奇数块：已 munmap，回到 order-9 货架</text>
+<text class="ts" x="20" y="174" font-size="12" fill="#6b675e">每对伙伴都是一占一放：释放的块全部回到 order-9 原阶，一块也升不上 order-10</text>
+</svg>
+</figure>
 
 对照 pymalloc（CPython 的分配器，没读过那篇只需知道：它把内存组织成一兆字节的「arena」大块，块内所有小对象都释放后整块才能归还）：arena 里只要还有一个在用 block，整座楼退不掉，同一个「差一点就全部自由」的结构性浪费。区别在粒度：pymalloc 卡的是 1MiB 的楼，伙伴系统卡的是 2MiB/4MiB 的块。
 
@@ -137,6 +290,27 @@ compact_migrate_scanned  +136636   扫过 13 万多个可迁移候选页
 
 这就是第一篇那 88% 的完整答案：大页申请拿不到整块时，内核不会当场回绝，而是先尝试搬迁救场。本机 THP defrag 模式是 `defer+madvise`，`MADV_HUGEPAGE` 的缺页在拿不到 order-9 时发起直接压实（direct compaction），把可移动页搬到别处，腾出连续空间，再重试分配。37 次尝试救回 16 块，救不回的 11 块回退成 512 个 order-0。达成率 88%、91%、69%，就是「成交 + 压实拯救 + 回退」三种结局的混合比例，每次运行随碎片分布浮动。
 
+钉子窗口和 32 块订单的分解：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 244" role="img" aria-label="上图：每个 2MiB 窗口的第一个 4KiB 页被释放成钉子洞，其余 511 页仍被占用，order-9 货架因此一块不剩。下图：32 块大页订单的分解条形图，5 块直接拿到为深色，16 块靠压实救回为朱砂色，11 块回退成 4KiB 为虚线空框" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">每个 2MiB 窗口钉一颗钉子（共 192 个窗口）</text>
+<rect class="bx-gone" x="40" y="40" width="12" height="36" fill="none" stroke="#a29d90" stroke-dasharray="3 2"/>
+<rect class="bx" x="52" y="40" width="508" height="36" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="306" y="62" text-anchor="middle" font-size="11" fill="#6b675e">仍在用的 4KiB 页 × 511（PMD 已拆成 PTE）</text>
+<text class="tc" x="40" y="96" font-size="12" fill="#b03a2e">钉孔：被释放的 4KiB，伙伴全被占，order-9 货架一块不剩</text>
+<text class="ts" x="20" y="132" font-size="12" fill="#6b675e">此时下单一笔 64MiB 大页申请：32 块的三种结局</text>
+<rect class="bar" x="40" y="144" width="80" height="36" fill="#2b2a26"/>
+<rect class="bx-sick" x="120" y="144" width="256" height="36" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<rect class="bx-gone" x="376" y="144" width="176" height="36" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<text class="onbar" x="80" y="166" text-anchor="middle" font-size="11" fill="#f6f3ec">直接拿到 5</text>
+<text class="tc" x="248" y="166" text-anchor="middle" font-size="11" fill="#b03a2e">压实救回 16</text>
+<text class="ts" x="464" y="166" text-anchor="middle" font-size="11" fill="#6b675e">回退成 4KiB 11</text>
+<text class="ts" x="40" y="202" font-size="11" fill="#6b675e">条长以块为单位：5 + 16 + 11 = 32 块，每块 2MiB</text>
+<text class="ts" x="20" y="230" font-size="12" fill="#6b675e">深色、浅色、空框三种比例每次运行都在漂：达成率是它们的混合</text>
+</svg>
+</figure>
+
 ## 迁移类型：钉子分两种
 
 为什么内核能搬页、pymalloc 不能搬对象？因为内核把「能不能搬」做成了货架的分类维度。每个 2MiB 的 pageblock 带一个迁移类型标记，匿名页是 `MIGRATE_MOVABLE`：没有外部指针指向物理地址（对进程完全透明），随时可搬；内核自己的数据结构是 `MIGRATE_UNMOVABLE`：到处都是指向它的指针，动了就全乱。还有 `MIGRATE_RECLAIMABLE`（可回收，如缓存页）。分配时优先找同类型的块，`__rmqueue_smallest` 循环里那个 `migratetype` 参数就是分类索引。
@@ -152,6 +326,37 @@ static int fallbacks[MIGRATE_PCPTYPES][MIGRATE_PCPTYPES - 1] = {
 ```
 
 UNMOVABLE 缺货时可以偷 MOVABLE 的整块用，被偷的 pageblock 从此变性为 UNMOVABLE：不可移动的钉子就这样钉进了原本干净的连续区域。这正是长期运行的系统 Normal 区高阶归零的主要成因。内核自己的分配（页表页、slab、各种结构体，全是 UNMOVABLE 的 order-0/order-1）经年累月像撒钉子一样撒满各处，order-9/10 的连续窗口被零星钉死。运行越久、越满，钉子越难拔。压实能搬走的只有 MOVABLE 的页，对 UNMOVABLE 的钉子毫无办法，所以 37 次压实里有 21 次失败。
+
+钉子是怎么钉进去的：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 230" role="img" aria-label="三种迁移类型与变性过程：MOVABLE 匿名页可搬，UNMOVABLE 内核结构是钉子，RECLAIMABLE 缓存页可回收；UNMOVABLE 缺货时借用 MOVABLE 的整块 pageblock，借走后整块变性为 UNMOVABLE，钉子钉进干净的连续区域" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="kern3Ac6" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-c" d="M0 0 L8 4 L0 8 Z" fill="#b03a2e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">货架还按「搬得动吗」分类：三种迁移类型</text>
+<rect class="bx-q" x="20" y="40" width="190" height="48" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="115" y="60" text-anchor="middle" font-size="13" fill="#2b2a26">MOVABLE</text>
+<text class="ts" x="115" y="78" text-anchor="middle" font-size="11" fill="#6b675e">匿名页：随时可搬</text>
+<rect class="bar" x="230" y="40" width="190" height="48" rx="4" fill="#2b2a26"/>
+<text class="onbar" x="325" y="60" text-anchor="middle" font-size="13" fill="#f6f3ec">UNMOVABLE</text>
+<text class="onbar" x="325" y="78" text-anchor="middle" font-size="11" fill="#f6f3ec">内核结构：动一下就全乱</text>
+<rect class="bx" x="440" y="40" width="200" height="48" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="540" y="60" text-anchor="middle" font-size="13" fill="#2b2a26">RECLAIMABLE</text>
+<text class="ts" x="540" y="78" text-anchor="middle" font-size="11" fill="#6b675e">缓存页：可回收</text>
+<line class="flc" x1="325" y1="88" x2="280" y2="126" stroke="#b03a2e" stroke-width="1.6" marker-end="url(#kern3Ac6)"/>
+<text class="tc" x="335" y="112" font-size="11" fill="#b03a2e">缺货，来借整块</text>
+<rect class="bx-q" x="30" y="130" width="88" height="40" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<rect class="bx-q" x="124" y="130" width="88" height="40" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<rect class="bar" x="218" y="130" width="88" height="40" fill="#2b2a26"/>
+<text class="onbar" x="262" y="154" text-anchor="middle" font-size="11" fill="#f6f3ec">借走，变性</text>
+<rect class="bx-q" x="312" y="130" width="88" height="40" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<rect class="bx-q" x="406" y="130" width="88" height="40" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<rect class="bx-q" x="500" y="130" width="88" height="40" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="30" y="190" font-size="11" fill="#6b675e">一排 MOVABLE 的 pageblock：借出去的那块从此改姓，变性不回头</text>
+<text class="ts" x="20" y="218" font-size="12" fill="#6b675e">借走的往往只是一小块，变性的却是整个 pageblock：一颗钉子占掉一整格</text>
+</svg>
+</figure>
 
 对照收束：pymalloc 的 arena 和伙伴系统的块面对同一道题，「差一个没自由，整块退不掉」。pymalloc 无解，因为 C API 承诺了对象地址稳定，它不能搬；内核有解的一半，因为对进程隐藏物理地址，MOVABLE 的页随便搬，本篇前面压实救回的 16 块大页就是证据：物理位置从来不是承诺。另一半无解，UNMOVABLE 搬不了，所以碎片只能缓解，不能根治。分配器的「不搬」是设计；能搬的部分，才是内核相对用户态分配器真正的特权。
 
