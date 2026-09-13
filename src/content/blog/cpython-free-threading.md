@@ -6,10 +6,26 @@ category: cpython
 tags: [CPython, 编程语言, 并发, free-threading]
 ---
 
-```text
-GIL 构建，4 线程跑 4 份独立工作    1.5063 秒（单线程 0.3390 的 4.44 倍）
-free-threaded 构建，同一份代码      0.4300 秒（单线程 0.4136 的 1.04 倍）
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 196" role="img" aria-label="条形图对比：GIL 构建四线程耗时 1.5063 秒，是自身单线程 0.3390 秒的 4.44 倍；free-threaded 构建四线程 0.4300 秒，只有单线程 0.4136 秒的 1.04 倍" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="22" font-size="12" fill="#6b675e">同一段四线程 CPU 代码，两种构建（秒，越短越好）</text>
+<line class="axis" x1="118" y1="34" x2="118" y2="170" stroke="#a29d90" stroke-width="1"/>
+<text class="ts" x="20" y="57" font-size="12" fill="#6b675e">GIL 单线程</text>
+<rect class="bx-q" x="118" y="42" width="95" height="20" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="221" y="57" font-size="12" fill="#6b675e">0.3390</text>
+<text class="ts" x="20" y="85" font-size="12" fill="#6b675e">GIL 四线程</text>
+<rect class="bar" x="118" y="70" width="422" height="20" rx="2" fill="#2b2a26"/>
+<text class="onbar" x="532" y="85" text-anchor="end" font-size="12" fill="#ece9e2">1.5063 · 单线程的 4.44 倍</text>
+<text class="ts" x="20" y="127" font-size="12" fill="#6b675e">FT 单线程</text>
+<rect class="bx-q" x="118" y="112" width="116" height="20" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="242" y="127" font-size="12" fill="#6b675e">0.4136</text>
+<text class="ts" x="20" y="155" font-size="12" fill="#6b675e">FT 四线程</text>
+<rect class="bar" x="118" y="140" width="121" height="20" rx="2" fill="#2b2a26"/>
+<text class="onbar" x="233" y="155" text-anchor="end" font-size="11" fill="#ece9e2">0.4300</text>
+<text class="tc" x="249" y="155" font-size="12" fill="#b03a2e">单线程的 1.04 倍</text>
+<text class="ts" x="20" y="184" font-size="11" fill="#6b675e">本机 x86_64 Linux · CPython 3.14.7 · FT = free-threaded 构建</text>
+</svg>
+</figure>
 
 同一段纯 CPU 代码，四个线程各自处理互不相干的数据。GIL 构建把并行变成了排队，还搭上切换开销；free-threaded（下称 FT）构建下四个核真的同时在跑。
 
@@ -97,20 +113,93 @@ struct _object {
 - `ob_ref_local`：属主线程手里有几份引用？
 - `ob_ref_shared`：其他线程手里有几份？
 
+字节地图：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 220" role="img" aria-label="对象头字节地图：GIL 构建为 PyGC_Head 前置 16 字节加 ob_refcnt 与 ob_type 各 8 字节；FT 构建为 ob_tid 8 字节、ob_flags 与 ob_mutex 与 ob_gc_bits 与 ob_ref_local 合 8 字节、ob_ref_shared 8 字节、ob_type 8 字节，共 32 字节且无 GC 前置头" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="20" font-size="12" fill="#6b675e">PyObject 头部对照（1 格 = 1 字节）</text>
+<text class="t" x="20" y="44" font-size="12" fill="#2b2a26">GIL 构建</text>
+<rect class="bx" x="40" y="52" width="160" height="40" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="120" y="69" text-anchor="middle" font-size="10" fill="#6b675e">PyGC_Head · 16 字节</text>
+<text class="ts" x="120" y="84" text-anchor="middle" font-size="10" fill="#6b675e">仅 GC 追踪对象有</text>
+<rect class="bx-q" x="200" y="52" width="80" height="40" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="240" y="69" text-anchor="middle" font-size="10" fill="#6b675e">ob_refcnt</text>
+<text class="ts" x="240" y="84" text-anchor="middle" font-size="10" fill="#6b675e">8 字节</text>
+<rect class="bx-q" x="280" y="52" width="80" height="40" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="320" y="69" text-anchor="middle" font-size="10" fill="#6b675e">ob_type</text>
+<text class="ts" x="320" y="84" text-anchor="middle" font-size="10" fill="#6b675e">8 字节</text>
+<text class="t" x="20" y="116" font-size="12" fill="#2b2a26">FT 构建</text>
+<rect class="bx-q" x="40" y="124" width="80" height="40" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="80" y="141" text-anchor="middle" font-size="10" fill="#6b675e">ob_tid</text>
+<text class="ts" x="80" y="156" text-anchor="middle" font-size="10" fill="#6b675e">8 字节</text>
+<rect class="bx" x="120" y="124" width="80" height="40" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<line class="grid" x1="140" y1="124" x2="140" y2="164" stroke="#a29d90" stroke-width="1"/>
+<line class="grid" x1="150" y1="124" x2="150" y2="164" stroke="#a29d90" stroke-width="1"/>
+<line class="grid" x1="160" y1="124" x2="160" y2="164" stroke="#a29d90" stroke-width="1"/>
+<rect class="bx-q" x="200" y="124" width="80" height="40" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="240" y="141" text-anchor="middle" font-size="10" fill="#6b675e">ob_ref_shared</text>
+<text class="ts" x="240" y="156" text-anchor="middle" font-size="10" fill="#6b675e">8 字节</text>
+<rect class="bx-q" x="280" y="124" width="80" height="40" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="320" y="141" text-anchor="middle" font-size="10" fill="#6b675e">ob_type</text>
+<text class="ts" x="320" y="156" text-anchor="middle" font-size="10" fill="#6b675e">8 字节</text>
+<text class="ts" x="160" y="182" text-anchor="middle" font-size="10" fill="#6b675e">中间 8 字节：ob_flags(2) · ob_mutex(1) · ob_gc_bits(1) · ob_ref_local(4)</text>
+<text class="ts" x="376" y="76" font-size="11" fill="#6b675e">object() 16 → 32 字节</text>
+<text class="ts" x="376" y="96" font-size="11" fill="#6b675e">int 28 → 44 · str 'a' 42 → 58</text>
+<text class="ts" x="376" y="148" font-size="11" fill="#6b675e">容器 +0：头部增量被条目的</text>
+<text class="ts" x="376" y="164" font-size="11" fill="#6b675e">8 字节对齐吸收</text>
+<text class="ts" x="20" y="208" font-size="12" fill="#6b675e">对 GC 追踪的对象，FT 里 PyGC_Head 消失：头部膨胀与它恰好相抵（GC 一节展开）</text>
+</svg>
+</figure>
+
 ## 偏向引用计数：属主走快路
 
 GIL 构建的 `Py_INCREF` 是一条普通内存写。FT 构建的同一行代码变成了偏向锁的引用计数（biased reference counting）：
 
-```text
-Py_INCREF(op):
-    属主是自己？  -> ob_ref_local++         （普通读改写，无原子）
-    不是          -> ob_ref_shared += 1<<2  （原子 fetch-add）
-
-Py_DECREF(op):
-    属主是自己？  -> ob_ref_local--
-                    减到 0：尝试合并/释放（_Py_MergeZeroLocalRefcount）
-    不是          -> _Py_DecRefShared(op)   （原子 CAS，可能入队）
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 276" role="img" aria-label="偏向引用计数流程：incref 与 decref 都先判断当前线程是否为属主；是属主则对 ob_ref_local 做普通读改写，不原子不加锁；不是属主则对 ob_ref_shared 做原子 fetch-add 或 CAS，decref 还可能置 QUEUED 入队" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="ftA3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="22" font-size="12" fill="#6b675e">同一个 +1 / −1，两条路</text>
+<rect class="bx-q" x="80" y="36" width="170" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="t" x="165" y="56" text-anchor="middle" font-size="12" fill="#2b2a26">Py_INCREF(op)</text>
+<rect class="bx-q" x="410" y="36" width="170" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="t" x="495" y="56" text-anchor="middle" font-size="12" fill="#2b2a26">Py_DECREF(op)</text>
+<line class="fl" x1="165" y1="66" x2="165" y2="84" stroke="#6b675e" stroke-width="1.3" marker-end="url(#ftA3)"/>
+<line class="fl" x1="495" y1="66" x2="495" y2="84" stroke="#6b675e" stroke-width="1.3" marker-end="url(#ftA3)"/>
+<polygon class="bx" points="165,88 250,118 165,148 80,118" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="165" y="115" text-anchor="middle" font-size="10.5" fill="#2b2a26">ob_tid</text>
+<text class="ts" x="165" y="130" text-anchor="middle" font-size="10.5" fill="#2b2a26">== 本线程？</text>
+<polygon class="bx" points="495,88 580,118 495,148 410,118" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="495" y="115" text-anchor="middle" font-size="10.5" fill="#2b2a26">ob_tid</text>
+<text class="ts" x="495" y="130" text-anchor="middle" font-size="10.5" fill="#2b2a26">== 本线程？</text>
+<line class="fl" x1="105" y1="133" x2="88" y2="172" stroke="#6b675e" stroke-width="1.3" marker-end="url(#ftA3)"/>
+<line class="fl" x1="225" y1="133" x2="243" y2="172" stroke="#6b675e" stroke-width="1.3" marker-end="url(#ftA3)"/>
+<text class="ts" x="84" y="158" text-anchor="end" font-size="11" fill="#6b675e">是</text>
+<text class="ts" x="246" y="158" font-size="11" fill="#6b675e">否</text>
+<line class="fl" x1="435" y1="133" x2="418" y2="172" stroke="#6b675e" stroke-width="1.3" marker-end="url(#ftA3)"/>
+<line class="fl" x1="555" y1="133" x2="573" y2="172" stroke="#6b675e" stroke-width="1.3" marker-end="url(#ftA3)"/>
+<text class="ts" x="414" y="158" text-anchor="end" font-size="11" fill="#6b675e">是</text>
+<text class="ts" x="576" y="158" font-size="11" fill="#6b675e">否</text>
+<rect class="bx-q" x="20" y="176" width="140" height="64" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="t" x="90" y="198" text-anchor="middle" font-size="11" fill="#2b2a26">ob_ref_local++</text>
+<text class="ts" x="90" y="216" text-anchor="middle" font-size="10" fill="#6b675e">普通读改写</text>
+<text class="ts" x="90" y="231" text-anchor="middle" font-size="10" fill="#6b675e">不原子、不加锁</text>
+<rect class="bx" x="176" y="176" width="140" height="64" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="246" y="198" text-anchor="middle" font-size="10.5" fill="#2b2a26">ob_ref_shared</text>
+<text class="t" x="246" y="214" text-anchor="middle" font-size="10.5" fill="#2b2a26">+= 1&lt;&lt;2</text>
+<text class="ts" x="246" y="231" text-anchor="middle" font-size="10" fill="#6b675e">原子 fetch-add</text>
+<rect class="bx-q" x="350" y="176" width="140" height="64" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="t" x="420" y="198" text-anchor="middle" font-size="11" fill="#2b2a26">ob_ref_local--</text>
+<text class="ts" x="420" y="216" text-anchor="middle" font-size="10" fill="#6b675e">减到 0 时进入</text>
+<text class="ts" x="420" y="231" text-anchor="middle" font-size="10" fill="#6b675e">合并/入队（下一图）</text>
+<rect class="bx" x="506" y="176" width="140" height="64" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="576" y="198" text-anchor="middle" font-size="10.5" fill="#2b2a26">_Py_DecRefShared</text>
+<text class="ts" x="576" y="216" text-anchor="middle" font-size="10" fill="#6b675e">原子 CAS</text>
+<text class="ts" x="576" y="231" text-anchor="middle" font-size="10" fill="#6b675e">可能置 QUEUED 入队</text>
+<text class="ts" x="20" y="264" font-size="11" fill="#6b675e">ob_tid = 0 表示无属主：MERGED 之后，所有线程都走右边那条路</text>
+</svg>
+</figure>
 
 对象的“属主”就是创建它的线程：`ob_tid` 记下线程 id，此后该线程的 incref/decref 全部走 `ob_ref_local`，不加锁、不原子、就是一条普通指令。其他线程的引用才落入 `ob_ref_shared`，用原子操作维护。
 
@@ -122,12 +211,45 @@ Py_DECREF(op):
 
 本地计数减到零时，属主线程调用 `_Py_MergeZeroLocalRefcount()`。两条路：
 
-```text
-共享计数也是 0        -> 直接 _Py_Dealloc（对象确实死了）
-共享计数非 0          -> 把 ob_tid 清零（放弃属主），
-                        标志位置成 MERGED，
-                        之后所有线程都走共享计数
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 280" role="img" aria-label="生死判定流程：左列为属主线程本地计数减到零时，若共享计数也为零则直接析构，否则清 ob_tid 置 MERGED 变为无属主；右列为非属主线程把共享计数减到零时不做减法，CAS 置 QUEUED 挂进属主的待处理队列，由属主在下一个安全点合并计数后决定生死" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="ftA4" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="22" font-size="12" fill="#6b675e">谁有权宣布对象死亡：两条入口，一个出口</text>
+<rect class="bx-q" x="40" y="36" width="250" height="34" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="t" x="165" y="58" text-anchor="middle" font-size="11" fill="#2b2a26">属主 decref：ob_ref_local 减到 0</text>
+<line class="fl" x1="165" y1="70" x2="165" y2="86" stroke="#6b675e" stroke-width="1.3" marker-end="url(#ftA4)"/>
+<polygon class="bx" points="165,90 265,118 165,146 65,118" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="165" y="115" text-anchor="middle" font-size="10.5" fill="#2b2a26">ob_ref_shared</text>
+<text class="ts" x="165" y="130" text-anchor="middle" font-size="10.5" fill="#2b2a26">也是 0？</text>
+<line class="fl" x1="100" y1="132" x2="82" y2="172" stroke="#6b675e" stroke-width="1.3" marker-end="url(#ftA4)"/>
+<line class="fl" x1="230" y1="132" x2="248" y2="172" stroke="#6b675e" stroke-width="1.3" marker-end="url(#ftA4)"/>
+<text class="ts" x="78" y="158" text-anchor="end" font-size="11" fill="#6b675e">是</text>
+<text class="ts" x="252" y="158" font-size="11" fill="#6b675e">否</text>
+<rect class="bx-sick" x="20" y="176" width="135" height="58" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="t" x="87" y="200" text-anchor="middle" font-size="11" fill="#b03a2e">_Py_Dealloc</text>
+<text class="ts" x="87" y="218" text-anchor="middle" font-size="10" fill="#6b675e">对象确实死了</text>
+<rect class="bx" x="170" y="176" width="155" height="58" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="247" y="196" text-anchor="middle" font-size="10.5" fill="#2b2a26">ob_tid 清零 · 置 MERGED</text>
+<text class="ts" x="247" y="212" text-anchor="middle" font-size="10" fill="#6b675e">从此无属主</text>
+<text class="ts" x="247" y="227" text-anchor="middle" font-size="10" fill="#6b675e">大家都走共享计数</text>
+<rect class="bx-q" x="370" y="36" width="250" height="34" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="t" x="495" y="58" text-anchor="middle" font-size="11" fill="#2b2a26">非属主 decref：共享计数减到 0</text>
+<line class="fl" x1="495" y1="70" x2="495" y2="92" stroke="#6b675e" stroke-width="1.3" marker-end="url(#ftA4)"/>
+<rect class="bx" x="385" y="96" width="220" height="48" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="495" y="116" text-anchor="middle" font-size="10.5" fill="#2b2a26">不做减法：CAS 置 _Py_REF_QUEUED</text>
+<text class="ts" x="495" y="132" text-anchor="middle" font-size="10" fill="#6b675e">对象此刻不许释放</text>
+<line class="fl" x1="495" y1="144" x2="495" y2="166" stroke="#6b675e" stroke-width="1.3" marker-end="url(#ftA4)"/>
+<rect class="bx" x="385" y="170" width="220" height="44" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="495" y="188" text-anchor="middle" font-size="10.5" fill="#2b2a26">挂进属主线程的待处理队列</text>
+<text class="ts" x="495" y="204" text-anchor="middle" font-size="10" fill="#6b675e">队列自身持有引用</text>
+<line class="fl" x1="495" y1="214" x2="495" y2="226" stroke="#6b675e" stroke-width="1.3" marker-end="url(#ftA4)"/>
+<rect class="bx-q" x="385" y="230" width="220" height="40" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="495" y="247" text-anchor="middle" font-size="10.5" fill="#2b2a26">下一个安全点：属主取出队列</text>
+<text class="ts" x="495" y="262" text-anchor="middle" font-size="10.5" fill="#2b2a26">合并计数，这才裁决生死</text>
+</svg>
+</figure>
 
 反方向更微妙：非属主线程的 decref 把共享计数减到零时，对象不能立刻释放。属主线程的本地计数可能非零，而且释放内存时可能有线程正读着这个对象。此时 `_Py_DecRefSharedIsDead()` 不做减法，而是把标志位 CAS 成 `_Py_REF_QUEUED`，把对象挂进属主线程的待处理队列（队列自身持有引用）。属主线程在下一个安全点取出队列里的对象，合并计数，再决定生死。
 
@@ -157,11 +279,25 @@ Py_END_CRITICAL_SECTION();
 
 这解释了一个实测结果。四线程各自往私有 list 里 append 50 万次，FT 构建 0.052 秒，比 GIL 构建的 0.094 还快：私有容器无争用，临界区就是两条指令，而 FT 的真并行让四个线程各占一个核。换成四线程共享一个 list，FT 掉到 0.255 秒，每次 append 都是真实的锁竞争。GIL 构建从 0.094 到 0.100，几乎无感；GIL 本来就把一切串行了。
 
-```text
-                    GIL 构建         FT 构建
-私有 list x4        0.094            0.052
-共享 list x4        0.100            0.255
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 200" role="img" aria-label="四线程各 append 五十万次的条形图：私有 list 场景 GIL 构建 0.094 秒、FT 构建 0.052 秒，FT 快 1.8 倍；共享 list 场景 GIL 构建 0.100 秒、FT 构建 0.255 秒，FT 慢 2.5 倍" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="22" font-size="12" fill="#6b675e">四线程各往 list 里 append 50 万次（秒，越短越好）</text>
+<line class="axis" x1="118" y1="34" x2="118" y2="166" stroke="#a29d90" stroke-width="1"/>
+<text class="ts" x="20" y="67" font-size="11" fill="#6b675e">私有 list ×4</text>
+<rect class="bx-q" x="118" y="40" width="140" height="20" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="266" y="55" font-size="12" fill="#6b675e">GIL 0.094</text>
+<rect class="bar" x="118" y="66" width="77" height="20" rx="2" fill="#2b2a26"/>
+<text class="ts" x="203" y="81" font-size="12" fill="#6b675e">FT 0.052</text>
+<text class="tc" x="272" y="81" font-size="12" fill="#b03a2e">快 1.8 倍</text>
+<text class="ts" x="20" y="139" font-size="11" fill="#6b675e">共享 list ×4</text>
+<rect class="bx-q" x="118" y="112" width="149" height="20" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="275" y="127" font-size="12" fill="#6b675e">GIL 0.100</text>
+<rect class="bar" x="118" y="138" width="380" height="20" rx="2" fill="#2b2a26"/>
+<text class="ts" x="506" y="153" font-size="12" fill="#6b675e">FT 0.255</text>
+<text class="tc" x="575" y="153" font-size="12" fill="#b03a2e">慢 2.5 倍</text>
+<text class="ts" x="20" y="188" font-size="11" fill="#6b675e">本机实测 · CPython 3.14.7 · 私有 = 每线程一只 list，共享 = 四线程同一只</text>
+</svg>
+</figure>
 
 所以 FT 没有把“容器操作变慢”当成统一命运：专属容器更快了，共享容器才付锁钱。程序怎么写数据所有权，直接决定 FT 是赚是赔。
 
@@ -183,11 +319,48 @@ FT 3.16.0a0     460059   丢失 339941
 
 于是 FT 时代的边界要重新表述：
 
-```text
-单个容器操作（append/setitem）     原子
-复合语句（i += 1、check-then-act）  非原子，与任何语言一样
-多个操作的组合                     非原子，需要锁
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 372" role="img" aria-label="上图：两个线程各执行一次 i += 1 的四步交错时序，双方都读到 5、都写回 6，一次加一蒸发；下图：原子性边界三档，单个容器操作原子，复合语句与多操作组合非原子需要锁" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="ftA6" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="22" font-size="12" fill="#6b675e">i += 1 怎么丢更新：两个线程，四步交错</text>
+<line class="axis" x1="70" y1="38" x2="636" y2="38" stroke="#a29d90" stroke-width="1.2" marker-end="url(#ftA6)"/>
+<line class="grid" x1="205" y1="44" x2="205" y2="152" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 3"/>
+<line class="grid" x1="350" y1="44" x2="350" y2="152" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 3"/>
+<line class="grid" x1="495" y1="44" x2="495" y2="152" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 3"/>
+<text class="ts" x="20" y="74" font-size="11" fill="#6b675e">线程 1</text>
+<rect class="bx-q" x="70" y="52" width="128" height="34" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="134" y="74" text-anchor="middle" font-size="11" fill="#2b2a26">读 i，得 5</text>
+<rect class="bx-q" x="360" y="52" width="128" height="34" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="424" y="74" text-anchor="middle" font-size="11" fill="#2b2a26">写回 i = 6</text>
+<text class="ts" x="20" y="132" font-size="11" fill="#6b675e">线程 2</text>
+<rect class="bx-q" x="215" y="110" width="128" height="34" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="279" y="132" text-anchor="middle" font-size="11" fill="#2b2a26">读 i，得 5</text>
+<rect class="bx-sick" x="505" y="110" width="128" height="34" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="ts" x="569" y="132" text-anchor="middle" font-size="11" fill="#b03a2e">写回 i = 6</text>
+<text class="ts" x="20" y="176" font-size="11" fill="#6b675e">i 的值</text>
+<rect class="bx" x="70" y="160" width="128" height="24" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="134" y="177" text-anchor="middle" font-size="11" fill="#2b2a26">5</text>
+<rect class="bx" x="215" y="160" width="128" height="24" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="279" y="177" text-anchor="middle" font-size="11" fill="#2b2a26">5</text>
+<rect class="bx" x="360" y="160" width="128" height="24" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="424" y="177" text-anchor="middle" font-size="11" fill="#2b2a26">6</text>
+<rect class="bx-sick" x="505" y="160" width="128" height="24" rx="3" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/>
+<text class="tc" x="569" y="177" text-anchor="middle" font-size="11" fill="#b03a2e">6</text>
+<text class="tc" x="70" y="210" font-size="12" fill="#b03a2e">各自 +1 一次，i 该从 5 走到 7，实际停在 6</text>
+<text class="ts" x="20" y="246" font-size="12" fill="#6b675e">原子性边界（FT 构建）</text>
+<rect class="bx-q" x="20" y="256" width="330" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="34" y="276" font-size="11.5" fill="#2b2a26">单个容器操作（append / setitem）</text>
+<text class="tc" x="368" y="276" font-size="12" fill="#b03a2e">原子</text>
+<rect class="bx-q" x="20" y="294" width="330" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="34" y="314" font-size="11.5" fill="#2b2a26">复合语句（i += 1、check-then-act）</text>
+<text class="ts" x="368" y="314" font-size="12" fill="#6b675e">非原子</text>
+<rect class="bx-q" x="20" y="332" width="330" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="34" y="352" font-size="11.5" fill="#2b2a26">多个操作的组合</text>
+<text class="ts" x="368" y="352" font-size="12" fill="#6b675e">非原子 · 需要锁</text>
+</svg>
+</figure>
 
 GIL 曾经意外提供的“字节码级伪原子”消失了。这是语义上最需要强调的变化：数据竞争不是 FT 引入的，是 GIL 一直在替你掩盖。PEP 703 把这归为“受支持的语义变化”，依赖旧偶然行为的代码本来就该修。
 
@@ -232,14 +405,36 @@ FT 构建把分配器换成了 mimalloc。原因直白：pymalloc 的设计充�
 
 GC 也换了形态，差异在 `InternalDocs/garbage_collector.md` 里列得明白：
 
-```text
-                   GIL 构建              FT 构建
-追踪结构           PyGC_Head 双向链表     mimalloc 扫堆找到被追踪对象
-分代               三代                   不分代，每次全堆
-线程协调           GIL 顺带解决           两次停世界（stop the world）
-不可达对象表       PyGC_Head 链表         复用 ob_tid 当链表指针
-标志位             _gc_prev 里            ob_gc_bits（头部的 1 字节）
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 244" role="img" aria-label="GC 五项对照表：追踪结构从 PyGC_Head 双向链表换成 mimalloc 扫堆；分代从三代换成不分代每次全堆；线程协调从 GIL 顺带解决换成两次停世界；不可达对象表从 PyGC_Head 链表换成复用 ob_tid；标志位从 _gc_prev 换成 ob_gc_bits" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="22" font-size="12" fill="#6b675e">GC 的五项地基更换</text>
+<text class="t" x="276" y="50" text-anchor="middle" font-size="12" fill="#2b2a26">GIL 构建</text>
+<text class="t" x="524" y="50" text-anchor="middle" font-size="12" fill="#2b2a26">FT 构建</text>
+<line class="axis" x1="146" y1="40" x2="146" y2="234" stroke="#a29d90" stroke-width="1"/>
+<line class="axis" x1="402" y1="40" x2="402" y2="234" stroke="#a29d90" stroke-width="1"/>
+<line class="axis" x1="20" y1="60" x2="640" y2="60" stroke="#a29d90" stroke-width="1.2"/>
+<text class="ts" x="20" y="82" font-size="11" fill="#6b675e">追踪结构</text>
+<text class="ts" x="158" y="82" font-size="11" fill="#2b2a26">PyGC_Head 双向链表</text>
+<text class="ts" x="414" y="82" font-size="11" fill="#2b2a26">mimalloc 扫堆找被追踪对象</text>
+<line class="grid" x1="20" y1="94" x2="640" y2="94" stroke="#a29d90" stroke-width="1"/>
+<text class="ts" x="20" y="116" font-size="11" fill="#6b675e">分代</text>
+<text class="ts" x="158" y="116" font-size="11" fill="#2b2a26">三代</text>
+<text class="tc" x="414" y="116" font-size="11" fill="#b03a2e">不分代 · 每次全堆</text>
+<line class="grid" x1="20" y1="128" x2="640" y2="128" stroke="#a29d90" stroke-width="1"/>
+<text class="ts" x="20" y="150" font-size="11" fill="#6b675e">线程协调</text>
+<text class="ts" x="158" y="150" font-size="11" fill="#2b2a26">GIL 顺带解决</text>
+<text class="ts" x="414" y="150" font-size="11" fill="#2b2a26">两次停世界</text>
+<line class="grid" x1="20" y1="162" x2="640" y2="162" stroke="#a29d90" stroke-width="1"/>
+<text class="ts" x="20" y="184" font-size="11" fill="#6b675e">不可达对象表</text>
+<text class="ts" x="158" y="184" font-size="11" fill="#2b2a26">PyGC_Head 链表</text>
+<text class="ts" x="414" y="184" font-size="11" fill="#2b2a26">复用 ob_tid 当链表指针</text>
+<line class="grid" x1="20" y1="196" x2="640" y2="196" stroke="#a29d90" stroke-width="1"/>
+<text class="ts" x="20" y="218" font-size="11" fill="#6b675e">标志位</text>
+<text class="ts" x="158" y="218" font-size="11" fill="#2b2a26">_gc_prev 里</text>
+<text class="ts" x="414" y="218" font-size="11" fill="#2b2a26">ob_gc_bits（头部 1 字节）</text>
+<line class="axis" x1="20" y1="234" x2="640" y2="234" stroke="#a29d90" stroke-width="1.2"/>
+</svg>
+</figure>
 
 最反直觉的是放弃分代。分代的收益依赖“多数对象朝生夕死、活过童年的会活很久”的假设，这个假设在 FT 下依然成立，但 mimalloc 的堆组织不按年龄分段，为了分代就得另维护一层跨线程的结构，成本盖过收益。于是 FT 的 GC 每次都全堆扫描。这是用吞吐换实现简单的取舍：停世界两次，一次找根、一次清不可达，停的世界越小、越短越好。
 
