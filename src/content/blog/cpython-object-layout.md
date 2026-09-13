@@ -33,17 +33,29 @@ print(sys.getsizeof(value))
 
 先留下整篇最重要的边界：
 
-```text
-业务内容长度
-    ≠
-对象报告的浅层尺寸
-    ≠
-对象图保住的全部内存
-    ≠
-分配器实际承载的 block
-    ≠
-进程 RSS 增量
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 272" role="img" aria-label="五层口径阶梯：业务内容长度、对象报告的浅层尺寸、对象图保住的全部内存、分配器实际承载的 block、进程 RSS 增量，五层彼此不相等，各由不同工具在不同层测量" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<rect class="bx-q" x="60" y="20" width="320" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="76" y="40" font-size="11.5" fill="#2b2a26">业务内容长度</text>
+<text class="tc" x="220" y="64" text-anchor="middle" font-size="14" fill="#b03a2e">≠</text>
+<rect class="bx-q" x="60" y="70" width="320" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="76" y="90" font-size="11.5" fill="#2b2a26">对象报告的浅层尺寸</text>
+<text class="tc" x="220" y="114" text-anchor="middle" font-size="14" fill="#b03a2e">≠</text>
+<rect class="bx-q" x="60" y="120" width="320" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="76" y="140" font-size="11.5" fill="#2b2a26">对象图保住的全部内存</text>
+<text class="tc" x="220" y="164" text-anchor="middle" font-size="14" fill="#b03a2e">≠</text>
+<rect class="bx-q" x="60" y="170" width="320" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="76" y="190" font-size="11.5" fill="#2b2a26">分配器实际承载的 block</text>
+<text class="tc" x="220" y="214" text-anchor="middle" font-size="14" fill="#b03a2e">≠</text>
+<rect class="bx-sick" x="60" y="220" width="320" height="30" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="ts" x="76" y="240" font-size="11.5" fill="#b03a2e">进程 RSS 增量</text>
+<text class="ts" x="400" y="40" font-size="10.5" fill="#6b675e">len()：数内容</text>
+<text class="ts" x="400" y="90" font-size="10.5" fill="#6b675e">sys.getsizeof()：类型自报</text>
+<text class="ts" x="400" y="140" font-size="10.5" fill="#6b675e">堆分析器：沿引用图去重</text>
+<text class="ts" x="400" y="190" font-size="10.5" fill="#6b675e">pymalloc：按 size class 取整</text>
+<text class="ts" x="400" y="240" font-size="10.5" fill="#6b675e">页面驻留：观测粒度最粗</text>
+</svg>
+</figure>
 
 `len()`、`sys.getsizeof()`、堆分析器、pymalloc 统计与 RSS 不是五把精度不同的同一把尺。它们站在不同层，测量不同边界。
 
@@ -74,15 +86,23 @@ print(sys.getsizeof(value))
 
 对于本文的默认 GIL 构建，可以先把 `PyObject` 画成：
 
-```text
-典型 64 位默认 GIL 构建
-
-┌────────────────────┬────────────────────┐
-│ 引用计数相关状态     │ ob_type            │
-│ 8 bytes             │ 8 bytes            │
-└────────────────────┴────────────────────┘
-                 PyObject：16 bytes
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 148" role="img" aria-label="PyObject 公共前缀字节图：典型 64 位默认 GIL 构建下，引用计数相关状态 8 字节加 ob_type 类型指针 8 字节，共 16 字节" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="60" y="24" font-size="11" fill="#6b675e">典型 64 位默认 GIL 构建（1 格 = 8 字节）</text>
+<rect class="bx-q" x="60" y="36" width="160" height="44" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="ts" x="140" y="55" text-anchor="middle" font-size="10.5" fill="#2b2a26">引用计数相关状态</text>
+<text class="ts" x="140" y="71" text-anchor="middle" font-size="9.5" fill="#6b675e">ob_refcnt 所在区域 · 8 字节</text>
+<rect class="bx-q" x="220" y="36" width="160" height="44" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="ts" x="300" y="55" text-anchor="middle" font-size="10.5" fill="#2b2a26">ob_type</text>
+<text class="ts" x="300" y="71" text-anchor="middle" font-size="9.5" fill="#6b675e">类型指针 · 8 字节</text>
+<line class="axis" x1="60" y1="92" x2="380" y2="92" stroke="#a29d90" stroke-width="1.2"/>
+<line class="axis" x1="60" y1="88" x2="60" y2="96" stroke="#a29d90" stroke-width="1.2"/>
+<line class="axis" x1="380" y1="88" x2="380" y2="96" stroke="#a29d90" stroke-width="1.2"/>
+<text class="t" x="220" y="116" text-anchor="middle" font-size="11.5" fill="#2b2a26">PyObject · 16 字节</text>
+<text class="ts" x="404" y="55" font-size="10.5" fill="#6b675e">所有 CPython 对象</text>
+<text class="ts" x="404" y="72" font-size="10.5" fill="#6b675e">共同遵守的公共前缀</text>
+</svg>
+</figure>
 
 `ob_refcnt` 所在区域维护引用计数。上一篇已经追过 `Py_INCREF()`、`Py_DECREF()`、immortal object 与引用归零；这一篇只关心它占据公共前缀的一部分。
 
@@ -143,17 +163,28 @@ tp_basicsize + nitems × tp_itemsize
 
 `PyVarObject` 在完整 `PyObject` 后增加一个 `Py_ssize_t ob_size`：
 
-```text
-典型 64 位默认 GIL 构建
-
-┌──────────────── PyObject：16 bytes ────────────────┐
-│ 引用计数相关状态              │ ob_type             │
-└───────────────────────────────┴─────────────────────┘
-┌─────────────────────────────────────────────────────┐
-│ ob_size：8 bytes                                    │
-└─────────────────────────────────────────────────────┘
-                 PyVarObject：24 bytes
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 176" role="img" aria-label="PyVarObject 字节图：PyObject 的 16 字节公共前缀之后再追加 8 字节 ob_size，共 24 字节；ob_size 记录元素数量" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="60" y="24" font-size="11" fill="#6b675e">典型 64 位默认 GIL 构建（1 格 = 8 字节）</text>
+<rect class="bx-q" x="60" y="36" width="150" height="44" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="ts" x="135" y="62" text-anchor="middle" font-size="10.5" fill="#2b2a26">引用计数相关状态</text>
+<rect class="bx-q" x="210" y="36" width="150" height="44" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="ts" x="285" y="62" text-anchor="middle" font-size="10.5" fill="#2b2a26">ob_type</text>
+<rect class="bx" x="360" y="36" width="150" height="44" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="435" y="55" text-anchor="middle" font-size="10.5" fill="#2b2a26">ob_size</text>
+<text class="ts" x="435" y="71" text-anchor="middle" font-size="9.5" fill="#6b675e">元素数量</text>
+<line class="axis" x1="60" y1="92" x2="360" y2="92" stroke="#a29d90" stroke-width="1.2"/>
+<line class="axis" x1="60" y1="88" x2="60" y2="96" stroke="#a29d90" stroke-width="1.2"/>
+<line class="axis" x1="360" y1="88" x2="360" y2="96" stroke="#a29d90" stroke-width="1.2"/>
+<text class="ts" x="210" y="112" text-anchor="middle" font-size="10.5" fill="#6b675e">PyObject · 16 字节</text>
+<line class="axis" x1="60" y1="128" x2="510" y2="128" stroke="#a29d90" stroke-width="1.2"/>
+<line class="axis" x1="60" y1="124" x2="60" y2="132" stroke="#a29d90" stroke-width="1.2"/>
+<line class="axis" x1="510" y1="124" x2="510" y2="132" stroke="#a29d90" stroke-width="1.2"/>
+<text class="t" x="285" y="156" text-anchor="middle" font-size="11.5" fill="#2b2a26">PyVarObject · 24 字节</text>
+<text class="ts" x="530" y="55" font-size="10.5" fill="#6b675e">list / tuple / bytes</text>
+<text class="ts" x="530" y="72" font-size="10.5" fill="#6b675e">走这条协议</text>
+</svg>
+</figure>
 
 `ob_size` 是元素数量，不是对象占用的字节数。对 list，它表示当前逻辑长度；对 tuple，它表示元素数；对 bytes，它表示内容字节数。类型再结合 `tp_itemsize` 或专用公式算出申请量。
 
@@ -251,13 +282,28 @@ for length in (0, 1, 10, 200):
 
 到这里，类型布局算出 233 字节的对象请求。前一篇已经追过后半程：在本文默认 64 位 pymalloc 构建中，小请求按 16 字节 size class 管理，于是 233 向上落进 240 字节 block。
 
-```text
-200 bytes   业务内容
-    ↓ 加对象公共前缀、长度、哈希与终止 NUL
-233 bytes   对象报告的浅尺寸 / 本例逻辑请求
-    ↓ pymalloc 按 size class 承载
-240 bytes   分配器实际交出的 block 规格
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 200" role="img" aria-label="一根按比例的分段条：业务内容 200 字节加固定基线 33 字节等于对象浅尺寸 233 字节，再加 7 字节分配器余量落进 240 字节 block" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="22" font-size="12" fill="#6b675e">一只 bytes 对象，同一根条上的三种口径（宽度按比例）</text>
+<rect class="bx-q" x="60" y="40" width="360" height="44" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="ts" x="240" y="60" text-anchor="middle" font-size="11" fill="#2b2a26">业务内容 · 200 字节</text>
+<text class="ts" x="240" y="76" text-anchor="middle" font-size="9.5" fill="#6b675e">len(value) 数的就是这一段</text>
+<rect class="bx" x="420" y="40" width="60" height="44" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="450" y="60" text-anchor="middle" font-size="10" fill="#2b2a26">基线</text>
+<text class="ts" x="450" y="76" text-anchor="middle" font-size="9.5" fill="#6b675e">33</text>
+<rect class="bx-sick" x="480" y="40" width="13" height="44" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="ts" x="512" y="58" font-size="10" fill="#b03a2e">余量 7</text>
+<text class="ts" x="512" y="74" font-size="9.5" fill="#6b675e">block 规格取整</text>
+<line class="axis" x1="60" y1="100" x2="480" y2="100" stroke="#a29d90" stroke-width="1.2"/>
+<line class="axis" x1="60" y1="96" x2="60" y2="104" stroke="#a29d90" stroke-width="1.2"/>
+<line class="axis" x1="480" y1="96" x2="480" y2="104" stroke="#a29d90" stroke-width="1.2"/>
+<text class="t" x="270" y="122" text-anchor="middle" font-size="11.5" fill="#2b2a26">sys.getsizeof(value) = 233 · 对象浅尺寸</text>
+<line class="axis" x1="60" y1="140" x2="493" y2="140" stroke="#a29d90" stroke-width="1.2"/>
+<line class="axis" x1="493" y1="136" x2="493" y2="144" stroke="#a29d90" stroke-width="1.2"/>
+<text class="t" x="276" y="162" text-anchor="middle" font-size="11.5" fill="#2b2a26">pymalloc 交出的 block = 240</text>
+<text class="ts" x="60" y="188" font-size="10.5" fill="#6b675e">基线 33 = 公共前缀 16 + ob_size 8 + ob_shash 8 + 终止 NUL 1</text>
+</svg>
+</figure>
 
 最后 7 字节不是新的 Python 字段，也不是 bytes 可以拿来保存更多内容的容量。它是固定规格 block 的余量，属于分配器层的内部碎片。
 
@@ -286,19 +332,33 @@ ASCII 十个字符只比一个字符多 9 字节；十个中文字符比一个�
 
 list 展示了另一种布局：对象主体固定保存长度、`ob_item` 指针和 `allocated` 容量，真正的元素引用数组位于独立分配中。
 
-```text
-PyListObject
-┌──────────────────────────────────┐
-│ PyVarObject：ob_size = 当前长度   │
-│ ob_item ───────────────────────┐ │
-│ allocated = 当前容量            │ │
-└─────────────────────────────────┼─┘
-                                  ▼
-                     ┌────┬────┬────┬────┐
-                     │ *  │ *  │ *  │空槽│
-                     └────┴────┴────┴────┘
-                       指向元素对象的引用
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 244" role="img" aria-label="PyListObject 结构：对象主体内有 ob_size 当前长度、ob_item 指针与 allocated 容量；ob_item 指向另一块独立分配的引用数组，数组槽位只存 PyObject 指针，元素对象本体在更远处，不计入 list 浅尺寸" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="olA5" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-q" x="30" y="36" width="240" height="112" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="150" y="58" text-anchor="middle" font-size="11.5" fill="#2b2a26">PyListObject（主体）</text>
+<text class="ts" x="46" y="82" font-size="10.5" fill="#6b675e">PyVarObject · ob_size = 当前长度</text>
+<text class="ts" x="46" y="104" font-size="10.5" fill="#6b675e">ob_item · 引用数组指针</text>
+<text class="ts" x="46" y="126" font-size="10.5" fill="#6b675e">allocated = 当前容量</text>
+<line class="fl" x1="270" y1="100" x2="352" y2="86" stroke="#6b675e" stroke-width="1.4" marker-end="url(#olA5)"/>
+<rect class="bx" x="356" y="60" width="60" height="40" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="386" y="84" text-anchor="middle" font-size="12" fill="#2b2a26">*</text>
+<rect class="bx" x="416" y="60" width="60" height="40" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="446" y="84" text-anchor="middle" font-size="12" fill="#2b2a26">*</text>
+<rect class="bx" x="476" y="60" width="60" height="40" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="506" y="84" text-anchor="middle" font-size="12" fill="#2b2a26">*</text>
+<rect class="bx-gone" x="536" y="60" width="60" height="40" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1.2" stroke-dasharray="4 3"/>
+<text class="ts" x="566" y="84" text-anchor="middle" font-size="10" fill="#a29d90">空槽</text>
+<text class="ts" x="356" y="122" font-size="10" fill="#6b675e">独立分配的引用数组 · 实长 allocated · 槽里只有 PyObject *</text>
+<line class="fl" x1="386" y1="100" x2="386" y2="146" stroke="#6b675e" stroke-width="1.2" marker-end="url(#olA5)"/>
+<rect class="bx" x="300" y="150" width="176" height="44" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="388" y="169" text-anchor="middle" font-size="10.5" fill="#2b2a26">元素对象本体</text>
+<text class="ts" x="388" y="186" text-anchor="middle" font-size="9.5" fill="#6b675e">不计入 list 的浅尺寸</text>
+<text class="ts" x="30" y="228" font-size="10.5" fill="#6b675e">长度与容量之间的空槽，就是 append 不用每次搬家的预留</text>
+</svg>
+</figure>
 
 `list.__sizeof__()` 使用的是容量，不是 `len(list)`：
 
@@ -386,13 +446,31 @@ naive repeated sum: 80056
 
 一千个槽都指向同一个 `value`：
 
-```text
-items[0] ───┐
-items[1] ───┤
-items[2] ───┼──> 同一只 72 字节大整数
-...         │
-items[999] ─┘
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 196" role="img" aria-label="一千个引用槽指向同一只对象：items[0]、items[1]、items[2] 直到 items[999] 的箭头全部汇聚到同一只 72 字节大整数上，朴素求和会把它重复计算一千次" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="olA6" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-q" x="40" y="30" width="130" height="26" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="105" y="48" text-anchor="middle" font-size="10.5" fill="#2b2a26">items[0]</text>
+<rect class="bx-q" x="40" y="62" width="130" height="26" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="105" y="80" text-anchor="middle" font-size="10.5" fill="#2b2a26">items[1]</text>
+<rect class="bx-q" x="40" y="94" width="130" height="26" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="105" y="112" text-anchor="middle" font-size="10.5" fill="#2b2a26">items[2]</text>
+<text class="ts" x="105" y="146" text-anchor="middle" font-size="12" fill="#a29d90">…</text>
+<rect class="bx-q" x="40" y="158" width="130" height="26" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="105" y="176" text-anchor="middle" font-size="10.5" fill="#2b2a26">items[999]</text>
+<line class="fl" x1="170" y1="43" x2="392" y2="92" stroke="#6b675e" stroke-width="1.1" marker-end="url(#olA6)"/>
+<line class="fl" x1="170" y1="75" x2="392" y2="99" stroke="#6b675e" stroke-width="1.1" marker-end="url(#olA6)"/>
+<line class="fl" x1="170" y1="107" x2="392" y2="107" stroke="#6b675e" stroke-width="1.1" marker-end="url(#olA6)"/>
+<line class="fl" x1="170" y1="140" x2="392" y2="114" stroke="#6b675e" stroke-width="1.1" marker-end="url(#olA6)"/>
+<line class="fl" x1="170" y1="171" x2="392" y2="122" stroke="#6b675e" stroke-width="1.1" marker-end="url(#olA6)"/>
+<rect class="bx" x="396" y="76" width="224" height="64" rx="6" fill="#ece9e2" stroke="#6b675e" stroke-width="1.5"/>
+<text class="t" x="508" y="102" text-anchor="middle" font-size="11.5" fill="#2b2a26">同一只大整数 value</text>
+<text class="ts" x="508" y="124" text-anchor="middle" font-size="10" fill="#6b675e">72 字节 · 内存里只有这一份</text>
+<text class="tc" x="396" y="176" font-size="11" fill="#b03a2e">朴素求和的 80056 里，有 72000 都是这一只</text>
+</svg>
+</figure>
 
 朴素求和把同一只整数算了 1000 次。若这张小图只包含 list 和共享整数两个对象，按身份去重后是：
 
@@ -478,24 +556,50 @@ Slotted 实例的 sys.getsizeof()          48
 
 在本文默认 GIL 构建中，GC-capable 类型的底层分配前面会预留 `PyGC_Head`。当前它由两个 `uintptr_t` 组成，典型 64 位为 16 字节：
 
-```text
-底层分配起点
-      │
-      ▼
-┌────────────────────────────────┐
-│ PyGC_Head：next / prev          │  16 bytes
-├────────────────────────────────┤
-│ PyObject / 具体类型主体          │  ← Python 对象指针指向这里
-└────────────────────────────────┘
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 156" role="img" aria-label="GC 前置头字节图：底层分配起点先是 16 字节的 PyGC_Head（next 与 prev 两个指针），之后才是 PyObject 与具体类型主体；Python 对象指针指向主体，不指向分配起点" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="olA7" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="60" y="24" font-size="11" fill="#6b675e">底层分配起点</text>
+<line class="fl" x1="100" y1="30" x2="100" y2="42" stroke="#6b675e" stroke-width="1.2" marker-end="url(#olA7)"/>
+<rect class="bx" x="60" y="46" width="380" height="44" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="250" y="65" text-anchor="middle" font-size="10.5" fill="#2b2a26">PyGC_Head：next / prev</text>
+<text class="ts" x="250" y="82" text-anchor="middle" font-size="9.5" fill="#6b675e">16 字节 · 只有 GC-capable 类型才有</text>
+<rect class="bx-q" x="60" y="90" width="380" height="44" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="250" y="109" text-anchor="middle" font-size="10.5" fill="#2b2a26">PyObject / 具体类型主体</text>
+<text class="ts" x="250" y="126" text-anchor="middle" font-size="9.5" fill="#6b675e">对象从这里开始</text>
+<line class="flc" x1="500" y1="112" x2="446" y2="112" stroke="#b03a2e" stroke-width="1.4" marker-end="url(#olA7)"/>
+<text class="tc" x="508" y="108" font-size="10.5" fill="#b03a2e">Python 对象指针</text>
+<text class="tc" x="508" y="124" font-size="10.5" fill="#b03a2e">指向这里</text>
+</svg>
+</figure>
 
 所以对象指针不一定指向整次底层申请的起点。`_Py_AS_GC(op)` 会从对象地址向前找到 GC 头，`_Py_FROM_GC(gc)` 则反向换算回来。
 
 还有另一种不能混写的前置区。当前普通 heap instance 可使用 managed dict 与 managed weakref；只要类型启用相应 preheader 标志，当前实现会在对象前再预留两个指针槽。在典型默认 GIL 构建中，布局可以概念化为：
 
-```text
-[weakref ptr][dict ptr][PyGC_Head.next][PyGC_Head.prev][PyObject ...]
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 158" role="img" aria-label="带 managed preheader 的完整前置区：从分配起点依次是 weakref 指针、dict 指针（这两个槽是 managed preheader），再是 PyGC_Head 的 next 与 prev，最后才是 PyObject 主体，对象指针指向主体" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="132" y="24" text-anchor="middle" font-size="10.5" fill="#6b675e">managed preheader · 两个指针槽</text>
+<line class="axis" x1="20" y1="32" x2="244" y2="32" stroke="#a29d90" stroke-width="1.2"/>
+<text class="ts" x="356" y="24" text-anchor="middle" font-size="10.5" fill="#6b675e">PyGC_Head · 16 字节</text>
+<line class="axis" x1="244" y1="32" x2="468" y2="32" stroke="#a29d90" stroke-width="1.2"/>
+<rect class="bx" x="20" y="42" width="112" height="44" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="76" y="68" text-anchor="middle" font-size="10" fill="#2b2a26">weakref ptr</text>
+<rect class="bx" x="132" y="42" width="112" height="44" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="188" y="68" text-anchor="middle" font-size="10" fill="#2b2a26">dict ptr</text>
+<rect class="bx-q" x="244" y="42" width="112" height="44" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="300" y="68" text-anchor="middle" font-size="10" fill="#2b2a26">GC.next</text>
+<rect class="bx-q" x="356" y="42" width="112" height="44" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="412" y="68" text-anchor="middle" font-size="10" fill="#2b2a26">GC.prev</text>
+<rect class="bx-q" x="468" y="42" width="112" height="44" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.5"/>
+<text class="ts" x="524" y="61" text-anchor="middle" font-size="10" fill="#2b2a26">PyObject …</text>
+<text class="ts" x="524" y="78" text-anchor="middle" font-size="9" fill="#6b675e">对象指针在这</text>
+<text class="ts" x="20" y="114" font-size="10.5" fill="#6b675e">前置区最多四槽、32 字节，全部藏在对象地址之前</text>
+<text class="ts" x="20" y="138" font-size="10.5" fill="#6b675e">两块前置区各自独立启用：bytes 两者皆无，普通实例可能两者皆有</text>
+</svg>
+</figure>
 
 managed preheader 与 `PyGC_Head` 是两件事，不能都简称为“GC 头”。`_PyType_PreHeaderSize()` 在当前默认构建里把二者分别计入前置尺寸。
 
@@ -505,19 +609,34 @@ managed preheader 与 `PyGC_Head` 是两件事，不能都简称为“GC 头”�
 
 当前源码中的调用链不是一条“读取 malloc 元数据”的路径：
 
-```text
-sys.getsizeof(obj)
-    ↓
-sys_getsizeof()
-    ↓
-_PySys_GetSizeOf(obj)
-    ↓
-查找并调用 obj.__sizeof__()
-    ↓
-检查结果是否为非负整数
-    ↓
-按当前类型加上 preheader 尺寸
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 196" role="img" aria-label="sys.getsizeof 调用链六步：sys.getsizeof 进入 sys_getsizeof，再到 _PySys_GetSizeOf，查找并调用对象自己的 __sizeof__，检查结果为非负整数，最后按当前类型加上 preheader 尺寸" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="olA8" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="22" font-size="12" fill="#6b675e">一条报告路径，六步</text>
+<rect class="bx-q" x="20" y="34" width="180" height="48" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="ts" x="110" y="63" text-anchor="middle" font-size="11" fill="#2b2a26">sys.getsizeof(obj)</text>
+<line class="fl" x1="200" y1="58" x2="234" y2="58" stroke="#6b675e" stroke-width="1.3" marker-end="url(#olA8)"/>
+<rect class="bx-q" x="238" y="34" width="180" height="48" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="328" y="63" text-anchor="middle" font-size="11" fill="#2b2a26">sys_getsizeof()</text>
+<line class="fl" x1="418" y1="58" x2="452" y2="58" stroke="#6b675e" stroke-width="1.3" marker-end="url(#olA8)"/>
+<rect class="bx-q" x="456" y="34" width="180" height="48" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="546" y="63" text-anchor="middle" font-size="10.5" fill="#2b2a26">_PySys_GetSizeOf(obj)</text>
+<line class="fl" x1="546" y1="82" x2="546" y2="110" stroke="#6b675e" stroke-width="1.3" marker-end="url(#olA8)"/>
+<rect class="bx" x="456" y="114" width="180" height="48" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="546" y="134" text-anchor="middle" font-size="10.5" fill="#2b2a26">调用 obj.__sizeof__()</text>
+<text class="ts" x="546" y="151" text-anchor="middle" font-size="9.5" fill="#6b675e">类型协议的核心一步</text>
+<line class="fl" x1="456" y1="138" x2="422" y2="138" stroke="#6b675e" stroke-width="1.3" marker-end="url(#olA8)"/>
+<rect class="bx-q" x="238" y="114" width="180" height="48" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="328" y="143" text-anchor="middle" font-size="10.5" fill="#2b2a26">检查：非负整数？</text>
+<line class="fl" x1="238" y1="138" x2="204" y2="138" stroke="#6b675e" stroke-width="1.3" marker-end="url(#olA8)"/>
+<rect class="bx-q" x="20" y="114" width="180" height="48" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="110" y="134" text-anchor="middle" font-size="10.5" fill="#2b2a26">按类型加 preheader</text>
+<text class="ts" x="110" y="151" text-anchor="middle" font-size="9.5" fill="#6b675e">报告值比自报值多出的部分</text>
+<text class="ts" x="20" y="186" font-size="10.5" fill="#6b675e">六步里没有一步去问分配器</text>
+</svg>
+</figure>
 
 也就是说，`sys.getsizeof()` 首先是一项类型协议。list 的 `__sizeof__()` 知道要把 `allocated` 引用槽算进去；int 有自己的 digit 公式；str 根据实际表示分支；第三方扩展类型也要自己报告内部或外部存储。
 
