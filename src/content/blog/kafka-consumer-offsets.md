@@ -20,7 +20,7 @@ tags: [Kafka, 消息队列, 分布式]
 
 定位规则摊开是一条流水线：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 278" role="img" aria-label="组名到协调者的哈希流水线：组名经 String.hashCode（h=31h+c 按 32 位有符号回绕）、Utils.abs 取绝对值（MIN_VALUE 特判归 0）、模 50 落到 __consumer_offsets 的某个分区，该分区的 leader broker 出任这个组的协调者；15 个活组对照 describe 的 COORDINATOR 列全部命中；50 个分区的 leader 摊在 3 台 broker 上，实测分布 17/16/17" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <defs>
 <marker id="mq9As1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
@@ -115,7 +115,7 @@ key 是 (组, topic, 分区) 三元组，value 是它读到了哪（offset）外
 
 生命史在日志里的形状：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 296" role="img" aria-label="__consumer_offsets 同一分区里的两种记录按追加顺序排列：type=2 的组元数据记录 generation、成员与分配（gen0 空组、gen1 带成员、gen2 人走光），type=1 的位移提交记录（组、topic、分区）读到了哪个 offset；同一个 key 先后提交 offset 5、10、15 各占一条独立记录，追加而不覆盖" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <defs>
 <marker id="mq9As2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
@@ -168,7 +168,7 @@ key 是 (组, topic, 分区) 三元组，value 是它读到了哪（offset）外
 
 压实前 4 个段，压实后 1 个段：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 286" role="img" aria-label="压实前后对比：压实前日志有 4 个段，同一个 key 底下摞着 offset 5、10、15、15、20、25 的旧版本，还有旧代元数据和删组墓碑；cleaner 扫过之后只剩 1 个段 5 条记录，每个 key 只留最新一条：p0 的 30、p1 和 p2 各自的最新位移、两个组各自的最新一代" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <defs>
 <marker id="mq9Ac1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-c" d="M0 0 L8 4 L0 8 Z" fill="#b03a2e"/></marker>
@@ -267,7 +267,7 @@ CURRENT-OFFSET=35，跑在已处理的 33 前面。重启后从 35 续读，seq 
 
 三个提交点摆在同一根标尺上：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 298" role="img" aria-label="同一个崩溃点的三种提交策略数轴对比：都在处理到 seq 33 那一刻被 SIGKILL；策略 C autoCommit 提交点 20，重启后重放 21 到 33 共 13 条重复；策略 A 先处理后提交提交点 30，重放 31 到 33 共 3 条重复；策略 B 先提交后处理提交点 35，重启后跳过 34、35 共 2 条丢失；提交点在处理点左侧偏重复，右侧偏丢失，缺口长度决定条数" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <defs>
 <marker id="mq9As3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
@@ -317,7 +317,7 @@ CURRENT-OFFSET=35，跑在已处理的 33 前面。重启后从 35 续读，seq 
 
 两条泳道各自的速度：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 258" role="img" aria-label="杀掉协调者 broker 之后的双泳道时间轴：服务端泳道 9 秒 broker 心跳会话判死，控制器从 ISR 指定新 leader，12.0 秒重放日志后新 leader 上岗；客户端泳道提交被拒、重试到耗尽、consumer 崩溃重启、重新找协调者、重入组两次，70.6 秒才有第一次提交成功；进度核对 202 条提交一条不少、重复 6 条、丢失 0 条" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <text class="ts" x="20" y="24" font-size="12" fill="#6b675e">杀掉协调者：两条泳道，两种速度</text>
 <text class="ts" x="74" y="42" font-size="12" fill="#6b675e">t=0 docker kill 协调者 broker（SIGKILL）</text>

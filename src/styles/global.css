@@ -243,12 +243,12 @@ body {
 /* SVG 元素身上带着一套浅色 presentation attribute 兜底，
    订阅器等拿不到本站 CSS 的环境也有颜色；下面的类在站内覆盖它们，
    颜色全走语义变量，暗色模式随 .dark 翻转 */
-.mq-fig {
+.art-fig {
   margin-inline: 0;
   overflow-x: auto;
 }
 
-.mq-fig svg {
+.art-fig svg {
   display: block;
   width: 100%;
   min-width: 560px;
@@ -256,100 +256,100 @@ body {
   font-family: var(--font-body);
 }
 
-.mq-fig .bx {
+.art-fig .bx {
   fill: color-mix(in srgb, var(--ink) 5%, var(--paper));
   stroke: var(--ink-soft);
 }
 
-.mq-fig .bx-sick {
+.art-fig .bx-sick {
   fill: color-mix(in srgb, var(--cinnabar) 10%, var(--paper));
   stroke: var(--cinnabar);
 }
 
-.mq-fig .bx-q {
+.art-fig .bx-q {
   fill: var(--paper);
   stroke: var(--ink);
 }
 
-.mq-fig .msg {
+.art-fig .msg {
   fill: var(--ink-faint);
 }
 
-.mq-fig .t {
+.art-fig .t {
   fill: var(--ink);
 }
 
-.mq-fig .ts {
+.art-fig .ts {
   fill: var(--ink-soft);
 }
 
-.mq-fig .tc {
+.art-fig .tc {
   fill: var(--cinnabar);
 }
 
-.mq-fig .fl {
+.art-fig .fl {
   stroke: var(--ink-soft);
 }
 
-.mq-fig .flk {
+.art-fig .flk {
   stroke: var(--ink);
 }
 
-.mq-fig .axis {
+.art-fig .axis {
   stroke: var(--ink-soft);
 }
 
-.mq-fig .grid {
+.art-fig .grid {
   stroke: var(--ink-faint);
 }
 
-.mq-fig .spine {
+.art-fig .spine {
   stroke: var(--cinnabar);
 }
 
-.mq-fig .curve-s {
+.art-fig .curve-s {
   stroke: var(--ink-soft);
 }
 
-.mq-fig .curve-k {
+.art-fig .curve-k {
   stroke: var(--ink);
 }
 
-.mq-fig .mk-i path {
+.art-fig .mk-i path {
   fill: var(--ink);
 }
 
-.mq-fig .mk-s path {
+.art-fig .mk-s path {
   fill: var(--ink-soft);
 }
 
-.mq-fig .flc {
+.art-fig .flc {
   stroke: var(--cinnabar);
 }
 
-.mq-fig .bx-gone {
+.art-fig .bx-gone {
   fill: none;
   stroke: var(--ink-faint);
   stroke-dasharray: 4 3;
 }
 
-.mq-fig .bar {
+.art-fig .bar {
   fill: var(--ink);
 }
 
-.mq-fig .onbar {
+.art-fig .onbar {
   fill: var(--paper);
 }
 
-.mq-fig .mk-c path {
+.art-fig .mk-c path {
   fill: var(--cinnabar);
 }
 
-.mq-fig .mk-f path {
+.art-fig .mk-f path {
   fill: var(--ink-faint);
 }
 
-.mq-fig .fill-c {
+.art-fig .fill-c {
   fill: var(--cinnabar);
 }
 

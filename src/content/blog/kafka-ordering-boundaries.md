@@ -16,7 +16,7 @@ tags: [Kafka, 消息队列, 分布式]
 
 手里的顺序和日志里的顺序，分开画：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 220" role="img" aria-label="调用顺序与日志顺序：send 1 2 3 是你以为的顺序，中间隔着网络、重试、批量在途这段没人担保的路，日志只记到达顺序，先落进去的 offset 小" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <defs>
 <marker id="mq6As1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
@@ -60,7 +60,7 @@ tags: [Kafka, 消息队列, 分布式]
 
 这次翻车在时间轴上：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 284" role="img" aria-label="重试翻序时间轴：seq=1 批次 190ms 时失败一次，退避后重试到 444ms 才落盘；seq=2 在 244ms、seq=3 在 246ms 一路绿灯先落，日志顺序变成 2、3、1" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <defs>
 <marker id="mq6As2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
@@ -132,7 +132,7 @@ tags: [Kafka, 消息队列, 分布式]
 
 保序现场的样子：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 288" role="img" aria-label="幂等 producer 保序时间轴：同样的 400ms 延迟注入，seq=2 和 seq=3 排队等慢批次落盘，三批在 587ms 起按 1、2、3 顺序落地，日志顺序保住" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <text class="ts" x="20" y="24" font-size="12" fill="#6b675e">同样压 400ms，idempotent=true：后两批排队等慢的那批</text>
 <text class="ts" x="20" y="59" font-size="12" fill="#6b675e">批 seq=1</text>
@@ -187,7 +187,7 @@ seq=2 业务上是第 2 个事件，实际第 6 个到达
 
 两条支流汇进一根日志：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 268" role="img" aria-label="多实例各发各的：实例 A 连发 5 条奇数先落进日志，晚启动 50ms 的实例 B 的 5 条偶数全排后面，到达顺序 1 3 5 7 9 2 4 6 8 10，seq=2 业务上第 2 个、实际第 6 个到达" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <defs>
 <marker id="mq6As3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
@@ -273,7 +273,7 @@ seq=2 业务上是第 2 个事件，实际第 6 个到达
 
 这个收窄的阶梯：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 258" role="img" aria-label="顺序承诺的四级阶梯：分区日志内 offset 顺序无条件成立；单个生产者写入顺序要幂等开着；多生产者业务时序没人保，要带业务时间戳自己重建；跨分区没有时序，按事件时间自己归并。每往外一步承诺弱一级，消费端多认领一级责任" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <defs>
 <marker id="mq6Ac1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-c" d="M0 0 L8 4 L0 8 Z" fill="#b03a2e"/></marker>

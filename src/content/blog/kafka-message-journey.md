@@ -12,7 +12,7 @@ tags: [Kafka, 消息队列, 分布式]
 
 两套世界观摆在一起：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 296" role="img" aria-label="两种世界观对比：RabbitMQ 里消息经交换机路由进队列，推给消费者，签收后销毁；Kafka 里消息追加进分区日志，消费者自己 poll 拉取，自己提交位移，日志读完原地不动" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <defs>
 <marker id="mq3As1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
@@ -79,7 +79,7 @@ topic=korders  partition=0  offset=2  key=∅（无 key）
 
 落点和编号，画出来：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 288" role="img" aria-label="分区与键：生产者发 8 条消息，分区器对 key 做 murmur2 哈希再对分区数取模，u1 恒落 p1，u2 恒落 p0，每个分区内 offset 各自从 0 编号" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <defs>
 <marker id="mq3As2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
@@ -142,7 +142,7 @@ topic=korders  partition=0  offset=2  key=∅（无 key）
 
 日志和它的读者们：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 205" role="img" aria-label="日志与读者：同一条日志，昨天的组已读到末端 20000，第二天新起的组从 offset 0 重新读一遍；最老的段由保留策略截断，新消息从右端继续追加" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <defs>
 <marker id="mq3As3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
@@ -202,7 +202,7 @@ RabbitMQ 的消费者签收：broker 推消息过来，处理完回 ack，broker
 
 把这次崩溃画在日志上：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 178" role="img" aria-label="Kafka 崩溃窗口：第 3 条处理完但位移没提交，已提交位移停在 2；同组重启后从位移 2 继续读，第 3 条会再来一遍" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <defs>
 <marker id="mq3Ac1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-c" d="M0 0 L8 4 L0 8 Z" fill="#b03a2e"/></marker>
@@ -258,7 +258,7 @@ RabbitMQ 的消费者签收：broker 推消息过来，处理完回 ack，broker
 
 错误的做法和对的做法，各一张：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 330" role="img" aria-label="毒消息的两种处理：错误做法是 seek 把位移拨回去重试，毒消息 8 秒循环 1318 次，身后消息全部饿死；正确做法是 catch 住抄送进 DLQ topic，提交位移继续前进，后面的消息正常处理" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <defs>
 <marker id="mq3Ac2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-c" d="M0 0 L8 4 L0 8 Z" fill="#b03a2e"/></marker>
@@ -319,7 +319,7 @@ g-flood  kflood   0          20000           20000           0
 
 lag 在日志上的样子：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 190" role="img" aria-label="lag 的含义：日志末端 offset 是 20000，消费组提交到 11400，两者之差 8600 就是 lag；补读完成后 lag 归零，消息仍全部留在日志里" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <defs>
 <marker id="mq3Ac3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-c" d="M0 0 L8 4 L0 8 Z" fill="#b03a2e"/></marker>

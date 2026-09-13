@@ -26,7 +26,7 @@ Isr 是花名册：in-sync replicas，跟得上队伍的人。跟得上的判据
 
 这支队伍和它的水位线，画出来：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 336" role="img" aria-label="一分区三副本的组织架构：producer 写入 leader，两个 follower 持续拉抄；ISR 花名册框住跟得上的副本；leader 的 LEO 是本地写到哪，高水位 HW 取花名册内最短的 LEO，消费者只能读到 HW" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <defs>
 <marker id="mq7As1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
@@ -92,7 +92,7 @@ Isr 是花名册：in-sync replicas，跟得上队伍的人。跟得上的判据
 
 三种时延放在同一根标尺上：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 178" role="img" aria-label="除名的三条路径：SIGKILL 拔电源走心跳会话超时 9.5 秒收缩，优雅停机主动报备只要 2 秒，进程活着但拉不动数据的慢副本要等 30 秒落后超时" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <text class="ts" x="20" y="24" font-size="12" fill="#6b675e">同是「把副本请出花名册」，三条检测路径，三种时延</text>
 <text class="ts" x="20" y="59" font-size="12" fill="#6b675e">SIGKILL（真拔电源）</text>
@@ -125,7 +125,7 @@ Isr 是花名册：in-sync replicas，跟得上队伍的人。跟得上的判据
 
 投票发生在楼上：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 306" role="img" aria-label="两层结构：楼上元数据面是三个 KRaft 控制器组成的 Raft 仲裁，fence 谁立谁先过控制器日志；楼下数据面是三个 broker，每 2 秒送心跳上楼，上岗授权下楼，数据面自己不投票" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <defs>
 <marker id="mq7Ac1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-c" d="M0 0 L8 4 L0 8 Z" fill="#b03a2e"/></marker>
@@ -160,7 +160,7 @@ Isr 是花名册：in-sync replicas，跟得上队伍的人。跟得上的判据
 
 这 8 秒窗口的形状：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 178" role="img" aria-label="producer 视角的故障窗时间轴：t=0 SIGKILL leader，0.9 秒起持续报错 8171 毫秒，因为缓存的地址簿还指着死 leader；9.1 秒元数据刷新后同一条 seq=1018 重发成功，一条不丢" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <defs>
 <marker id="mq7As2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
@@ -244,7 +244,7 @@ Topic: kunclean  Partition: 0  Leader: 1  Isr: 1
 
 四步和各自的读数，摆在一起：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 424" role="img" aria-label="unclean 选举四步：先停两个 follower 造独苗，150 条里后 100 条只有一份；再停 broker3 全灭；启动只有前 50 条的 broker1，控制器拒绝立它，Leader none，ELR 记着 broker3；手动 unclean 后 latest 回 50，丢 100 条，新消息复用 offset 50 到 52，broker3 归队后被 leader epoch 截断成 53" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <defs>
 <marker id="mq7As3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>

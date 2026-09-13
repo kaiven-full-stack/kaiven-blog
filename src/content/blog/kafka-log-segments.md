@@ -41,7 +41,7 @@ compresscodec: none crc: 4059270002 isvalid: true
 
 一个 batch 的结构，画出来：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 226" role="img" aria-label="batch 结构：一个批次头带五条消息记录，头里记着 baseOffset 0、lastOffset 4、count 5、size 296 字节、crc 校验和 producerId -1，offset 在区间内顺次编号" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <text class="ts" x="20" y="24" font-size="12" fill="#6b675e">一次 send 的 5 条消息：磁盘上是同一个 batch，共享一个批次头</text>
 <rect class="bx-q" x="40" y="40" width="580" height="112" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
@@ -85,7 +85,7 @@ compresscodec: none crc: 4059270002 isvalid: true
 
 这三个段在日志目录里的样子：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 192" role="img" aria-label="日志段目录视图：三个段文件 000、005、022，文件名就是各自段的起始 offset，前两段已封板只读，022 是正在写的活跃段，每段旁边配 index 和 timeindex 文件" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <defs>
 <marker id="mq4As1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
@@ -139,7 +139,7 @@ offset: 21 position: 984487
 
 查找的三步，每步一张：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 318" role="img" aria-label="稀疏索引查找 offset=9 的三步：先对段文件名二分定位到 005 段，再对段内 index 二分命中 offset 9 对应 position 246120，最后从该 position 顺序短扫找到精确位置" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <defs>
 <marker id="mq4Ac1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-c" d="M0 0 L8 4 L0 8 Z" fill="#b03a2e"/></marker>
@@ -210,7 +210,7 @@ kseg:0:6
 
 这次查询的路径：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 172" role="img" aria-label="时间旅行路径：拿昨天 14:00 的时间戳查 timeindex 得到 offset 6，消费者把位移重置到 6 从那里继续读；已 unlink 的段救不回来" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <defs>
 <marker id="mq4As3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
@@ -243,7 +243,7 @@ retention 配了 60 秒。灌完消息等 60 秒、80 秒、100 秒，段文件�
 
 这条延迟画在时间轴上：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 216" role="img" aria-label="删除时间线：retention 60 秒到期时段文件不动，清理线程每 5 分钟巡一遍，发现过期才改名 .deleted，再等 60 秒删除延迟才真正 unlink，earliest 从 0 跳到 25" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <defs>
 <marker id="mq4As2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>

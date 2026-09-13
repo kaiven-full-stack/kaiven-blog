@@ -28,7 +28,7 @@ worker 已完成条数：1
 
 这三种状态和转移路径，画出来：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 640 235" role="img" aria-label="消息在 broker 里的三种状态：ready 在队列等人领，投递后变 unacked，收到 ack 即删除；unacked 期间连接断开则放回队列重投，标记 redelivered；noAck 模式下投递瞬间即删除" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <defs>
 <marker id="mq2As1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
@@ -79,7 +79,7 @@ worker 已完成条数：1
 
 崩溃前后各看一眼队列：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 640 312" role="img" aria-label="崩溃前后的队列快照：崩溃前 worker 正在处理第 3 条，已投递未 ack，队列里是第 4、5 条；崩溃后 worker 消失，broker 把第 3 条放回队头并标记 redelivered，第 4、5 条原地未动" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <defs>
 <marker id="mq2Ac2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-c" d="M0 0 L8 4 L0 8 Z" fill="#b03a2e"/></marker>
@@ -116,7 +116,7 @@ redelivered 这个标记不能拿来当去重的依据。文档明确说它是 b
 
 两种情况摆在一起，broker 看到的画面没有区别：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 640 330" role="img" aria-label="broker 无法区分的两种情况：消费者崩在处理之前，重投是对的；消费者处理完了但 ack 丢在半路，重投就是重复。broker 看到的都是连接断开加一条未 ack，只能选择重投，这就是 at-least-once 的来历" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <defs>
 <marker id="mq2As2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
@@ -179,7 +179,7 @@ MySQL 系列第八篇《提交的那一停》里见过同一道题的另一个�
 
 这个死循环的样子：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 640 260" role="img" aria-label="毒消息死循环：毒消息卡在队头，消费者碰到它就抛异常，nack 加 requeue 又把它送回队头，4 秒空转 26100 次，身后 5 条正常消息一条没动" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <defs>
 <marker id="mq2Ac4" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-c" d="M0 0 L8 4 L0 8 Z" fill="#b03a2e"/></marker>
@@ -246,7 +246,7 @@ orders.dead   1
 
 死信转存和延迟重试的梯度，各一张：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 640 348" role="img" aria-label="死信转存与延迟重试梯度：nack 且不重回队列的消息经死信交换机转进 orders.dead，x-death 头记录死因和来路；延迟重试用 30 秒、2 分钟、10 分钟的 TTL 队列逐级回流重试，全部失败才落死信" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <defs>
 <marker id="mq2As3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
@@ -303,7 +303,7 @@ PREFETCH=1  ：总耗时 0.51s（快 19 条 / 慢 1 条）
 
 两种分法放到时间轴上：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 640 312" role="img" aria-label="prefetch 对比时间轴：不限流时 20 条消息在投递瞬间按 10 比 10 定死，快消费者 100ms 做完 10 条后干等，慢消费者磨 5 秒，总耗时 5.03 秒；限到 1 时谁空谁领，快的领走 19 条，慢的只领 1 条，总耗时 0.51 秒" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <text class="ts" x="20" y="26" font-size="12" fill="#6b675e">prefetch 不限：20 条在投递瞬间分光，10 / 10 定死</text>
 <text class="ts" x="30" y="59" font-size="12" fill="#6b675e">快消费者（10ms/条）</text>

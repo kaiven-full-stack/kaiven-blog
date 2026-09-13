@@ -26,7 +26,7 @@ city-gz    1362891687    p0     p0
 
 这道除法的三步：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 170" role="img" aria-label="落点计算的三步管线：key 经 murmur2 得到 32 位哈希值，toPositive 清掉符号位，再对分区数取模，得到落点分区；u2 的哈希是 1598843406，对 3 取模落 p0" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <defs>
 <marker id="mq5As1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
@@ -89,7 +89,7 @@ $ echo "u2:from-java-cli" | kafka-console-producer.sh --topic kmap \
 
 顺序的范围，两种摆法：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 305" role="img" aria-label="顺序的范围对比：1 分区时 30 条消息到达顺序严格 1 到 30；3 分区时各分区内部有序，p0 是 1 4 7 到 28，p1 是 2 3 5 6 到 30，p2 空着，单个消费者读出的全局顺序交错" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <text class="ts" x="20" y="24" font-size="12" fill="#6b675e">1 分区：全程全序，到达顺序就是写入顺序</text>
 <rect class="bx-q" x="40" y="40" width="580" height="36" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
@@ -130,7 +130,7 @@ $ echo "u2:from-java-cli" | kafka-console-producer.sh --topic kmap \
 
 三种配置放在同一根标尺上：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 190" role="img" aria-label="9000 条消息排空竞速条形图：3 分区 3 消费者 6.4 秒每人 3000 条；3 分区 1 消费者 13.1 秒一人 9000 条；1 分区 3 消费者 13.2 秒，一人 9000 条另两人 0 条" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <text class="ts" x="20" y="24" font-size="12" fill="#6b675e">9000 条 × 1ms/条的排空竞速：条越长，排空越慢</text>
 <text class="ts" x="20" y="59" font-size="12" fill="#6b675e">3 分区 × 3 个消费者</text>
@@ -187,7 +187,7 @@ Topic: kgrow   PartitionCount: 3   ReplicationFactor: 1   …
 
 搬家前后：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 312" role="img" aria-label="加分区重哈希对照：2 分区时代 u1 u12 在 p0、u5 在 p1；变 3 分区后 u1 搬到 p1，u5 u12 搬到 p2，u2 u4 u9 原地不动；12 个 key 里 9 个搬家，老消息 0 条挪动" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <defs>
 <marker id="mq5Ac1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-c" d="M0 0 L8 4 L0 8 Z" fill="#b03a2e"/></marker>
@@ -244,7 +244,7 @@ Topic: kgrow   PartitionCount: 3   ReplicationFactor: 1   …
 
 这 4 秒钟在时间轴上：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 236" role="img" aria-label="破序时间线：p1 新分区没有积压，seq=2 在 13:42:53.466 处理完成；p0 旧分区每条压 4 秒，seq=1 到 13:42:57.473 才完成，后写的消息早了 4 秒" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <defs>
 <marker id="mq5As2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>

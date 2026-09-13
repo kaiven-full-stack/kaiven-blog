@@ -28,7 +28,7 @@ g-java-eager    kafka3:29092  (3)    range                Stable   3
 
 把组的零件摆在一处：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 380" role="img" aria-label="组的解剖：成员先发 JoinGroup，协调者主持点名并选出组 leader，组 leader 在客户端跑分配算法后交回，协调者用 SyncGroup 分发；分配形状一为 6 分区 3 成员 roundRobin 交错，各持 [2,5] [1,4] [0,3]；分配形状二为 8 成员 6 分区，恰好 2 人空手，入组事件里 assigned 为空" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <defs>
 <marker id="mq8As1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
@@ -117,7 +117,7 @@ g-java-eager    kafka3:29092  (3)    range                Stable   3
 
 这段等待花在哪，画开看：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 316" role="img" aria-label="猝死到接管完成的时间轴：t=0 SIGKILL 成员 A，心跳停止，协调者等满 30 秒会话倒计时才判死，再走一轮约 6.6 秒的再平衡，36.6 秒时 B 接管 A 的 3 个分区；等待期间死者的分区无主、lag 只涨不消，B 自己的分区照常消费；会话调成 8 秒后接管只要 11.6 秒" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <defs>
 <marker id="mq8As2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
@@ -175,7 +175,7 @@ c1 只交出一个 kgrp-2，c2 只交出一个 kgrp-5，各自手里没动的分
 
 两种协议摆在同一张桌上：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 340" role="img" aria-label="eager 与 cooperative 两种协议在第三人入组时的动静对比：eager 下 6 个分区全部交回，老成员 A 停顿 3631 毫秒、B 停顿 2629 毫秒，重分配总耗时 5205 毫秒；cooperative 下 c1 只交 kgrp-2、c2 只交 kgrp-5，c3 新得这两个，没动的 4 个分区全程不被触碰、位点不重置，过户实测约 3 秒" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <text class="ts" x="20" y="24" font-size="12" fill="#6b675e">同样是第三人入组，谁停谁不停</text>
 <text class="t" x="20" y="56" font-size="14" fill="#2b2a26">eager（默认）：全员先交回一切</text>
@@ -242,7 +242,7 @@ ConsumerMembershipManager: Reconciling assignment with local epoch 2
 
 两代协议的往来形状：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 340" role="img" aria-label="经典协议与 KIP-848 的往来形状对比：经典协议里成员发 JoinGroup，协调者主持点名并选出组 leader，组 leader 算好分配交回，再由 SyncGroup 分发给全员，四步往返；KIP-848 里成员只定期发 ConsumerGroupHeartbeat，协调者在服务端算好分配（默认 uniform），响应里带着分配和任期号，成员按 epoch 对账" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <defs>
 <marker id="mq8As3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
@@ -308,7 +308,7 @@ m2 日志：全程零事件，没有 rebalance，它甚至不知道对面换过�
 
 同一次 SIGKILL 的两种时间：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 254" role="img" aria-label="同一次 SIGKILL 的两种时间对比：动态成员要 36.6 秒等满会话倒计时加一轮再平衡，静态成员带同一个 group.instance.id 重启，1.3 秒拿回原分区，任期号不加一，搭档全程零事件；席位在猝死后保留 30 秒，窗口内本人回来就原位复工，超过时限才按普通死亡触发再平衡" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <text class="ts" x="20" y="24" font-size="12" fill="#6b675e">同一次 SIGKILL，动态成员与静态成员的两种时间</text>
 <text class="ts" x="20" y="65" font-size="12" fill="#6b675e">动态成员</text>

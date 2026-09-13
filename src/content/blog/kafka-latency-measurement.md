@@ -39,7 +39,7 @@ LogAppendTime 下的真三层（新建 topic 重测，排除历史数据干扰�
 
 把四层刻度画在同一根时间轴上（空闲实测的均值，示意不按比例）：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 268" role="img" aria-label="一条消息的时间轴：t0 事件发生（生产者钟），0.8ms 后 broker 落盘（LogAppendTime，broker 钟），生产段到 ack 回来共 2.9ms（含副本追平与高水位推进），t2 消费到手端到端 3.2ms；消费段实测均值为负 0.2ms" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <text class="ts" x="20" y="22" font-size="12" fill="#6b675e">一条消息、四个刻度、三种钟（空闲档实测均值，示意不按比例）</text>
 <line class="axis" x1="60" y1="96" x2="616" y2="96" stroke="#6b675e" stroke-width="1.2"/>
@@ -82,7 +82,7 @@ avg 244ms，这个数字谁也不描述：一半的消息瞬间到手（p50=0）
 
 把这轮的分布画出来（按实测量级示意）：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 272" role="img" aria-label="积压污染那轮的延迟分布示意图：左侧一座高瘦的峰，约一百条消息几乎零延迟到手；右侧一片矮而宽的山包，延迟散布到 4 秒；平均值 244ms 的竖线落在两峰之间的山谷里，那里没有任何样本" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <text class="ts" x="20" y="22" font-size="12" fill="#6b675e">被积压污染那轮的消费段延迟分布：两座峰，一条落在山谷里的平均值</text>
 <line class="axis" x1="70" y1="40" x2="70" y2="212" stroke="#6b675e" stroke-width="1.2"/>
@@ -138,7 +138,7 @@ p50=2ms  p90=278ms  p99=1844ms  p99.9=1991ms  max=1998ms
 
 两种发压方式并排摆开，一个圆点代表一个采样位：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 292" role="img" aria-label="同一场 2 秒停顿下两种发压方式的对照：闭环行的点在停顿区整段消失，216 个采样位从未出发，只有停顿开始时那一个 1965ms 的样本留下痕迹，p99 报 4ms；开环行的点铺满全程，停顿区及其后约 217 个样本标成朱砂色，p99 报 1844ms" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <text class="ts" x="20" y="22" font-size="12" fill="#6b675e">同一场 2 秒停顿，两份成绩单（横轴：发压 20 秒）</text>
 <rect class="bx" x="233" y="66" width="49" height="146" fill="#ece9e2" stroke="none" opacity="0.55"/>
@@ -193,7 +193,7 @@ kafka-producer-perf-test 是被引用最多的数字来源。全力档（`--thro
 
 把三档读数画成两条曲线：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 282" role="img" aria-label="排队拐点曲线图：横轴负载，纵轴延迟；p50 曲线在 41% 负载时 4ms、81% 时 5ms，几乎贴地，饱和后陡升到 1974ms；p99 曲线从 84ms 到 160ms 再到 2787ms，一路先报警；平均值三档是 7.7、39、1797ms" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <text class="ts" x="20" y="22" font-size="12" fill="#6b675e">producer-perf-test 三档负载：p50 贴地装睡，p99 先拉警报（纵轴压缩，以标注数字为准）</text>
 <line class="axis" x1="70" y1="44" x2="70" y2="214" stroke="#6b675e" stroke-width="1.2"/>
@@ -239,7 +239,7 @@ kafka-producer-perf-test 是被引用最多的数字来源。全力档（`--thro
 
 三轮读数立成柱子，效应和方差的大小关系一目了然：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 258" role="img" aria-label="三轮 consumer-perf-test 条形图：热读第一轮 123.5 MB/s，驱逐页缓存后冷读 116.4 MB/s，再热读 158.9 MB/s；两次热读之间差 29%，比冷热之间的差距还大" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <text class="ts" x="20" y="22" font-size="12" fill="#6b675e">同一个 244MB 的 topic 读三轮：方差比效应大</text>
 <line class="axis" x1="90" y1="200" x2="600" y2="200" stroke="#6b675e" stroke-width="1.2"/>

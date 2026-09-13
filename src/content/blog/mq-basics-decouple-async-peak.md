@@ -39,7 +39,7 @@ async function placeOrder(order) {
 
 时间都花在哪了，两种情况画出来：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 640 214" role="img" aria-label="串联调用耗时对比：健康时库存、通知、积分各 10ms，总耗时 30ms；积分病了之后 2000ms 一段把总耗时推到 2029ms" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <text class="ts" x="20" y="24" font-size="12" fill="#6b675e">健康</text>
 <rect class="bx" x="20" y="34" width="130" height="36" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
@@ -79,7 +79,7 @@ async function placeOrder(order) {
 
 把「发消息代替调用」这个动作画出来，前后接线是这样的：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 306" role="img" aria-label="改造前后接线对比：改造前下单串行调库存、通知、积分才返回；改造后下单只调库存和通知即返回，订单已成立变成消息进 points 队列，由还病着的积分 worker 消费" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <defs>
 <marker id="mqArrSoft1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
@@ -195,7 +195,7 @@ points   0
 
 同一个事实，三家各自消费，互不知晓。下游从「被调用」变成「订阅事实」：加第四个下游（比如风控）就是新开一个队列绑上去，上游零改动。RabbitMQ 也有点对点的玩法：两家消费者共享同一个队列竞争消费，5 条消息 A 拿 2 条、B 拿 3 条，一条只给一家，实验四里多 worker 排空靠的就是它。发布订阅是一份事实多家各自消费，点对点是一堆任务多家分摊；同一个交换机，区别只在队列怎么开。两种接线放一起：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 640 412" role="img" aria-label="发布订阅与竞争消费拓扑：fanout 交换机把一条事件复制给三个绑定队列，三家各收 5 条；同一个队列的两个消费者把 5 条消息分摊成 2 条和 3 条" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <defs>
 <marker id="mqArrSoft2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
@@ -263,7 +263,7 @@ TRIPLE-DRAIN: 18s split=334/333/333
 
 队列深度从头到尾的样子：13ms 灌进去的 1000 条是一根几乎竖直的尖峰，然后是两种排空斜坡：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 640 372" role="img" aria-label="队列深度曲线：13ms 灌入 1000 条形成瞬时尖峰，1 个 worker 52 秒排空，3 个 worker 18 秒排空" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <text class="tc" x="70" y="20" font-size="12" fill="#b03a2e">13ms 灌入 1000 条：最左边那根竖直的尖峰</text>
 <line class="axis" x1="70" y1="34" x2="70" y2="310" stroke="#6b675e" stroke-width="1.2"/>
@@ -302,7 +302,7 @@ TRIPLE-DRAIN: 18s split=334/333/333
 
 两种送法画出来：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 640 280" role="img" aria-label="推与拉对比：RabbitMQ 由 broker 主动把消息推给消费者，Kafka 由消费者主动 poll 拉取消息" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <defs>
 <marker id="mqArrInk1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-i" d="M0 0 L8 4 L0 8 Z" fill="#2b2a26"/></marker>

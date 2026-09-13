@@ -21,7 +21,7 @@ tags: [Kafka, 消息队列, 分布式]
 幂等生产者治第一种，事务治第二种。下面分开拆。
 两个窗口的形状：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 344" role="img" aria-label="两种重复的两个窗口：窗口一在生产端，批次已落盘成功但 ack 在网络里丢失，producer 重试同一批，没有记性的 broker 再落一遍，消费端看到两条相同消息，药是幂等生产者；窗口二在消费端，处理与提交是两步，写 B 之后提交 A 位移之前崩溃会重放写重，反过来的顺序崩溃则永远跳过丢失，药是事务把两步焊成一个原子步" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <defs>
 <marker id="mq10As1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
@@ -93,7 +93,7 @@ producerId=2000  producerEpoch=0  baseSequence=2
 PID 是这个生产者的身份，序列号逐批递增（关幂等时这两个字段都是 -1，broker 无从去重）。producerEpoch 这一栏现在恒为 0，等第四节讲事务时它会动起来。
 去重发生在 broker 比对序列号那一步：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 332" role="img" aria-label="幂等去重时序：PID 2000 的 producer 发批次 baseSeq=0，broker 落盘并记住这个 PID 这个分区见过的最大序列号；ack 在网络里丢失，producer 重试同一批，broker 比对发现序列号重复，回 DUPLICATE_SEQUENCE_NUMBER 不再落第二遍；消费端实收对比：关幂等收到 1、1、2、3，seq=1 出现两次；开幂等收到 1、2、3" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <defs>
 <marker id="mq10As2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
@@ -174,7 +174,7 @@ baseOffset=10  producerId=2001  isTransactional=true  isControl=true    endTxnMa
 producer 崩溃也是同一个结局，实测过：开事务写 5 条，然后不给 commit 也不给 abort，直接硬退出（等价拔电源），把事务超时设成 10 秒。等过了超时再查，read_committed 看 ktxn-out 是 0 条，日志里那条控制记录是 endTxnMarker: ABORT。producer 死了没人提交，事务协调者到点自动把它 abort 掉，效果和手动 abort 一模一样。上一篇那个「崩在窗口里」的场景，放到事务里就是：崩溃 → 超时 abort → 输出不可见、位移没推进 → 重新消费一遍，不留重复。
 三条路落到日志上，形状一致：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 324" role="img" aria-label="事务的结构：一个事务里 send 把转换后的 10 条写进 ktxn-out，sendOffsets 把 g-txn 组在 ktxn-in 的位移推到 10；commit 让两者一起生效，abort 让两者都不作数，producer 崩溃由协调者超时自动 abort。ktxn-out 日志上数据批带 isTransactional 物理落盘，末尾控制记录决定可见性：endTxnMarker 为 COMMIT 时 read_committed 放行 10 条，为 ABORT 时 read_committed 整段跳过看到 0 条" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <defs>
 <marker id="mq10As3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
@@ -262,7 +262,7 @@ producerId=2002  epoch=2  数据批 + COMMIT （P2 写的，正常提交）
 同一个 transactional.id 映射到同一个 PID（2002），epoch 区分世代。新 epoch 一出现，旧 epoch 的写作者就被踢出局，它没提交的事务被 abort。这套「用一个单调递增的编号围栏掉过期写作者」的把戏，副本篇见过：老 leader 归队，它旧任期号（leader epoch）下的数据被新任期截断。producer epoch 和 leader epoch 是同一个模式的两处应用，谁编号旧谁作废。
 围栏的全过程：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 276" role="img" aria-label="僵尸围栏全过程：P1 用 transactional.id txn-fence 初始化拿到 PID 2002 epoch 0，写 5 条后卡住不提交；P2 用同一个 id 初始化，先撞 CONCURRENT_TRANSACTIONS，重试后协调者发新 epoch，P1 回来提交被拒 PRODUCER_FENCED，P2 的数据批加 COMMIT 正常提交；日志里同一个 PID 三批记录：epoch 0 数据批作废，epoch 1 ABORT 标记，epoch 2 数据批加 COMMIT" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <defs>
 <marker id="mq10Ac4" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-c" d="M0 0 L8 4 L0 8 Z" fill="#b03a2e"/></marker>
@@ -307,7 +307,7 @@ producerId=2002  epoch=2  数据批 + COMMIT （P2 写的，正常提交）
 
 **再说价钱。**第一笔最隐蔽：read_committed 会被一个没提交的事务挡住。消费者设成 read_committed 后，只能读到一条叫 **LSO**（last stable offset，最后稳定位移）的线以下，而 LSO 卡在最早那个还没结束的事务的第一条记录处。实测：开一个事务写 M1（offset 0）挂着不提交，这时另一个普通生产者写 M2、M3（offset 1、2）并已提交，HW 到了 3：
 
-<figure class="mq-fig" data-pagefind-ignore>
+<figure class="art-fig" data-pagefind-ignore>
 <svg viewBox="0 0 660 254" role="img" aria-label="一个开放事务钉住 LSO 的日志状态：offset 0 是事务 T 的第一条记录 M1 未提交，offset 1 和 2 是普通消息 M2、M3 已提交，HW 到 3，但 LSO 钉在 0；read_committed 只能读 LSO 以下看到 0 条，连已提交的 M2、M3 都读不到；read_uncommitted 能读到 HW 看到 3 条；事务提交后 LSO 跳到 3，read_committed 一次看到 3 条" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
 <text class="ts" x="20" y="24" font-size="12" fill="#6b675e">一个开放事务把 LSO 钉在原地</text>
 <text class="tc" x="66" y="48" font-size="12" fill="#b03a2e">LSO=0：卡在最早那个未结束事务的第一条记录</text>
