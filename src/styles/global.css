@@ -349,6 +349,10 @@ body {
   fill: var(--ink-faint);
 }
 
+.mq-fig .fill-c {
+  fill: var(--cinnabar);
+}
+
 .prose-ink hr {
   border: none;
   margin: 2.5em auto;
