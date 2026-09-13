@@ -51,17 +51,44 @@ room_207 = guest
 
 此刻没有第二份列表，只有两条引用：
 
-```text
-名字 guest ──────┐
-                  ├──> 同一个 list 对象
-名字 room_207 ───┘
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 124" role="img" aria-label="两条名字绑定指向同一个 list 对象：guest 与 room_207 两张名牌都连着同一份列表，引用计数为 2" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="rcA1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-q" x="40" y="20" width="150" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="115" y="40" text-anchor="middle" font-size="10.5" fill="#2b2a26">名字 guest</text>
+<rect class="bx-q" x="40" y="66" width="150" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="115" y="86" text-anchor="middle" font-size="10.5" fill="#2b2a26">名字 room_207</text>
+<line class="fl" x1="190" y1="35" x2="374" y2="52" stroke="#6b675e" stroke-width="1.3" marker-end="url(#rcA1)"/>
+<line class="fl" x1="190" y1="81" x2="374" y2="66" stroke="#6b675e" stroke-width="1.3" marker-end="url(#rcA1)"/>
+<rect class="bx" x="378" y="36" width="220" height="48" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="488" y="56" text-anchor="middle" font-size="10.5" fill="#2b2a26">同一个 list 对象</text>
+<text class="ts" x="488" y="74" text-anchor="middle" font-size="9.5" fill="#6b675e">['一把伞', '半本书']</text>
+<text class="tc" x="378" y="108" font-size="10" fill="#b03a2e">ob_refcnt = 2</text>
+</svg>
+</figure>
 
 执行 `del guest` 后，第一条线被撤掉：
 
-```text
-名字 room_207 ───────> 原来的 list 对象
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 128" role="img" aria-label="del guest 之后：guest 名牌被划掉解除绑定，room_207 仍指向原来的 list 对象，引用计数降为 1，对象仍然活着" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="rcA2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-gone" x="40" y="16" width="150" height="30" rx="4" fill="#ece9e2" stroke="#a29d90" stroke-width="1.2" stroke-dasharray="5 3"/>
+<text class="ts" x="115" y="36" text-anchor="middle" font-size="10.5" fill="#a29d90">名字 guest</text>
+<line class="flc" x1="48" y1="31" x2="182" y2="31" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="200" y="36" font-size="9.5" fill="#b03a2e">已解绑</text>
+<rect class="bx-q" x="40" y="70" width="150" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="115" y="90" text-anchor="middle" font-size="10.5" fill="#2b2a26">名字 room_207</text>
+<line class="fl" x1="190" y1="85" x2="374" y2="70" stroke="#6b675e" stroke-width="1.3" marker-end="url(#rcA2)"/>
+<rect class="bx" x="378" y="40" width="220" height="48" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="488" y="60" text-anchor="middle" font-size="10.5" fill="#2b2a26">原来的 list 对象</text>
+<text class="tc" x="488" y="78" text-anchor="middle" font-size="9.5" fill="#b03a2e">ob_refcnt = 1 · 仍然活着</text>
+<text class="ts" x="40" y="120" font-size="10" fill="#6b675e">划掉的是名牌，不是住客</text>
+</svg>
+</figure>
 
 所以 `room_207` 仍能访问列表，`guest` 则成为一个未绑定的名字。`del` 也可以删除容器中的一项或对象的属性：
 
@@ -226,10 +253,31 @@ right.peer = left
 
 引用关系现在是：
 
-```text
-名字 left ──> left 对象 ──peer──> right 对象
-名字 right ─> right 对象 ─peer──> left 对象
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 156" role="img" aria-label="互相引用的两只 Node：名字 left 指向 left 对象，名字 right 指向 right 对象，两只对象又通过 peer 属性互指，各自引用计数都是 2" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="rcA3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-q" x="30" y="28" width="120" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="90" y="48" text-anchor="middle" font-size="10.5" fill="#2b2a26">名字 left</text>
+<rect class="bx-q" x="30" y="98" width="120" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="90" y="118" text-anchor="middle" font-size="10.5" fill="#2b2a26">名字 right</text>
+<line class="fl" x1="150" y1="43" x2="226" y2="43" stroke="#6b675e" stroke-width="1.3" marker-end="url(#rcA3)"/>
+<line class="fl" x1="150" y1="113" x2="226" y2="113" stroke="#6b675e" stroke-width="1.3" marker-end="url(#rcA3)"/>
+<rect class="bx" x="230" y="24" width="150" height="40" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="305" y="41" text-anchor="middle" font-size="10.5" fill="#2b2a26">left 对象</text>
+<text class="ts" x="305" y="57" text-anchor="middle" font-size="9" fill="#6b675e">ob_refcnt = 2</text>
+<rect class="bx" x="230" y="94" width="150" height="40" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="305" y="111" text-anchor="middle" font-size="10.5" fill="#2b2a26">right 对象</text>
+<text class="ts" x="305" y="127" text-anchor="middle" font-size="9" fill="#6b675e">ob_refcnt = 2</text>
+<line class="fl" x1="262" y1="64" x2="262" y2="90" stroke="#6b675e" stroke-width="1.3" marker-end="url(#rcA3)"/>
+<text class="ts" x="252" y="82" text-anchor="end" font-size="9.5" fill="#6b675e">peer</text>
+<line class="fl" x1="348" y1="94" x2="348" y2="68" stroke="#6b675e" stroke-width="1.3" marker-end="url(#rcA3)"/>
+<text class="ts" x="358" y="86" font-size="9.5" fill="#6b675e">peer</text>
+<text class="ts" x="430" y="82" font-size="10" fill="#6b675e">每只对象的计数里，</text>
+<text class="ts" x="430" y="98" font-size="10" fill="#6b675e">都有一条来自对方</text>
+</svg>
+</figure>
 
 撤销两个外部名字：
 
@@ -239,10 +287,29 @@ del left, right
 
 程序已经没有路径能再取回这两个对象，但它们仍互相引用。各自的引用计数都没有归零：
 
-```text
-left 对象  <──────>  right 对象
-     外部已经不可达，内部仍各记一笔
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 200" role="img" aria-label="封闭小岛：两个名字都已删除，left 与 right 对象只剩彼此的 peer 引用，各自计数为 1，外部无人可达，计数永远等不到归零" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="rcA4" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-gone" x="30" y="16" width="130" height="28" rx="4" fill="#ece9e2" stroke="#a29d90" stroke-width="1.1" stroke-dasharray="5 3"/>
+<text class="ts" x="95" y="35" text-anchor="middle" font-size="10" fill="#a29d90">名字 left（已删）</text>
+<rect class="bx-gone" x="180" y="16" width="140" height="28" rx="4" fill="#ece9e2" stroke="#a29d90" stroke-width="1.1" stroke-dasharray="5 3"/>
+<text class="ts" x="250" y="35" text-anchor="middle" font-size="10" fill="#a29d90">名字 right（已删）</text>
+<rect class="bx-gone" x="200" y="62" width="320" height="110" rx="10" fill="none" stroke="#b03a2e" stroke-width="1.3" stroke-dasharray="6 4"/>
+<rect class="bx" x="222" y="96" width="120" height="42" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="282" y="114" text-anchor="middle" font-size="10.5" fill="#2b2a26">left 对象</text>
+<text class="tc" x="282" y="130" text-anchor="middle" font-size="9" fill="#b03a2e">ob_refcnt = 1</text>
+<rect class="bx" x="378" y="96" width="120" height="42" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="438" y="114" text-anchor="middle" font-size="10.5" fill="#2b2a26">right 对象</text>
+<text class="tc" x="438" y="130" text-anchor="middle" font-size="9" fill="#b03a2e">ob_refcnt = 1</text>
+<line class="fl" x1="342" y1="106" x2="374" y2="106" stroke="#6b675e" stroke-width="1.3" marker-end="url(#rcA4)"/>
+<text class="ts" x="358" y="98" text-anchor="middle" font-size="9" fill="#6b675e">peer</text>
+<line class="fl" x1="378" y1="128" x2="346" y2="128" stroke="#6b675e" stroke-width="1.3" marker-end="url(#rcA4)"/>
+<text class="ts" x="362" y="146" text-anchor="middle" font-size="9" fill="#6b675e">peer</text>
+<text class="tc" x="360" y="82" text-anchor="middle" font-size="10" fill="#b03a2e">封闭小岛</text>
+</svg>
+</figure>
 
 只看各自的引用计数，每个对象都能说“还有人引用我”；站到整个对象图之外，才看得见这两笔引用形成一座封闭小岛。
 
@@ -252,16 +319,29 @@ left 对象  <──────>  right 对象
 
 CPython 会追踪那些可能参与引用环的容器对象。一次循环回收，可以粗略理解为：
 
-```text
-选出一批被追踪对象
-      ↓
-从各自引用计数中扣除“批次内部互相引用”
-      ↓
-仍有外部引用的对象及其可达对象：保留
-只剩内部引用的封闭对象图：不可达垃圾
-      ↓
-处理弱引用与终结器，打断引用，再释放
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 276" role="img" aria-label="循环回收四步：选出一批被追踪对象；从各自引用计数中扣除批次内部的互相引用；仍有外部引用的对象及其可达对象保留，只剩内部引用的封闭对象图判为不可达垃圾；对垃圾先处理弱引用与终结器，打断引用后再释放" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="rcA5" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-q" x="180" y="20" width="300" height="36" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="ts" x="330" y="43" text-anchor="middle" font-size="11" fill="#2b2a26">选出一批被追踪对象</text>
+<line class="fl" x1="330" y1="56" x2="330" y2="72" stroke="#6b675e" stroke-width="1.3" marker-end="url(#rcA5)"/>
+<rect class="bx-q" x="150" y="76" width="360" height="36" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="330" y="99" text-anchor="middle" font-size="10.5" fill="#2b2a26">从各自计数中扣除「批次内部互相引用」</text>
+<line class="fl" x1="260" y1="112" x2="180" y2="142" stroke="#6b675e" stroke-width="1.3" marker-end="url(#rcA5)"/>
+<line class="fl" x1="400" y1="112" x2="480" y2="142" stroke="#6b675e" stroke-width="1.3" marker-end="url(#rcA5)"/>
+<rect class="bx-q" x="60" y="146" width="230" height="52" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="175" y="167" text-anchor="middle" font-size="10.5" fill="#2b2a26">扣完仍大于零：有外部引用</text>
+<text class="ts" x="175" y="186" text-anchor="middle" font-size="9.5" fill="#6b675e">它和它的可达对象：保留</text>
+<rect class="bx-sick" x="370" y="146" width="230" height="52" rx="5" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.3"/>
+<text class="ts" x="485" y="167" text-anchor="middle" font-size="10.5" fill="#b03a2e">扣完归零：只剩内部引用</text>
+<text class="ts" x="485" y="186" text-anchor="middle" font-size="9.5" fill="#6b675e">封闭对象图 = 不可达垃圾</text>
+<line class="fl" x1="485" y1="198" x2="485" y2="218" stroke="#6b675e" stroke-width="1.3" marker-end="url(#rcA5)"/>
+<rect class="bx" x="320" y="222" width="320" height="36" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="480" y="245" text-anchor="middle" font-size="10.5" fill="#2b2a26">处理弱引用与终结器 · 打断引用 · 释放</text>
+</svg>
+</figure>
 
 这个过程的重点不在寻找“引用计数大于零”的对象，而在对象图中分辨哪些引用来自候选集合外部。环内两个对象互相引用，不能再被当成继续存活的外部担保。
 
@@ -399,6 +479,34 @@ __del__
 
 普通零引用路径中，`Objects/typeobject.c` 的 `subtype_dealloc()` 会先尝试调用终结器；对象没有被复活，才继续清理弱引用。循环回收路径则由 `Python/gc.c` 组织，`handle_weakrefs()` 先清理弱引用并调用相应回调，`finalize_garbage()` 随后处理终结器，再检查是否有对象复活。
 
+两条告别路径并排看：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 196" role="img" aria-label="两条死亡路径的次序对照：引用归零路径由 subtype_dealloc 先调用 __del__ 再清理弱引用触发 callback；循环回收路径由 gc.c 的 handle_weakrefs 先触发 callback，finalize_garbage 随后调用 __del__ 并检查复活；同一对旁观者的发言次序相反" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="rcA6" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="t" x="170" y="30" text-anchor="middle" font-size="11.5" fill="#2b2a26">归零路径（del guest）</text>
+<rect class="bx-q" x="40" y="44" width="260" height="48" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="ts" x="170" y="64" text-anchor="middle" font-size="10.5" fill="#2b2a26">① __del__ 先发言</text>
+<text class="ts" x="170" y="82" text-anchor="middle" font-size="9.5" fill="#6b675e">subtype_dealloc() 先试终结器</text>
+<line class="fl" x1="170" y1="92" x2="170" y2="112" stroke="#6b675e" stroke-width="1.3" marker-end="url(#rcA6)"/>
+<rect class="bx-q" x="40" y="116" width="260" height="48" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="170" y="136" text-anchor="middle" font-size="10.5" fill="#2b2a26">② weakref callback 随后</text>
+<text class="ts" x="170" y="154" text-anchor="middle" font-size="9.5" fill="#6b675e">确认没复活，才清理弱引用</text>
+<text class="t" x="490" y="30" text-anchor="middle" font-size="11.5" fill="#2b2a26">循环回收路径（gc.collect）</text>
+<rect class="bx-sick" x="360" y="44" width="260" height="48" rx="5" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.3"/>
+<text class="ts" x="490" y="64" text-anchor="middle" font-size="10.5" fill="#b03a2e">① weakref callback 先发言</text>
+<text class="ts" x="490" y="82" text-anchor="middle" font-size="9.5" fill="#6b675e">handle_weakrefs()</text>
+<line class="fl" x1="490" y1="92" x2="490" y2="112" stroke="#6b675e" stroke-width="1.3" marker-end="url(#rcA6)"/>
+<rect class="bx-sick" x="360" y="116" width="260" height="48" rx="5" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="ts" x="490" y="136" text-anchor="middle" font-size="10.5" fill="#b03a2e">② __del__ 随后</text>
+<text class="ts" x="490" y="154" text-anchor="middle" font-size="9.5" fill="#6b675e">finalize_garbage() · 再查复活</text>
+<text class="tc" x="330" y="92" text-anchor="middle" font-size="14" fill="#b03a2e">⇄</text>
+<text class="tc" x="330" y="112" text-anchor="middle" font-size="9.5" fill="#b03a2e">次序相反</text>
+</svg>
+</figure>
+
 这不是建议程序利用先后顺序协调工作。恰恰相反，它说明“对象即将死亡时总会先做 X”是一项危险假设。弱引用回调适合维护旁路缓存和索引，不适合与 `__del__` 共同拼成一套隐蔽的事务协议。
 
 源码路径也要写上版本。从 Python 2.0 引入循环回收到 3.12，核心一直位于 `Modules/gcmodule.c`；自 3.13 起，回收核心迁入 `Python/gc.c`，`gc` 模块接口仍留在 `Modules/gcmodule.c`。函数名和步骤会继续演进，文章能解释当前实现，不能替内部文件布局许下永久承诺。
@@ -496,13 +604,31 @@ after clearing traceback
 
 类似的持有者还有：
 
-```text
-缓存字典          ──> 业务对象
-回调闭包          ──> 外层局部变量
-生成器对象        ──> 暂停的执行帧
-任务或 Future     ──> 异常与 traceback
-调试器和分析器    ──> 被检查的对象
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 214" role="img" aria-label="五种隐蔽持有者汇聚到仍可达的业务对象：缓存字典、回调闭包保留外层局部变量、生成器对象扣住暂停的执行帧、任务或 Future 抓着异常与 traceback、调试器和分析器握着被检查的对象；只要任一引用在，对象就仍然可达" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="rcA7" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-q" x="30" y="14" width="230" height="32" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="42" y="34" font-size="10" fill="#2b2a26">缓存字典 <tspan fill="#6b675e">──> 业务对象</tspan></text>
+<rect class="bx-q" x="30" y="54" width="230" height="32" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="42" y="74" font-size="10" fill="#2b2a26">回调闭包 <tspan fill="#6b675e">──> 外层局部变量</tspan></text>
+<rect class="bx-q" x="30" y="94" width="230" height="32" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="42" y="114" font-size="10" fill="#2b2a26">生成器对象 <tspan fill="#6b675e">──> 暂停的执行帧</tspan></text>
+<rect class="bx-q" x="30" y="134" width="230" height="32" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="42" y="154" font-size="10" fill="#2b2a26">任务 / Future <tspan fill="#6b675e">──> 异常与 traceback</tspan></text>
+<rect class="bx-q" x="30" y="174" width="230" height="32" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="42" y="194" font-size="10" fill="#2b2a26">调试器与分析器 <tspan fill="#6b675e">──> 被检查对象</tspan></text>
+<line class="fl" x1="260" y1="30" x2="426" y2="92" stroke="#6b675e" stroke-width="1.1" marker-end="url(#rcA7)"/>
+<line class="fl" x1="260" y1="70" x2="426" y2="100" stroke="#6b675e" stroke-width="1.1" marker-end="url(#rcA7)"/>
+<line class="fl" x1="260" y1="110" x2="426" y2="110" stroke="#6b675e" stroke-width="1.1" marker-end="url(#rcA7)"/>
+<line class="fl" x1="260" y1="150" x2="426" y2="122" stroke="#6b675e" stroke-width="1.1" marker-end="url(#rcA7)"/>
+<line class="fl" x1="260" y1="190" x2="426" y2="130" stroke="#6b675e" stroke-width="1.1" marker-end="url(#rcA7)"/>
+<rect class="bx" x="430" y="78" width="200" height="66" rx="6" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="t" x="530" y="104" text-anchor="middle" font-size="11" fill="#2b2a26">仍可达的业务对象</text>
+<text class="ts" x="530" y="126" text-anchor="middle" font-size="9.5" fill="#6b675e">从根出发存在真实引用路径</text>
+</svg>
+</figure>
 
 因此，内存排查的第一问是“从根对象到它还有哪条引用路径”，不是“GC 为什么不工作”。`gc.get_referrers()` 可以辅助调查，却会返回解释器正在使用的内部对象，调用探针本身也可能改变现场。它适合诊断，不适合成为生产业务逻辑。
 
@@ -561,11 +687,22 @@ ResourceWarning: Enable tracemalloc to get the object allocation traceback
 
 可靠的工程顺序应是：
 
-```text
-with / try...finally / 显式 close    负责按时归还外部资源
-引用计数与循环 GC                   负责回收 Python 对象
-进程退出清理                        只做最后兜底
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 178" role="img" aria-label="三层工程顺序：第一层 with、try finally 或显式 close 负责按时归还外部资源；第二层引用计数与循环 GC 负责回收 Python 对象；第三层进程退出清理只做最后兜底" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<rect class="bx" x="20" y="20" width="620" height="42" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="36" y="46" font-size="11" fill="#2b2a26">with / try...finally / 显式 close</text>
+<line class="axis" x1="340" y1="26" x2="340" y2="56" stroke="#a29d90" stroke-width="1"/>
+<text class="ts" x="358" y="46" font-size="10.5" fill="#6b675e">按时归还外部资源 · 写进控制流</text>
+<rect class="bx-q" x="20" y="70" width="620" height="42" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="36" y="96" font-size="11" fill="#2b2a26">引用计数 + 循环 GC</text>
+<line class="axis" x1="340" y1="76" x2="340" y2="106" stroke="#a29d90" stroke-width="1"/>
+<text class="ts" x="358" y="96" font-size="10.5" fill="#6b675e">回收 Python 对象 · 时刻不由业务指定</text>
+<rect class="bx-gone" x="20" y="120" width="620" height="42" rx="5" fill="#ece9e2" stroke="#a29d90" stroke-width="1.2" stroke-dasharray="5 3"/>
+<text class="ts" x="36" y="146" font-size="11" fill="#6b675e">进程退出清理</text>
+<line class="axis" x1="340" y1="126" x2="340" y2="156" stroke="#a29d90" stroke-width="1"/>
+<text class="ts" x="358" y="146" font-size="10.5" fill="#6b675e">只做最后兜底 · os._exit() 连它也跳过</text>
+</svg>
+</figure>
 
 解释器退出时也不保证为所有仍存活对象调用 `__del__`。`os._exit()` 更会直接跳过常规清理。把数据正确性寄托在“程序结束时总会帮我收尾”，是一份没有写进语言契约的承诺。
 
@@ -585,12 +722,35 @@ CPython 为大量小对象使用 pymalloc。它把较大的 arena 切成 pool，
 
 因此至少要区分四个时刻：
 
-```text
-T1 最后一条业务引用撤销
-T2 引用计数或循环 GC 确认对象可回收
-T3 对象存储回到 CPython / libc 分配器
-T4 相应页面真正从进程 RSS 中回落
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 172" role="img" aria-label="四个时刻的时间轴：T1 最后一条业务引用撤销，T2 引用计数或循环 GC 确认对象可回收，T3 对象存储回到 CPython 或 libc 分配器，T4 相应页面真正从进程 RSS 中回落；前两个属于 Python 对象层，后两个属于分配器与操作系统层" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="rcA8" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="tc" x="90" y="56" text-anchor="middle" font-size="11" fill="#b03a2e">T1</text>
+<text class="ts" x="90" y="84" text-anchor="middle" font-size="9.5" fill="#6b675e">最后一条业务引用撤销</text>
+<text class="tc" x="250" y="56" text-anchor="middle" font-size="11" fill="#b03a2e">T2</text>
+<text class="ts" x="250" y="84" text-anchor="middle" font-size="9.5" fill="#6b675e">计数或循环 GC 确认可回收</text>
+<text class="tc" x="410" y="56" text-anchor="middle" font-size="11" fill="#b03a2e">T3</text>
+<text class="ts" x="410" y="84" text-anchor="middle" font-size="9.5" fill="#6b675e">存储回到 CPython / libc 分配器</text>
+<text class="tc" x="560" y="56" text-anchor="middle" font-size="11" fill="#b03a2e">T4</text>
+<text class="ts" x="560" y="84" text-anchor="middle" font-size="9.5" fill="#6b675e">页面真正从进程 RSS 回落</text>
+<line class="axis" x1="30" y1="106" x2="628" y2="106" stroke="#a29d90" stroke-width="1.2" marker-end="url(#rcA8)"/>
+<line class="flc" x1="90" y1="98" x2="90" y2="114" stroke="#b03a2e" stroke-width="1.4"/>
+<line class="flc" x1="250" y1="98" x2="250" y2="114" stroke="#b03a2e" stroke-width="1.4"/>
+<line class="flc" x1="410" y1="98" x2="410" y2="114" stroke="#b03a2e" stroke-width="1.4"/>
+<line class="flc" x1="560" y1="98" x2="560" y2="114" stroke="#b03a2e" stroke-width="1.4"/>
+<line class="axis" x1="90" y1="130" x2="250" y2="130" stroke="#a29d90" stroke-width="1.2"/>
+<line class="axis" x1="90" y1="126" x2="90" y2="134" stroke="#a29d90" stroke-width="1.2"/>
+<line class="axis" x1="250" y1="126" x2="250" y2="134" stroke="#a29d90" stroke-width="1.2"/>
+<text class="ts" x="170" y="150" text-anchor="middle" font-size="10" fill="#6b675e">Python 对象层</text>
+<line class="axis" x1="410" y1="130" x2="560" y2="130" stroke="#a29d90" stroke-width="1.2"/>
+<line class="axis" x1="410" y1="126" x2="410" y2="134" stroke="#a29d90" stroke-width="1.2"/>
+<line class="axis" x1="560" y1="126" x2="560" y2="134" stroke="#a29d90" stroke-width="1.2"/>
+<text class="ts" x="485" y="150" text-anchor="middle" font-size="10" fill="#6b675e">分配器与操作系统层</text>
+<text class="ts" x="330" y="150" text-anchor="middle" font-size="9.5" fill="#a29d90">T2 → T3 之间还隔着分配器的账</text>
+</svg>
+</figure>
 
 `gc.collect()` 最多推进与对象图有关的步骤，不是一条“把 RSS 还给操作系统”的命令。看到对象数量下降而 RSS 平稳，不能直接断言泄漏；看到 RSS 持续上升，也不能只用“分配器缓存”搪塞。要把 Python 对象保有量、分配器状态与操作系统页面分别测量。
 
