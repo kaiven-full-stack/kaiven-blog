@@ -20,6 +20,39 @@ Redis 系列拆 AOF 时留过一个尾巴：`appendfsync everysec` 的丢失窗�
 
 page cache 是读写的双向缓存：写先进缓存（快），读先查缓存（重复读不碰盘）。它的收益用实验说话：256MiB 连续 write，0.121 秒返回，**2114 MB/s**。这块 NVMe 的真实顺序写大约在这个速度以下，但 write 根本没去排队，它只是把数据搬进了内存。
 
+这一次 write 的旅程：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 216" role="img" aria-label="write 的旅程：用户缓冲区的 256MiB 经一次内存拷贝进入 page cache，文件页被标脏，0.121 秒返回；盘此刻一步没碰，之后由 flusher 或 fsync 来收" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="kern6As1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">write(fd, buf, 256MiB)：内核路径里没有一步碰盘</text>
+<rect class="bx" x="30" y="60" width="140" height="64" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="100" y="86" text-anchor="middle" font-size="13" fill="#2b2a26">用户缓冲区</text>
+<text class="ts" x="100" y="106" text-anchor="middle" font-size="11" fill="#6b675e">256MiB</text>
+<line class="fl" x1="170" y1="92" x2="226" y2="92" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern6As1)"/>
+<text class="ts" x="198" y="82" text-anchor="middle" font-size="11" fill="#6b675e">内存拷贝</text>
+<rect class="bx-q" x="230" y="48" width="220" height="92" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="340" y="70" text-anchor="middle" font-size="13" fill="#2b2a26">page cache</text>
+<rect class="bx-sick" x="248" y="80" width="28" height="20" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/>
+<rect class="bx-sick" x="282" y="80" width="28" height="20" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/>
+<rect class="bx-sick" x="316" y="80" width="28" height="20" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/>
+<rect class="bx-sick" x="350" y="80" width="28" height="20" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/>
+<rect class="bx-sick" x="384" y="80" width="28" height="20" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/>
+<rect class="bx-sick" x="418" y="80" width="14" height="20" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/>
+<text class="ts" x="340" y="124" text-anchor="middle" font-size="11" fill="#6b675e">这个文件的页，全部标「脏」</text>
+<line class="fl" x1="450" y1="92" x2="506" y2="92" stroke="#6b675e" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#kern6As1)"/>
+<text class="ts" x="478" y="82" text-anchor="middle" font-size="10" fill="#6b675e">之后才</text>
+<rect class="bx-gone" x="510" y="60" width="120" height="64" rx="4" fill="none" stroke="#a29d90" stroke-dasharray="6 4"/>
+<text class="t" x="570" y="86" text-anchor="middle" font-size="13" fill="#2b2a26">盘</text>
+<text class="ts" x="570" y="106" text-anchor="middle" font-size="11" fill="#6b675e">此刻一步没碰</text>
+<text class="ts" x="30" y="166" font-size="12" fill="#6b675e">0.121 秒返回：write 只做了两件事，搬进缓存、标脏</text>
+<text class="ts" x="30" y="188" font-size="12" fill="#6b675e">盘那边不着急：数据什么时候落，由水位和时钟说了算</text>
+<text class="ts" x="30" y="208" font-size="12" fill="#6b675e">观测就盯 meminfo 两列：Dirty 记欠账，Writeback 记正在搬运</text>
+</svg>
+</figure>
+
 脏页的两个去向构成本篇的两条线：**被动线**（fsync，应用主动催收）和**主动线**（flusher，内核自己安排）。先看内核自己的安排。
 
 ## flusher：水位与时钟
@@ -42,6 +75,33 @@ page cache 是读写的双向缓存：写先进缓存（快），读先查缓存
 
 每产生脏页的进程都会被按页抽查（`balance_dirty_pages_ratelimited`）：脏页总量过了水位中点，**写入者自己被按住睡眠**，直到回写追上。这是「write 快」的真正边界：小数据量随便写（自由区），逼近 256MiB 水位时写入吞吐被强行压到盘速。内核宁可让写入者等，也不让内存被脏页灌满。
 
+三道闸在一根标尺上：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 192" role="img" aria-label="脏页量数轴上的三道闸：0 到 64MiB 是自由区；过 64MiB flusher 被唤醒开始后台回写；过 160MiB 中点写入者被抽查按住睡眠；256MiB 是硬顶。另有一条与标尺无关的时钟每 15 秒扫一遍" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="kern6As2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">横轴：全系统脏页总量（本机 bytes 模式）</text>
+<rect class="bar" x="60" y="96" width="115" height="8" fill="#a29d90"/>
+<rect class="bar" x="175" y="96" width="173" height="8" fill="#6b675e"/>
+<rect class="bar" x="348" y="96" width="173" height="8" fill="#b03a2e"/>
+<rect class="bar" x="521" y="96" width="79" height="8" fill="#2b2a26"/>
+<line class="axis" x1="60" y1="100" x2="620" y2="100" stroke="#6b675e" stroke-width="1.2" marker-end="url(#kern6As2)"/>
+<line class="flk" x1="175" y1="70" x2="175" y2="130" stroke="#2b2a26" stroke-width="2"/>
+<line class="flc" x1="348" y1="70" x2="348" y2="130" stroke="#b03a2e" stroke-width="2"/>
+<line class="flc" x1="521" y1="70" x2="521" y2="130" stroke="#b03a2e" stroke-width="2"/>
+<text class="tc" x="175" y="62" text-anchor="middle" font-size="12" fill="#b03a2e">64MiB：flusher 被唤醒</text>
+<text class="tc" x="348" y="62" text-anchor="middle" font-size="12" fill="#b03a2e">160MiB 中点：写入者被按住</text>
+<text class="tc" x="545" y="62" text-anchor="middle" font-size="12" fill="#b03a2e">256MiB 硬顶</text>
+<text class="ts" x="117" y="150" text-anchor="middle" font-size="11" fill="#6b675e">随便写</text>
+<text class="ts" x="261" y="150" text-anchor="middle" font-size="11" fill="#6b675e">后台回写开工，写入者还自由</text>
+<text class="ts" x="434" y="150" text-anchor="middle" font-size="11" fill="#6b675e">写入吞吐被压到盘速</text>
+<text class="ts" x="560" y="150" text-anchor="middle" font-size="11" fill="#6b675e">绝不允许越过</text>
+<text class="ts" x="20" y="178" font-size="12" fill="#6b675e">另有一条与标尺无关的时钟：每 15 秒扫一遍，30 秒内最老的脏页优先</text>
+</svg>
+</figure>
+
 （顺带一个版本注脚：脏页限制有两套旋钮，`dirty_ratio` 按内存百分比、`dirty_bytes` 按绝对值，一套生效另一套归零显示。本机是 bytes 模式：64MiB 唤醒、256MiB 硬顶。改哪套、读哪套，先看对方是不是零。）
 
 ### 实测：一批脏页的时间线
@@ -61,6 +121,37 @@ A1 write 256MiB 返回   Dirty= 25596kB   ← 注意：只涨了 25MB
 
 **其二，25MB 脏页稳稳躺了 4.5 秒才被写走。** 时钟是 15 秒、水位 64MiB 没到，flusher 没有任何理由提前干活，直到某个周期扫到了这批「过期」脏页（`dirty_expire_centisecs`，本机 30 秒内最老的脏页优先）。对写入进程来说这 4.5 秒毫无感知；对断电来说这 4.5 秒的数据在内存里。
 
+这 5 秒的 Dirty 画成曲线：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 250" role="img" aria-label="实验 A 的 Dirty 曲线：写前 3868kB，write 256MiB 返回后跳到 25596kB 只涨了 25MB，随后在 27000kB 平台上纹丝不动躺了 4.5 秒，第 5 秒被 flusher 一口气带到 13312kB" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">实验 A：写 256MiB 不 fsync，每半秒采一次 Dirty</text>
+<text class="ts" x="20" y="42" font-size="11" fill="#6b675e">Dirty（kB）</text>
+<line class="grid" x1="70" y1="147" x2="610" y2="147" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 4"/>
+<line class="grid" x1="70" y1="93" x2="610" y2="93" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 4"/>
+<line class="axis" x1="70" y1="200" x2="70" y2="36" stroke="#6b675e" stroke-width="1.2"/>
+<line class="axis" x1="70" y1="200" x2="620" y2="200" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="62" y="151" text-anchor="end" font-size="11" fill="#6b675e">10000</text>
+<text class="ts" x="62" y="97" text-anchor="end" font-size="11" fill="#6b675e">20000</text>
+<polyline class="curve-k" points="70,179 82,63 119,54 266,53 512,53 561,129" fill="none" stroke="#2b2a26" stroke-width="2"/>
+<circle class="fill-c" cx="70" cy="179" r="3" fill="#b03a2e"/>
+<circle class="fill-c" cx="82" cy="63" r="3" fill="#b03a2e"/>
+<circle class="fill-c" cx="119" cy="54" r="3" fill="#b03a2e"/>
+<circle class="fill-c" cx="266" cy="53" r="3" fill="#b03a2e"/>
+<circle class="fill-c" cx="512" cy="53" r="3" fill="#b03a2e"/>
+<circle class="fill-c" cx="561" cy="129" r="3" fill="#b03a2e"/>
+<text class="tc" x="100" y="90" font-size="12" fill="#b03a2e">256MiB 的 write 只让 Dirty 涨了 25MB（btrfs 的中间层）</text>
+<text class="ts" x="300" y="72" font-size="11" fill="#6b675e">平台：稳着不动 4.5 秒</text>
+<text class="tc" x="380" y="116" font-size="12" fill="#b03a2e">flusher 带走了它</text>
+<text class="ts" x="70" y="218" text-anchor="middle" font-size="11" fill="#6b675e">A0 写前</text>
+<text class="ts" x="119" y="218" text-anchor="middle" font-size="11" fill="#6b675e">A1+0.5s</text>
+<text class="ts" x="266" y="218" text-anchor="middle" font-size="11" fill="#6b675e">+2s</text>
+<text class="ts" x="512" y="218" text-anchor="middle" font-size="11" fill="#6b675e">+4.5s</text>
+<text class="ts" x="573" y="218" text-anchor="middle" font-size="11" fill="#6b675e">+5s</text>
+<text class="ts" x="20" y="240" font-size="12" fill="#6b675e">每半秒一个采样点：平台是真实的静止，不是采样稀疏</text>
+</svg>
+</figure>
+
 ## fsync：它承诺什么，不承诺什么
 
 以上是内核自选动作。应用要更强保证时，主动催收：`fsync(fd)`。
@@ -74,6 +165,32 @@ D1 64MiB write 完成   Dirty= 68420kB
 ```
 
 fsync 返回瞬间，自己文件的脏页清完（落到设备），系统背景脏页原样躺着。**Dirty 是全局指标，fsync 是单文件动作**，读监控时把这俩混在一起，会得出「fsync 没用」的假结论。
+
+实验 D 这一笔清的是谁的账：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 178" role="img" aria-label="fsync 前后的 Dirty 构成：写完成时全局 Dirty 是 68420kB，其中 61MB 属于本文件、7MB 是别的进程的背景脏页；fsync 用 0.050 秒只清掉本文件那 61MB，返回时剩下的 7208kB 全是背景" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="kern6As4" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">全局 Dirty 一列里的两种脏页</text>
+<text class="tc" x="172" y="40" text-anchor="middle" font-size="11" fill="#b03a2e">本文件 61MB</text>
+<text class="ts" x="300" y="40" text-anchor="middle" font-size="11" fill="#6b675e">背景 7MB</text>
+<rect class="bx-sick" x="80" y="48" width="184" height="32" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<rect class="bx" x="264" y="48" width="22" height="32" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="80" y="98" font-size="11" fill="#6b675e">D1：64MiB write 完成，Dirty=68420kB</text>
+<line class="fl" x1="310" y1="64" x2="404" y2="64" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern6As4)"/>
+<text class="ts" x="357" y="54" text-anchor="middle" font-size="11" fill="#6b675e">fsync 0.050s</text>
+<rect class="bx" x="420" y="48" width="22" height="32" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="450" y="40" font-size="11" fill="#6b675e">只剩背景 7208kB</text>
+<text class="ts" x="420" y="98" font-size="11" fill="#6b675e">fsync 返回</text>
+<rect class="bx-sick" x="80" y="114" width="12" height="12" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/>
+<text class="ts" x="98" y="124" font-size="11" fill="#6b675e">本文件的脏页</text>
+<rect class="bx" x="220" y="114" width="12" height="12" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="238" y="124" font-size="11" fill="#6b675e">别的进程的背景脏页</text>
+<text class="ts" x="20" y="158" font-size="12" fill="#6b675e">拿全局监控评估单文件 fsync，永远差一截</text>
+</svg>
+</figure>
 
 ### 三种写法的实测吞吐
 
@@ -89,7 +206,54 @@ fsync 返回瞬间，自己文件的脏页清完（落到设备），系统背�
 
 三个数字就是三种价：always 的 605 MB/s 输在 64 次往返上，每次 fsync 都要等设备确认，把流式写切成段段确认；纯 write 的 2114 MB/s 是内存速度的假象；末尾一次 fsync 拿到最高的「确认后吞吐」，代价是整个写入窗口的数据都悬在内存里。Redis 选 everysec 是中间价：一秒的窗口，最多丢一秒，吞吐几乎不受影响。
 
+三种价摆在一起：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 206" role="img" aria-label="三种写法同一块盘的吞吐条形图：纯 write 不 fsync 是 2114 MB/s，对应 Redis appendfsync no；每 4MiB 一次 fsync 是 605 MB/s，对应 always；256MiB 写完末尾一次 fsync 折算 4755 MB/s，对应 everysec 的批量等价" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">同一块盘、同样 256MiB，三种写法的折算吞吐</text>
+<text class="ts" x="20" y="58" font-size="12" fill="#6b675e">纯 write 不 fsync · appendfsync no</text>
+<rect class="bar" x="20" y="64" width="191" height="22" fill="#2b2a26"/>
+<text class="tc" x="220" y="80" font-size="12" fill="#b03a2e">2114 MB/s：内存速度的假象</text>
+<text class="ts" x="20" y="104" font-size="12" fill="#6b675e">每 4MiB write + fsync · always</text>
+<rect class="bar" x="20" y="110" width="55" height="22" fill="#2b2a26"/>
+<text class="tc" x="84" y="126" font-size="12" fill="#b03a2e">605 MB/s：64 次等设备确认的往返价</text>
+<text class="ts" x="20" y="150" font-size="12" fill="#6b675e">末尾一次 fsync · everysec 的批量等价</text>
+<rect class="bar" x="20" y="156" width="430" height="22" fill="#2b2a26"/>
+<text class="onbar" x="235" y="172" text-anchor="middle" font-size="11" fill="#f6f3ec">4755 MB/s：窗口内全欠着，最后一次性还清</text>
+<text class="ts" x="460" y="172" font-size="11" fill="#6b675e">条越长吞吐越高</text>
+<text class="ts" x="20" y="198" font-size="12" fill="#6b675e">吞吐的另一面是欠账时长：no 欠到 flusher 来收，always 一段都不欠，everysec 欠一秒</text>
+</svg>
+</figure>
+
 这就是「丢失窗口约一秒」的完整内核含义：**不是数据写了一半，是整整一秒的 write 都还停在 page cache 或文件系统内部缓冲里，从未见过盘**。断电时这扇窗口里的数据蒸发；进程崩溃时反而不会丢（page cache 是内核的，进程死了缓存还在，flusher 照常写走）。「进程崩溃不丢、断电才丢」这条经验，机制就在这两层之间。
+
+窗口里外，两种结局：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 250" role="img" aria-label="everysec 丢失窗口的内核时间线：上一次 fsync 到下一次 fsync 之间的一秒里，所有 write 都悬在 page cache 与文件系统缓冲中从未见过盘；断电则窗口内的数据蒸发，进程崩溃则缓存还在由 flusher 照常写走不丢" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="kern6As6" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+<marker id="kern6Ac6" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-c" d="M0 0 L8 4 L0 8 Z" fill="#b03a2e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">「丢失窗口约一秒」在内核时间线上的样子</text>
+<rect class="bx-sick" x="180" y="56" width="240" height="36" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="300" y="78" text-anchor="middle" font-size="12" fill="#b03a2e">这一秒的 write 全悬在缓存，从未见过盘</text>
+<line class="flk" x1="180" y1="92" x2="180" y2="146" stroke="#2b2a26" stroke-width="2"/>
+<line class="flk" x1="420" y1="92" x2="420" y2="146" stroke="#2b2a26" stroke-width="2"/>
+<line class="axis" x1="60" y1="140" x2="600" y2="140" stroke="#6b675e" stroke-width="1.2" marker-end="url(#kern6As6)"/>
+<text class="ts" x="180" y="162" text-anchor="middle" font-size="11" fill="#6b675e">上一次 fsync</text>
+<text class="ts" x="420" y="162" text-anchor="middle" font-size="11" fill="#6b675e">下一次 fsync（1 秒后）</text>
+<line class="flc" x1="250" y1="146" x2="250" y2="180" stroke="#b03a2e" stroke-width="1.6" marker-end="url(#kern6Ac6)"/>
+<text class="tc" x="240" y="176" text-anchor="end" font-size="11" fill="#b03a2e">断电</text>
+<line class="fl" x1="400" y1="146" x2="480" y2="180" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern6As6)"/>
+<text class="ts" x="416" y="176" font-size="11" fill="#6b675e">进程崩溃</text>
+<rect class="bx-sick" x="140" y="184" width="220" height="40" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="250" y="208" text-anchor="middle" font-size="12" fill="#b03a2e">窗口内的数据蒸发</text>
+<rect class="bx" x="380" y="184" width="260" height="40" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="510" y="208" text-anchor="middle" font-size="12" fill="#6b675e">缓存是内核的，flusher 照常写走</text>
+<text class="ts" x="20" y="242" font-size="12" fill="#6b675e">丢不丢，取决于死的是谁：进程死了内存还在，电源死了内存跟着没</text>
+</svg>
+</figure>
 
 ## 读路径的另一半
 
