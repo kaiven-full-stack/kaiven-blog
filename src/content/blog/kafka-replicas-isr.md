@@ -24,6 +24,57 @@ Topic: krep  PartitionCount: 1  ReplicationFactor: 3  Configs: min.insync.replic
 
 Isr 是花名册：in-sync replicas，跟得上队伍的人。跟得上的判据是 `replica.lag.time.max.ms`（默认 30 秒），一个 follower 超过 30 秒没追上 leader 的进度就被除名，追回来再入册。花名册之外还有一条水位线：leader 本地写到哪叫 LEO（log end offset），对外承认到哪叫**高水位（HW）**，取花名册内所有副本 LEO 的最小值。消费者只能读到高水位；高水位以上的部分，哪怕就躺在 leader 盘上，也算未提交。
 
+这支队伍和它的水位线，画出来：
+
+<figure class="mq-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 336" role="img" aria-label="一分区三副本的组织架构：producer 写入 leader，两个 follower 持续拉抄；ISR 花名册框住跟得上的副本；leader 的 LEO 是本地写到哪，高水位 HW 取花名册内最短的 LEO，消费者只能读到 HW" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="mq7As1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">一个分区 × 3 副本的队伍</text>
+<rect class="bx" x="30" y="80" width="110" height="44" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="85" y="99" text-anchor="middle" font-size="14" fill="#2b2a26">producer</text>
+<text class="ts" x="85" y="117" text-anchor="middle" font-size="12" fill="#6b675e">acks: 0 / 1 / all</text>
+<line class="fl" x1="140" y1="102" x2="182" y2="102" stroke="#6b675e" stroke-width="1.6" marker-end="url(#mq7As1)"/>
+<rect class="bx-gone" x="170" y="44" width="460" height="252" rx="6" fill="none" stroke="#a29d90" stroke-dasharray="6 4"/>
+<text class="ts" x="178" y="38" font-size="12" fill="#6b675e">ISR 花名册：跟得上的在册，追不上除名，追回来再入册</text>
+<text class="t" x="190" y="80" font-size="14" fill="#2b2a26">broker2 · leader（唯一受理写入）</text>
+<rect class="bx-q" x="190" y="88" width="240" height="36" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<rect class="msg" x="200" y="100" width="10" height="12" fill="#a29d90" opacity="0.65"/>
+<rect class="msg" x="230" y="100" width="10" height="12" fill="#a29d90" opacity="0.65"/>
+<rect class="msg" x="260" y="100" width="10" height="12" fill="#a29d90" opacity="0.65"/>
+<rect class="msg" x="290" y="100" width="10" height="12" fill="#a29d90" opacity="0.65"/>
+<rect class="msg" x="320" y="100" width="10" height="12" fill="#a29d90" opacity="0.65"/>
+<rect class="msg" x="360" y="100" width="10" height="12" fill="#a29d90" opacity="0.65"/>
+<rect class="msg" x="390" y="100" width="10" height="12" fill="#a29d90" opacity="0.65"/>
+<line class="flc" x1="350" y1="84" x2="350" y2="128" stroke="#b03a2e" stroke-width="2"/>
+<line class="flk" x1="430" y1="84" x2="430" y2="128" stroke="#2b2a26" stroke-width="2"/>
+<text class="tc" x="356" y="142" font-size="12" fill="#b03a2e">HW：队伍承认到哪</text>
+<text class="ts" x="436" y="110" font-size="12" fill="#6b675e">LEO：leader 本地写到哪</text>
+<text class="ts" x="286" y="160" text-anchor="middle" font-size="12" fill="#6b675e">HW 与 LEO 之间：躺在盘上，也算未提交</text>
+<text class="ts" x="190" y="180" font-size="12" fill="#6b675e">broker1 · follower：不断从 leader 拉日志抄进自己的盘</text>
+<rect class="bx-q" x="190" y="188" width="160" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<rect class="msg" x="200" y="197" width="10" height="12" fill="#a29d90" opacity="0.65"/>
+<rect class="msg" x="230" y="197" width="10" height="12" fill="#a29d90" opacity="0.65"/>
+<rect class="msg" x="260" y="197" width="10" height="12" fill="#a29d90" opacity="0.65"/>
+<rect class="msg" x="290" y="197" width="10" height="12" fill="#a29d90" opacity="0.65"/>
+<rect class="msg" x="320" y="197" width="10" height="12" fill="#a29d90" opacity="0.65"/>
+<line class="flk" x1="350" y1="184" x2="350" y2="222" stroke="#2b2a26" stroke-width="2"/>
+<text class="tc" x="356" y="207" font-size="12" fill="#b03a2e">它的 LEO 是花名册里最短的：HW 取的就是这个最小值</text>
+<text class="ts" x="190" y="246" font-size="12" fill="#6b675e">broker3 · follower</text>
+<rect class="bx-q" x="190" y="254" width="200" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<rect class="msg" x="200" y="263" width="10" height="12" fill="#a29d90" opacity="0.65"/>
+<rect class="msg" x="230" y="263" width="10" height="12" fill="#a29d90" opacity="0.65"/>
+<rect class="msg" x="260" y="263" width="10" height="12" fill="#a29d90" opacity="0.65"/>
+<rect class="msg" x="290" y="263" width="10" height="12" fill="#a29d90" opacity="0.65"/>
+<rect class="msg" x="320" y="263" width="10" height="12" fill="#a29d90" opacity="0.65"/>
+<rect class="msg" x="350" y="263" width="10" height="12" fill="#a29d90" opacity="0.65"/>
+<line class="flk" x1="390" y1="250" x2="390" y2="288" stroke="#2b2a26" stroke-width="2"/>
+<text class="ts" x="396" y="273" font-size="12" fill="#6b675e">LEO：追过了 HW</text>
+<text class="ts" x="20" y="320" font-size="12" fill="#6b675e">min.insync.replicas 给 acks=all 设底线：花名册人数低于它，写入直接拒收（默认 1，要自己配成 2）</text>
+</svg>
+</figure>
+
 写入的持久性由 acks 旋钮决定：0 不等任何回执，1 只等 leader，all（即 -1）等花名册全员。两家客户端的默认值都取最稳那档：Java 客户端 acks 默认 all，kafkajs 默认 -1。`min.insync.replicas` 再给 all 设一道底线：花名册人数低于它，acks=all 的写入直接拒收。下面把每个零件都拔一遍电源。
 
 ## 二、拔电源
@@ -38,6 +89,24 @@ Isr 是花名册：in-sync replicas，跟得上队伍的人。跟得上的判据
 为什么是 9.5 秒，不是 30 秒的落后超时？因为死的是进程，不是网速。broker 每 2 秒向控制器送一次心跳（`broker.heartbeat.interval.ms=2000`），心跳断满 9 秒（`broker.session.timeout.ms=9000`），控制器宣布它死亡（fence），顺手把它从各分区的 ISR 里除名。30 秒的 `replica.lag.time.max.ms` 管的是另一种人：进程活着、心跳照发、数据就是拉不动的慢副本。两条检测路径，两种时延，9.5 秒这个数就是心跳会话超时的形状。
 
 对照组值得记：`docker stop`（优雅停机）后收缩只用了约 2 秒。优雅停机走 controlled shutdown，副本退出前主动向控制器报备，不用等人发现心跳没了。同一件事差出五倍时延，滚动重启和真拔电源在时间轴上是两种事件。
+
+三种时延放在同一根标尺上：
+
+<figure class="mq-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 178" role="img" aria-label="除名的三条路径：SIGKILL 拔电源走心跳会话超时 9.5 秒收缩，优雅停机主动报备只要 2 秒，进程活着但拉不动数据的慢副本要等 30 秒落后超时" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">同是「把副本请出花名册」，三条检测路径，三种时延</text>
+<text class="ts" x="20" y="59" font-size="12" fill="#6b675e">SIGKILL（真拔电源）</text>
+<rect class="bar" x="200" y="44" width="127" height="20" fill="#2b2a26"/>
+<text class="tc" x="335" y="59" font-size="12" fill="#b03a2e">9.5s：心跳断满 9 秒，控制器 fence</text>
+<text class="ts" x="20" y="95" font-size="12" fill="#6b675e">docker stop（优雅停机）</text>
+<rect class="bar" x="200" y="80" width="27" height="20" fill="#2b2a26"/>
+<text class="ts" x="235" y="95" font-size="12" fill="#6b675e">≈2s：controlled shutdown 主动报备</text>
+<text class="ts" x="20" y="131" font-size="12" fill="#6b675e">进程活着，数据拉不动</text>
+<rect class="bar" x="200" y="116" width="400" height="20" fill="#2b2a26"/>
+<text class="onbar" x="400" y="131" text-anchor="middle" font-size="12" fill="#f6f3ec">30s：replica.lag.time.max.ms 落后除名</text>
+<text class="ts" x="20" y="164" font-size="12" fill="#6b675e">前两条走心跳会话，第三条走进度检查：进程死了，比网慢被发现得更快</text>
+</svg>
+</figure>
 
 收缩窗口里写入不断。ISR 只剩 2 人时发 100 条 acks=all（min.insync.replicas=2，正好踩线）：成功，但耗时 4.7 秒，写入在等花名册落定。follower 重启后约 4.4 秒追平归队，ISR 回到 [1,2,3]。全程 leader 没动，消费端对账 303 条 seq 连续，零丢失。
 
@@ -54,7 +123,63 @@ Isr 是花名册：in-sync replicas，跟得上队伍的人。跟得上的判据
 
 其一，**选举没有投票**。控制器直接从 ISR 里指定 broker3 上岗，数据面没有任何一轮征求副本意见的往返。对照 Redis 哨兵篇：哨兵切主要过两道多数票（先凑 quorum 同意主库真死了，哨兵之间再选出执行者），Kafka 把投票挪到了楼上：KRaft 控制器自身是个三节点 Raft 仲裁（实测仲裁 leader 是节点 103），fence 谁、立谁都要先过控制器的 Raft 日志。数据面不投票，是因为投票已经在元数据面发生过了。
 
+投票发生在楼上：
+
+<figure class="mq-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 306" role="img" aria-label="两层结构：楼上元数据面是三个 KRaft 控制器组成的 Raft 仲裁，fence 谁立谁先过控制器日志；楼下数据面是三个 broker，每 2 秒送心跳上楼，上岗授权下楼，数据面自己不投票" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="mq7Ac1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-c" d="M0 0 L8 4 L0 8 Z" fill="#b03a2e"/></marker>
+<marker id="mq7As4" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">数据面不投票：投票在楼上已经发生过了</text>
+<rect class="bx" x="40" y="44" width="580" height="84" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="60" y="66" font-size="14" fill="#2b2a26">楼上 · 元数据面：KRaft 控制器 Raft 仲裁</text>
+<rect class="bx-q" x="80" y="76" width="150" height="32" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="155" y="96" text-anchor="middle" font-size="12" fill="#6b675e">控制器 101</text>
+<rect class="bx-q" x="250" y="76" width="150" height="32" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="325" y="96" text-anchor="middle" font-size="12" fill="#6b675e">控制器 102</text>
+<rect class="bx-q" x="420" y="76" width="150" height="32" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="tc" x="495" y="96" text-anchor="middle" font-size="12" fill="#b03a2e">控制器 103 · 仲裁 leader</text>
+<rect class="bx" x="40" y="186" width="580" height="84" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="60" y="208" font-size="14" fill="#2b2a26">楼下 · 数据面：三个 broker，其中一个是 leader</text>
+<rect class="bx-q" x="80" y="218" width="150" height="32" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="155" y="238" text-anchor="middle" font-size="12" fill="#6b675e">broker 1</text>
+<rect class="bx-q" x="250" y="218" width="150" height="32" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="325" y="238" text-anchor="middle" font-size="12" fill="#6b675e">broker 2</text>
+<rect class="bx-q" x="420" y="218" width="150" height="32" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="495" y="238" text-anchor="middle" font-size="12" fill="#6b675e">broker 3</text>
+<line class="fl" x1="200" y1="186" x2="200" y2="134" stroke="#6b675e" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#mq7As4)"/>
+<text class="ts" x="192" y="164" text-anchor="end" font-size="12" fill="#6b675e">心跳：每 2 秒一次</text>
+<line class="flc" x1="460" y1="128" x2="460" y2="180" stroke="#b03a2e" stroke-width="1.6" marker-end="url(#mq7Ac1)"/>
+<text class="tc" x="468" y="160" font-size="12" fill="#b03a2e">fence / 上岗授权（LeaderAndIsr）</text>
+<text class="ts" x="20" y="292" font-size="12" fill="#6b675e">fence 谁、立谁都先过控制器的 Raft 日志：LeaderAndIsr 出自唯一的笔，被 fence 的 broker 收不到上岗授权</text>
+</svg>
+</figure>
+
 其二，producer 看到的 9 秒不是「集群不可用」，是「地址簿过期」。kafkajs 报的是 Connection error：它按缓存里的地址往死 leader 发请求，元数据刷新后立刻找到新 leader，之前失败的那条原样重发成功。acks=all 之下这个窗口一条不丢，丢的是 8 秒的可用性。
+
+这 8 秒窗口的形状：
+
+<figure class="mq-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 178" role="img" aria-label="producer 视角的故障窗时间轴：t=0 SIGKILL leader，0.9 秒起持续报错 8171 毫秒，因为缓存的地址簿还指着死 leader；9.1 秒元数据刷新后同一条 seq=1018 重发成功，一条不丢" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="mq7As2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">SIGKILL leader 之后，producer 视角（每 300ms 发一条）</text>
+<rect class="bx-sick" x="110" y="88" width="451" height="24" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="335" y="80" text-anchor="middle" font-size="12" fill="#b03a2e">持续报错 8171ms：地址簿还指着死 leader，每条重试 2 次后失败</text>
+<line class="flk" x1="60" y1="66" x2="60" y2="116" stroke="#2b2a26" stroke-width="2"/>
+<text class="ts" x="66" y="62" font-size="12" fill="#6b675e">t=0 SIGKILL leader</text>
+<line class="flc" x1="561" y1="66" x2="561" y2="116" stroke="#b03a2e" stroke-width="2"/>
+<text class="tc" x="555" y="62" text-anchor="end" font-size="12" fill="#b03a2e">9.1s 恢复：同一条 seq=1018 重发成功</text>
+<line class="fl" x1="60" y1="100" x2="628" y2="100" stroke="#6b675e" stroke-width="1.6" marker-end="url(#mq7As2)"/>
+<text class="ts" x="60" y="122" text-anchor="middle" font-size="12" fill="#6b675e">0</text>
+<text class="ts" x="110" y="122" text-anchor="middle" font-size="12" fill="#6b675e">0.9s 首次报错</text>
+<text class="ts" x="561" y="122" text-anchor="middle" font-size="12" fill="#6b675e">9.1s</text>
+<text class="ts" x="628" y="142" text-anchor="end" font-size="12" fill="#6b675e">9.4s：元数据刷新，leader 2→3，重发立刻找到新地址</text>
+<text class="ts" x="20" y="166" font-size="12" fill="#6b675e">窗口里丢的是可用性，不是数据：acks=all 之下，恢复后原样重发即可</text>
+</svg>
+</figure>
 
 其三，**没有官复原职**。老 leader 重启归队，身份是 follower，leader 还是 broker3。Kafka 不做自动回切，队伍的稳定优先于谁本该在位。
 
@@ -116,6 +241,71 @@ Topic: kunclean  Partition: 0  Leader: 1  Isr: 1
 对账开始。生产端曾拿到 150 条的成功 ack；集群现在 latest=50，消费端实收恰好 seq 1..50，连续无缺口；**100 条正式丢失**。再写 3 条新消息（seq 901..903），latest 变成 53：丢失消息占过的 offset 坐标 50、51、52 被新消息顶替。丢失不是一个空洞，是一次覆盖。
 
 最后一步最冷。启动 broker3，它盘里还躺着完整的 150 条，ELR 名单上也有它的名字。结果：它以 follower 身份归队，ISR 变成 [1,3]，latest 依然是 53。它本地那 100 条在新 leader 的任期号下被截断了，就是日志段篇批次头里那个安静的字段 partitionLeaderEpoch：队伍只认 broker1 的任期，旧任期的数据再完整也一律砍掉。三方对账收口：发出且 ack 150 条，可读 53 条（含新写 3 条），丢 100 条，且最后一份副本被物理清零。unclean 选举不是暴露丢失，是执行丢失。
+
+四步和各自的读数，摆在一起：
+
+<figure class="mq-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 424" role="img" aria-label="unclean 选举四步：先停两个 follower 造独苗，150 条里后 100 条只有一份；再停 broker3 全灭；启动只有前 50 条的 broker1，控制器拒绝立它，Leader none，ELR 记着 broker3；手动 unclean 后 latest 回 50，丢 100 条，新消息复用 offset 50 到 52，broker3 归队后被 leader epoch 截断成 53" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="mq7As3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">那场 unclean 选举：四步，每步都有读数</text>
+<text class="ts" x="20" y="60" font-size="12" fill="#6b675e">① 造独苗：停两个</text>
+<text class="ts" x="20" y="78" font-size="12" fill="#6b675e">follower，再写 100 条</text>
+<rect class="bx-gone" x="100" y="44" width="60" height="40" rx="4" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<text class="ts" x="130" y="68" text-anchor="middle" font-size="12" fill="#6b675e">b1</text>
+<rect class="bx-gone" x="170" y="44" width="60" height="40" rx="4" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<text class="ts" x="200" y="68" text-anchor="middle" font-size="12" fill="#6b675e">b2</text>
+<text class="ts" x="165" y="100" text-anchor="middle" font-size="12" fill="#6b675e">已停 · 盘里只有前 50</text>
+<text class="ts" x="240" y="38" font-size="12" fill="#6b675e">broker3 · leader，latest=150</text>
+<rect class="bx-q" x="240" y="44" width="380" height="40" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<rect class="msg" x="250" y="58" width="10" height="12" fill="#a29d90" opacity="0.65"/>
+<rect class="msg" x="280" y="58" width="10" height="12" fill="#a29d90" opacity="0.65"/>
+<rect class="msg" x="310" y="58" width="10" height="12" fill="#a29d90" opacity="0.65"/>
+<rect class="msg" x="340" y="58" width="10" height="12" fill="#a29d90" opacity="0.65"/>
+<rect class="msg" x="380" y="58" width="10" height="12" fill="#a29d90" opacity="0.65"/>
+<rect class="msg" x="410" y="58" width="10" height="12" fill="#a29d90" opacity="0.65"/>
+<rect class="msg" x="440" y="58" width="10" height="12" fill="#a29d90" opacity="0.65"/>
+<rect class="msg" x="470" y="58" width="10" height="12" fill="#a29d90" opacity="0.65"/>
+<rect class="msg" x="500" y="58" width="10" height="12" fill="#a29d90" opacity="0.65"/>
+<rect class="msg" x="530" y="58" width="10" height="12" fill="#a29d90" opacity="0.65"/>
+<rect class="msg" x="560" y="58" width="10" height="12" fill="#a29d90" opacity="0.65"/>
+<rect class="msg" x="590" y="58" width="10" height="12" fill="#a29d90" opacity="0.65"/>
+<line class="flc" x1="370" y1="40" x2="370" y2="88" stroke="#b03a2e" stroke-width="2"/>
+<text class="ts" x="305" y="104" text-anchor="middle" font-size="12" fill="#6b675e">前 50（3 份）</text>
+<text class="tc" x="495" y="104" text-anchor="middle" font-size="12" fill="#b03a2e">后 100 条：全世界只有一份</text>
+<text class="ts" x="20" y="140" font-size="12" fill="#6b675e">② 全灭：再停 broker3</text>
+<rect class="bx-gone" x="100" y="124" width="60" height="40" rx="4" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<text class="ts" x="130" y="148" text-anchor="middle" font-size="12" fill="#6b675e">b1</text>
+<rect class="bx-gone" x="170" y="124" width="60" height="40" rx="4" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<text class="ts" x="200" y="148" text-anchor="middle" font-size="12" fill="#6b675e">b2</text>
+<rect class="bx-gone" x="240" y="124" width="60" height="40" rx="4" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<text class="ts" x="270" y="148" text-anchor="middle" font-size="12" fill="#6b675e">b3</text>
+<text class="ts" x="320" y="142" font-size="12" fill="#6b675e">三个 broker 全下线，只剩三个控制器守着元数据</text>
+<text class="ts" x="320" y="160" font-size="12" fill="#6b675e">produce 被拒：分区悬空</text>
+<text class="ts" x="20" y="212" font-size="12" fill="#6b675e">③ 错的人回来了：</text>
+<text class="ts" x="20" y="230" font-size="12" fill="#6b675e">启动 broker1</text>
+<rect class="bx" x="100" y="196" width="140" height="52" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="170" y="218" text-anchor="middle" font-size="12" fill="#6b675e">broker1 活着</text>
+<text class="ts" x="170" y="236" text-anchor="middle" font-size="12" fill="#6b675e">盘里只有前 50</text>
+<text class="tc" x="260" y="216" font-size="12" fill="#b03a2e">Leader: none，ISR 空：控制器拒绝立它</text>
+<text class="ts" x="260" y="234" font-size="12" fill="#6b675e">Elr: 3，带着全部 150 条的 broker3 在候补名单上</text>
+<text class="tc" x="260" y="252" font-size="12" fill="#b03a2e">宁可停摆等对的人，不立错的人</text>
+<text class="ts" x="20" y="302" font-size="12" fill="#6b675e">④ 立错的人：手动</text>
+<text class="ts" x="20" y="320" font-size="12" fill="#6b675e">UNCLEAN 选举</text>
+<rect class="bx-q" x="100" y="286" width="140" height="40" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="170" y="310" text-anchor="middle" font-size="12" fill="#6b675e">broker1 · leader</text>
+<rect class="bx-q" x="260" y="286" width="140" height="40" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<rect class="bx-sick" x="400" y="286" width="24" height="40" rx="3" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="ts" x="330" y="342" text-anchor="middle" font-size="12" fill="#6b675e">前 50 条</text>
+<text class="tc" x="432" y="304" font-size="12" fill="#b03a2e">新 3 条：offset 50–52 被顶替</text>
+<text class="tc" x="432" y="322" font-size="12" fill="#b03a2e">latest=53 · 100 条正式丢失</text>
+<line class="fl" x1="170" y1="326" x2="170" y2="360" stroke="#6b675e" stroke-width="1.6" marker-end="url(#mq7As3)"/>
+<rect class="bx" x="100" y="366" width="140" height="40" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="170" y="390" text-anchor="middle" font-size="12" fill="#6b675e">broker3 归队 · follower</text>
+<text class="tc" x="260" y="390" font-size="12" fill="#b03a2e">盘里完整的 150 条被 leader epoch 截断成 53：最后一份副本物理清零</text>
+</svg>
+</figure>
 
 什么时候有人会按它？数据可重建的时候：日志流、埋点、上游还能重放的事件源，停摆的代价大于丢一段数据的代价。交易类的数据、任何重放不回来的东西，永远别按，正确的姿势是把 RF 和 min.insync.replicas 配够，让「等对的人」撑得久一点。这是业务判断，Kafka 只负责把两种结局都摆在明处。
 
