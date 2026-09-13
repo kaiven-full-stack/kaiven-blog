@@ -6,11 +6,21 @@ category: cpython
 tags: [CPython, 编程语言, 面向对象]
 ---
 
-```text
-实例字典有 x，类上有普通 x      →  实例赢
-实例字典有 x，类上有 non-data x  →  实例赢
-实例字典有 x，类上有 data x      →  类上的描述符赢，写都被拦下
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 150" role="img" aria-label="同名属性三场对抗的实测结果：实例字典对普通类属性，实例赢；对 non-data 描述符，实例赢；对 data 描述符，类上的描述符赢，连写都被拦下" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">三场同名对抗（CPython 3.14.7 实测）</text>
+<text class="ts" x="20" y="52" font-size="11" fill="#6b675e">实例字典有 x，类上有普通 x</text>
+<rect class="bx-q" x="330" y="38" width="130" height="22" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="395" y="53" text-anchor="middle" font-size="10" fill="#6b675e">实例赢</text>
+<text class="ts" x="20" y="84" font-size="11" fill="#6b675e">实例字典有 x，类上有 non-data x</text>
+<rect class="bx-q" x="330" y="70" width="130" height="22" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="395" y="85" text-anchor="middle" font-size="10" fill="#6b675e">实例赢</text>
+<text class="ts" x="20" y="116" font-size="11" fill="#6b675e">实例字典有 x，类上有 data x</text>
+<rect class="bx-sick" x="330" y="102" width="300" height="22" rx="3" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="480" y="117" text-anchor="middle" font-size="10" fill="#b03a2e">类上的描述符赢：读被接管，写都被拦下</text>
+<text class="ts" x="20" y="144" font-size="12" fill="#6b675e">点号背后不是一张查找表，是一套有优先级的查找规则</text>
+</svg>
+</figure>
 
 三条结论在 CPython 3.14.7 上验证过：
 
@@ -52,18 +62,44 @@ d     -> data
 
 `obj.x` 在字节码层是 `LOAD_ATTR`。通用路径（`PyObject_GetAttr`）先问类型的 `tp_getattro` 槽；普通类的这个槽指向 `PyObject_GenericGetAttr`，落到 `_PyObject_GenericGetAttrWithDict`，即本文的主角。它的工作按固定次序进行：
 
-```text
-1. 沿 MRO 在类型链上找 x            → 找到 res，暂存为 descr
-2. descr 是 data 描述符？
-   ├─ 是  → 立刻调用 __get__(obj, type)，返回，全程结束
-   └─ 否  → 记下它的 __get__，继续
-3. 查实例自己的属性存储
-   ├─ inline values / managed dict / __dict__ 里找到 → 返回
-   └─ 没找到 → 继续
-4. descr 存在且有 __get__（non-data 描述符）→ 调用 __get__(obj, type)
-5. descr 存在但不是描述符（普通类属性）→ 直接返回 descr
-6. 都没有 → AttributeError
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 340" role="img" aria-label="obj.x 的六步查找流程：先沿 MRO 找 x 暂存为 descr；descr 是 data 描述符就立刻调用 __get__ 返回；否则查实例存储，找到返回；没有再试 non-data 描述符的 __get__；再没有就返回普通类属性；全落空抛 AttributeError" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="attrAs2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">_PyObject_GenericGetAttrWithDict 的固定次序</text>
+<rect class="bx-q" x="40" y="36" width="380" height="34" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="230" y="57" text-anchor="middle" font-size="11" fill="#6b675e">① 沿 MRO 在类型链上找 x → 找到暂存为 descr</text>
+<line class="fl" x1="230" y1="70" x2="230" y2="80" stroke="#6b675e" stroke-width="1.4" marker-end="url(#attrAs2)"/>
+<rect class="bx-sick" x="40" y="84" width="380" height="34" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="ts" x="230" y="105" text-anchor="middle" font-size="11" fill="#6b675e">② descr 是 data 描述符？（tp_descr_set != NULL）</text>
+<line class="fl" x1="420" y1="101" x2="466" y2="101" stroke="#6b675e" stroke-width="1.4" marker-end="url(#attrAs2)"/>
+<text class="ts" x="440" y="92" text-anchor="middle" font-size="10" fill="#6b675e">是</text>
+<rect class="bx-sick" x="470" y="84" width="170" height="34" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="555" y="105" text-anchor="middle" font-size="10" fill="#b03a2e">调 __get__ 返回，全程结束</text>
+<line class="fl" x1="230" y1="118" x2="230" y2="132" stroke="#6b675e" stroke-width="1.4" marker-end="url(#attrAs2)"/>
+<text class="ts" x="238" y="130" font-size="10" fill="#6b675e">否：记下 __get__ 继续</text>
+<rect class="bx" x="40" y="136" width="380" height="34" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="230" y="157" text-anchor="middle" font-size="11" fill="#6b675e">③ 查实例存储：inline values / managed dict / __dict__</text>
+<line class="fl" x1="420" y1="153" x2="466" y2="153" stroke="#6b675e" stroke-width="1.4" marker-end="url(#attrAs2)"/>
+<text class="ts" x="440" y="144" text-anchor="middle" font-size="10" fill="#6b675e">找到</text>
+<rect class="bx-q" x="470" y="136" width="170" height="34" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="555" y="157" text-anchor="middle" font-size="10" fill="#6b675e">返回实例值</text>
+<line class="fl" x1="230" y1="170" x2="230" y2="184" stroke="#6b675e" stroke-width="1.4" marker-end="url(#attrAs2)"/>
+<text class="ts" x="238" y="182" font-size="10" fill="#6b675e">没找到</text>
+<rect class="bx" x="40" y="188" width="380" height="34" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="230" y="209" text-anchor="middle" font-size="11" fill="#6b675e">④ descr 有 __get__（non-data 描述符）→ 调用返回</text>
+<line class="fl" x1="230" y1="222" x2="230" y2="232" stroke="#6b675e" stroke-width="1.4" marker-end="url(#attrAs2)"/>
+<rect class="bx" x="40" y="236" width="380" height="34" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="230" y="257" text-anchor="middle" font-size="11" fill="#6b675e">⑤ descr 是普通类属性 → 直接返回</text>
+<line class="fl" x1="230" y1="270" x2="230" y2="280" stroke="#6b675e" stroke-width="1.4" marker-end="url(#attrAs2)"/>
+<rect class="bx-gone" x="40" y="284" width="380" height="34" rx="4" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<text class="ts" x="230" y="305" text-anchor="middle" font-size="11" fill="#6b675e">⑥ 都没有 → AttributeError（__getattr__ 在抛出前兜底）</text>
+<text class="tc" x="470" y="250" font-size="11" fill="#b03a2e">四层优先级：</text>
+<text class="tc" x="470" y="268" font-size="11" fill="#b03a2e">data 描述符 &gt; 实例存储</text>
+<text class="tc" x="470" y="286" font-size="11" fill="#b03a2e">&gt; non-data &gt; 普通类属性</text>
+</svg>
+</figure>
 
 四层优先级一目了然：data 描述符 > 实例存储 > non-data 描述符 > 普通类属性。data/non-data 的分界线只有一个 C 判断：
 
@@ -128,6 +164,42 @@ AttributeError: 'P' object has no attribute 'z' and no __dict__ for setting new 
 ```
 
 错误消息后半句（3.14 起更明确）点破了机制：写不进来，是因为既没有 slot 偏移、又没有字典可存。
+
+slots 的机制与它的漏洞：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 236" role="img" aria-label="slots 机制两联图：左边类字典里每个 slot 名字对应一个 member_descriptor，按固定偏移直接读写实例主体，没有通用字典，写没登记的名字报 AttributeError；右边基类没有 slots 时自带 managed dict，子类声明 slots 也挡不住继承来的字典，b.anything 畅通无阻" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="attrAs3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">一组天生的 data 描述符，和一道继承来的口子</text>
+<rect class="bx" x="20" y="40" width="300" height="150" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="170" y="60" text-anchor="middle" font-size="12" fill="#2b2a26">class P: __slots__ = ("x", "y")</text>
+<rect class="bx-q" x="36" y="70" width="268" height="26" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="170" y="87" text-anchor="middle" font-size="10" fill="#6b675e">类字典：x → member_descriptor（固定偏移）</text>
+<line class="fl" x1="170" y1="96" x2="170" y2="110" stroke="#6b675e" stroke-width="1.4" marker-end="url(#attrAs3)"/>
+<rect class="bx" x="36" y="114" width="60" height="26" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="66" y="131" text-anchor="middle" font-size="9" fill="#6b675e">对象头</text>
+<rect class="bx-q" x="96" y="114" width="60" height="26" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="126" y="131" text-anchor="middle" font-size="9" fill="#6b675e">x · 偏移</text>
+<rect class="bx-q" x="156" y="114" width="60" height="26" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="186" y="131" text-anchor="middle" font-size="9" fill="#6b675e">y · 偏移</text>
+<rect class="bx-gone" x="216" y="114" width="88" height="26" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<text class="ts" x="260" y="131" text-anchor="middle" font-size="9" fill="#6b675e">无通用字典</text>
+<text class="tc" x="170" y="164" text-anchor="middle" font-size="10" fill="#b03a2e">p.z = 1 → AttributeError：</text>
+<text class="ts" x="170" y="180" text-anchor="middle" font-size="10" fill="#6b675e">没有偏移可存，也没有字典可放</text>
+<rect class="bx" x="340" y="40" width="300" height="150" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="490" y="60" text-anchor="middle" font-size="12" fill="#2b2a26">class B(A)，A 没有 slots</text>
+<rect class="bx-q" x="356" y="70" width="268" height="26" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="490" y="87" text-anchor="middle" font-size="10" fill="#6b675e">基类 A：实例自带 managed dict 标志</text>
+<rect class="bx-q" x="356" y="102" width="268" height="26" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="490" y="119" text-anchor="middle" font-size="10" fill="#6b675e">子类 B：__slots__ = ("x",) 只有 x 进槽</text>
+<rect class="bx-sick" x="356" y="134" width="268" height="26" rx="3" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="tc" x="490" y="151" text-anchor="middle" font-size="10" fill="#b03a2e">b.anything = 2：畅通无阻，进继承来的 __dict__</text>
+<text class="ts" x="490" y="180" text-anchor="middle" font-size="10" fill="#6b675e">防线从继承处漏开</text>
+<text class="ts" x="20" y="216" font-size="12" fill="#6b675e">读写全走第 2 层：member_get / member_set 按 offset 直接存取实例主体</text>
+</svg>
+</figure>
 
 继承会破坏这层严防。基类没有 `__slots__` 时，它已经带了 managed dict 标志；子类哪怕声明了自己的 slots，也挡不住从基类继承的字典：
 
@@ -211,6 +283,38 @@ print(D().who())    # D+B+C+A
 
 `D().who()` 的调用链值得走一遍：D 的 super 沿 MRO 找到 B.who；B.who 里的 super 沿的是 D 实例的 MRO（不是 B 的），越过 B 找到 C.who；C 的 super 再找到 A.who。菱形继承里 `B` 和 `C` 都能被穿越，靠的就是「MRO 属于实例的类，不属于当前方法所在的类」。`D+B+C+A` 这行输出正是 C3 线性化的结果。
 
+同一条 MRO，三个起跑点：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 200" role="img" aria-label="super 沿 D 实例的 MRO 换起跑线：MRO 是 D、B、C、A、object；D.who 里的 super 从 D 之后起步找到 B.who；B.who 里的 super 沿的仍是 D 的 MRO，越过 B 找到 C.who 而不是 A；C 的 super 再找到 A.who，输出 D+B+C+A" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="attrAs4" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+<marker id="attrAc4" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-c" d="M0 0 L8 4 L0 8 Z" fill="#b03a2e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">D.__mro__ = (D, B, C, A, object)：super 只换起跑线</text>
+<rect class="bx-q" x="30" y="44" width="90" height="36" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="75" y="66" text-anchor="middle" font-size="12" fill="#2b2a26">D</text>
+<line class="fl" x1="120" y1="62" x2="146" y2="62" stroke="#6b675e" stroke-width="1.4" marker-end="url(#attrAs4)"/>
+<rect class="bx" x="150" y="44" width="90" height="36" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="195" y="66" text-anchor="middle" font-size="12" fill="#2b2a26">B</text>
+<line class="fl" x1="240" y1="62" x2="266" y2="62" stroke="#6b675e" stroke-width="1.4" marker-end="url(#attrAs4)"/>
+<rect class="bx" x="270" y="44" width="90" height="36" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="315" y="66" text-anchor="middle" font-size="12" fill="#2b2a26">C</text>
+<line class="fl" x1="360" y1="62" x2="386" y2="62" stroke="#6b675e" stroke-width="1.4" marker-end="url(#attrAs4)"/>
+<rect class="bx" x="390" y="44" width="90" height="36" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="435" y="66" text-anchor="middle" font-size="12" fill="#2b2a26">A</text>
+<line class="fl" x1="480" y1="62" x2="506" y2="62" stroke="#6b675e" stroke-width="1.4" marker-end="url(#attrAs4)"/>
+<rect class="bx-gone" x="510" y="44" width="110" height="36" rx="4" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<text class="ts" x="565" y="66" text-anchor="middle" font-size="11" fill="#6b675e">object</text>
+<path class="flc" d="M75 84 L75 96 L195 96 L195 86" fill="none" stroke="#b03a2e" stroke-width="1.4" marker-end="url(#attrAc4)"/>
+<text class="tc" x="135" y="112" text-anchor="middle" font-size="10" fill="#b03a2e">D.who 里的 super：从 D 之后起步 → B.who</text>
+<path class="flc" d="M195 120 L195 132 L315 132 L315 86" fill="none" stroke="#b03a2e" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#attrAc4)"/>
+<text class="tc" x="255" y="148" text-anchor="middle" font-size="10" fill="#b03a2e">B.who 里的 super：沿的还是 D 的 MRO，越过 B → C.who（不是 A）</text>
+<text class="ts" x="20" y="176" font-size="12" fill="#6b675e">零参 super 的 __class__ 是编译期填好的 cell，绑定词法类：起点永远是 B 之后，哪怕实例是 D</text>
+<text class="ts" x="20" y="194" font-size="12" fill="#6b675e">输出 D+B+C+A：菱形继承里 B 和 C 都被穿越，每个 A 只执行一次</text>
+</svg>
+</figure>
+
 零参 `super()` 的答案在编译期。反汇编 `Sub.run`：
 
 ```text
@@ -244,6 +348,28 @@ for _ in range(20_000):
 ```
 
 `NONDESCRIPTOR_WITH_VALUES` 的守卫是两把锁：类型版本号（类的属性集没变过）+ 值数组的键版本。守卫命中时，一次比较换掉整场 MRO 查找。而同样这段代码在 3.12.13 上热身十万次也停留在通用 `LOAD_ATTR`：3.12 的这套特化只覆盖纯实例字典路径（`self.x` 在 `__init__` 里赋值的场景可特化为 `LOAD_ATTR_INSTANCE_VALUE`，3.12 与 3.14 都支持），「类体普通属性 + inline values」的形态是 3.13/3.14 才纳入的。又一次版本边界：特化覆盖面在扩大，但任何一版的具体形态都只是当期事实。
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 178" role="img" aria-label="LOAD_ATTR 特化：通用路径每次做 MRO 查找加描述符判定加字典访问；热身后换成专用形态，守卫是类型版本号与值数组键版本两把锁，命中时一次比较换掉整场查找，失败退回通用路径" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="attrAs5" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">查找的快路：把「通常落在哪一层」缓存进内联缓存</text>
+<rect class="bx" x="20" y="40" width="250" height="48" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="145" y="60" text-anchor="middle" font-size="11" fill="#6b675e">通用 LOAD_ATTR</text>
+<text class="ts" x="145" y="78" text-anchor="middle" font-size="10" fill="#6b675e">MRO 查找 + 描述符判定 + 字典访问</text>
+<line class="fl" x1="270" y1="64" x2="326" y2="64" stroke="#6b675e" stroke-width="1.5" marker-end="url(#attrAs5)"/>
+<text class="ts" x="298" y="54" text-anchor="middle" font-size="10" fill="#6b675e">热 2 万次</text>
+<rect class="bx-q" x="330" y="40" width="310" height="48" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="485" y="60" text-anchor="middle" font-size="11" fill="#2b2a26">NONDESCRIPTOR_WITH_VALUES</text>
+<text class="ts" x="485" y="78" text-anchor="middle" font-size="10" fill="#6b675e">守卫① 类型版本号　守卫② 值数组键版本</text>
+<text class="ts" x="20" y="118" font-size="11" fill="#6b675e">两把锁都命中：</text>
+<text class="tc" x="130" y="118" font-size="11" fill="#b03a2e">一次比较换掉整场 MRO 查找</text>
+<text class="ts" x="350" y="118" font-size="11" fill="#6b675e">任一守卫失败：退回通用路径重新走</text>
+<text class="ts" x="20" y="148" font-size="12" fill="#6b675e">STORE_ATTR 同理：SLOT 偏移可特化，PROPERTY / METHOD / READ_ONLY 直接放弃</text>
+<text class="ts" x="20" y="168" font-size="12" fill="#6b675e">快路只做无争议的事，有语义风险的写路径交给通用查找</text>
+</svg>
+</figure>
 
 属性写入同样有 `STORE_ATTR` 特化：slot 偏移可缓存成 `STORE_ATTR_SLOT`（直接按 offset 存指针），而 PROPERTY、METHOD、READ_ONLY 等类别直接放弃特化。快路只做无争议的事，有语义风险的写路径交给通用查找。
 
