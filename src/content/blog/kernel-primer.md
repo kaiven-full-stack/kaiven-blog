@@ -41,11 +41,33 @@ printf("父进程读到 %lu\n", *p);                         /* 111 */
 
 那谁负责「门牌号 → 实际房间」的翻译？内核。每个进程手里有一张自己的**页表**，也就是翻译表，内核维护、CPU 硬件查询。上面实验的真相是：
 
-```text
-虚拟地址 0x7f3ded282000
-    ├─ 父进程的翻译表 → 物理房间 A（写着 111）
-    └─ 子进程的翻译表 → 物理房间 B（写着 222）
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 300" role="img" aria-label="虚拟地址 0x7f3ded282000 经两张翻译表各自翻译：父进程的页表指向物理房间 A，写着 111；子进程的页表指向物理房间 B，写着 222。fork 时翻译表整个复制一份，之后各写各的" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="kern0As1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">一个虚拟地址，两张翻译表，两个物理房间</text>
+<rect class="bx-q" x="215" y="40" width="230" height="38" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="330" y="64" text-anchor="middle" font-size="14" fill="#2b2a26">0x7f3ded282000</text>
+<line class="fl" x1="280" y1="78" x2="180" y2="114" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern0As1)"/>
+<line class="fl" x1="380" y1="78" x2="480" y2="114" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern0As1)"/>
+<rect class="bx" x="75" y="120" width="190" height="56" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="170" y="143" text-anchor="middle" font-size="14" fill="#2b2a26">父进程的翻译表</text>
+<text class="ts" x="170" y="163" text-anchor="middle" font-size="12" fill="#6b675e">页表，内核维护</text>
+<rect class="bx" x="395" y="120" width="190" height="56" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="490" y="143" text-anchor="middle" font-size="14" fill="#2b2a26">子进程的翻译表</text>
+<text class="ts" x="490" y="163" text-anchor="middle" font-size="12" fill="#6b675e">fork 时整个复制了一份</text>
+<line class="fl" x1="170" y1="176" x2="170" y2="204" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern0As1)"/>
+<line class="fl" x1="490" y1="176" x2="490" y2="204" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern0As1)"/>
+<rect class="bx-q" x="95" y="210" width="150" height="52" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="170" y="231" text-anchor="middle" font-size="12" fill="#6b675e">物理房间 A</text>
+<text class="t" x="170" y="252" text-anchor="middle" font-size="14" fill="#2b2a26">写着 111</text>
+<rect class="bx-q" x="415" y="210" width="150" height="52" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="ts" x="490" y="231" text-anchor="middle" font-size="12" fill="#6b675e">物理房间 B</text>
+<text class="t" x="490" y="252" text-anchor="middle" font-size="14" fill="#2b2a26">写着 222</text>
+<text class="ts" x="20" y="290" font-size="12" fill="#6b675e">各进程读到的都是自己表里登记的房间：父读 111，子读 222，互不相扰</text>
+</svg>
+</figure>
 
 fork 复制进程时，翻译表也复制了一份；之后两边各自改动，就渐渐分了家。这套机制带来三个日常结论，先记住结论、细节系列正文再拆：
 
@@ -59,13 +81,78 @@ fork 复制进程时，翻译表也复制了一份；之后两边各自改动，
 
 如果翻译按字节做，每个字节一条记录，翻译表自己就会比内存还大。所以所有的翻译、分配、记账都按**页**进行：一页通常 4096 字节，翻译表只登记「第 N 页虚拟 → 第 M 页物理」。
 
+两种记法的差距，拿 1GiB 内存算一算：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 130" role="img" aria-label="同样 1GiB 内存的两种记法：每字节一条记录需要 1073741824 条，长条占满画面；每 4096 字节一页一条记录只要 262144 条，只剩一个窄条，条目数是前者的四千零九十六分之一" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">同样 1GiB 内存，两种记法</text>
+<text class="ts" x="20" y="63" font-size="12" fill="#6b675e">每字节一条</text>
+<rect class="bar" x="170" y="48" width="430" height="20" fill="#2b2a26"/>
+<text class="onbar" x="385" y="63" text-anchor="middle" font-size="12" fill="#f6f3ec">1,073,741,824 条记录</text>
+<text class="ts" x="20" y="108" font-size="12" fill="#6b675e">每页（4KiB）一条</text>
+<rect class="bar" x="170" y="93" width="3" height="20" fill="#2b2a26"/>
+<text class="tc" x="182" y="108" font-size="12" fill="#b03a2e">262,144 条，条目数正好差 4096 倍</text>
+</svg>
+</figure>
+
 4096 这个数字是权衡出来的：页越大，翻译表越小、查得越快，但「要一页只用几十字节」的浪费越大。4096 是几十年筛下来的中间值。你以后会遇到的很多名词，本质都是「页」的不同玩法：
 
 - **缺页（page fault）**：程序访问的页在翻译表里还没登记（比如 `malloc` 要了内存但一次都没碰），CPU 当场停下、陷入内核，内核补登记、找一页真实内存，然后程序若无其事地继续。缺页是内核「补发货」的正常流程。`malloc` 快的秘密就是它常常根本不发货，等你真用了再说。
 - **大页**：把页放大到 2MiB 一格，翻译表条目变少。第一篇会实测它的利弊。
 - **写时复制（COW）**：fork 时不真的复制内存，先把两家的翻译表都改成「只读」；谁真写了，再复制那一页。上面实验里 fork 后子进程写 222 触发的正是这个机制，第二篇整篇讲它。
 
+缺页的全过程，摊开成四步：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 172" role="img" aria-label="缺页四步：第一步 malloc 下单，返回地址但只登了记还没发货；第二步首次写这个地址，翻译表查无登记，CPU 当场停下；第三步陷入内核补登记，给一页清零的真实内存；第四步回到程序接着执行，RSS 从此多出一页" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="kern0As3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">从下单到到货：一次缺页的四步</text>
+<rect class="bx" x="12" y="44" width="143" height="76" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="83" y="68" text-anchor="middle" font-size="14" fill="#2b2a26">① 下单</text>
+<text class="ts" x="83" y="88" text-anchor="middle" font-size="12" fill="#6b675e">malloc 返回地址</text>
+<text class="ts" x="83" y="106" text-anchor="middle" font-size="12" fill="#6b675e">只登了记，没发货</text>
+<rect class="bx-sick" x="177" y="44" width="143" height="76" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="t" x="248" y="68" text-anchor="middle" font-size="14" fill="#2b2a26">② 触碰</text>
+<text class="ts" x="248" y="88" text-anchor="middle" font-size="12" fill="#6b675e">首次写这个地址</text>
+<text class="ts" x="248" y="106" text-anchor="middle" font-size="12" fill="#6b675e">查无登记，CPU 停下</text>
+<rect class="bx" x="342" y="44" width="143" height="76" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="413" y="68" text-anchor="middle" font-size="14" fill="#2b2a26">③ 补发货</text>
+<text class="ts" x="413" y="88" text-anchor="middle" font-size="12" fill="#6b675e">陷入内核补登记</text>
+<text class="ts" x="413" y="106" text-anchor="middle" font-size="12" fill="#6b675e">给一页清零的真内存</text>
+<rect class="bx-q" x="507" y="44" width="143" height="76" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="578" y="68" text-anchor="middle" font-size="14" fill="#2b2a26">④ 继续</text>
+<text class="ts" x="578" y="88" text-anchor="middle" font-size="12" fill="#6b675e">回到程序接着执行</text>
+<text class="ts" x="578" y="106" text-anchor="middle" font-size="12" fill="#6b675e">RSS 从此多出一页</text>
+<line class="fl" x1="155" y1="82" x2="173" y2="82" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern0As3)"/>
+<line class="fl" x1="320" y1="82" x2="338" y2="82" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern0As3)"/>
+<line class="fl" x1="485" y1="82" x2="503" y2="82" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern0As3)"/>
+<text class="ts" x="20" y="156" font-size="12" fill="#6b675e">四步走完，程序毫无感知：它只是觉得自己写了一个变量</text>
+</svg>
+</figure>
+
 一个可以现在就做的验证：`malloc(100)` 之后马上看进程内存占用，几乎没变；把 100 字节写满，占用涨 **4KiB** 起步，因为内核发货的最小单位是一页，哪怕你只要 100 字节。
+
+这次验证的现场：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 234" role="img" aria-label="要 100 字节，到货一页：4096 字节的页里只有开头一小条朱砂色是写满的 100 字节，其余 3996 字节归这个进程独占。下方 RSS 对比：malloc 之后几乎没动，写满之后多出 4KiB" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">要 100 字节，到货一页</text>
+<rect class="bx-q" x="40" y="44" width="480" height="56" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<rect class="bx-sick" x="40" y="44" width="12" height="56" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="ts" x="300" y="76" text-anchor="middle" font-size="12" fill="#6b675e">其余 3996 字节：归这个进程独占，别人也用不上</text>
+<text class="ts" x="532" y="76" font-size="12" fill="#6b675e">一页 = 4096 B</text>
+<line class="flc" x1="46" y1="100" x2="46" y2="116" stroke="#b03a2e" stroke-width="1.6"/>
+<text class="tc" x="40" y="134" font-size="12" fill="#b03a2e">写满的 100 字节</text>
+<text class="ts" x="40" y="172" font-size="12" fill="#6b675e">malloc(100) 刚返回时的 RSS</text>
+<rect class="bar" x="290" y="158" width="6" height="18" fill="#2b2a26"/>
+<text class="ts" x="304" y="172" font-size="12" fill="#6b675e">几乎没动：还没发货</text>
+<text class="ts" x="40" y="212" font-size="12" fill="#6b675e">把 100 字节写满后的 RSS</text>
+<rect class="bar" x="290" y="198" width="96" height="18" fill="#2b2a26"/>
+<text class="tc" x="394" y="212" font-size="12" fill="#b03a2e">+4KiB：一页起步</text>
+</svg>
+</figure>
 
 ## 第三样东西：/proc 是内核的账本
 
@@ -127,6 +214,44 @@ $ cat /proc/self/maps
 | 7 | 最后一道保险丝 | 内存见底时，内核怎么挑一个进程杀掉 |
 
 推荐顺序：0 → 1 → 2 是一条主线（地址 → 翻译 → 写入），3 → 4 是物资线（仓库 → 柜台），5 收束地址线，6 → 7 讲释放（先落盘缓存，再最后保险）。赶时间的话，0 → 1 → 2 读完你就已经跨过了这个系列最陡的坡；3 到 7 每篇开头都有独立的问题引入，单读也成立。
+
+这条路径排成一条路线：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 292" role="img" aria-label="系列阅读路线：第一行主线从 0 前置三样到 1 页表四层翻译再到 2 写时复制；折回第二行物资线 3 伙伴系统到 4 slab 柜台，再到 5 VMA 账本收束地址线；折到第三行释放线 6 page cache 到 7 OOM 保险丝" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="kern0As5" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="30" font-size="12" fill="#6b675e">主线：地址 → 翻译 → 写入</text>
+<rect class="bx-q" x="60" y="52" width="150" height="42" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="135" y="78" text-anchor="middle" font-size="14" fill="#2b2a26">0 · 前置三样</text>
+<rect class="bx-q" x="255" y="52" width="150" height="42" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="330" y="78" text-anchor="middle" font-size="14" fill="#2b2a26">1 · 页表翻译</text>
+<rect class="bx-q" x="450" y="52" width="150" height="42" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="525" y="78" text-anchor="middle" font-size="14" fill="#2b2a26">2 · 写时复制</text>
+<line class="fl" x1="210" y1="73" x2="251" y2="73" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern0As5)"/>
+<line class="fl" x1="405" y1="73" x2="446" y2="73" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern0As5)"/>
+<line class="fl" x1="525" y1="94" x2="525" y2="132" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern0As5)"/>
+<text class="ts" x="20" y="126" font-size="12" fill="#6b675e">物资线：仓库 → 柜台</text>
+<rect class="bx-q" x="450" y="136" width="150" height="42" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="525" y="162" text-anchor="middle" font-size="14" fill="#2b2a26">3 · 伙伴系统</text>
+<rect class="bx-q" x="255" y="136" width="150" height="42" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="330" y="162" text-anchor="middle" font-size="14" fill="#2b2a26">4 · slab 柜台</text>
+<rect class="bx-q" x="60" y="136" width="150" height="42" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="135" y="162" text-anchor="middle" font-size="14" fill="#2b2a26">5 · VMA 账本</text>
+<line class="fl" x1="450" y1="157" x2="409" y2="157" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern0As5)"/>
+<line class="fl" x1="255" y1="157" x2="214" y2="157" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern0As5)"/>
+<line class="fl" x1="135" y1="178" x2="135" y2="216" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern0As5)"/>
+<rect class="bx-q" x="60" y="220" width="150" height="42" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="135" y="246" text-anchor="middle" font-size="14" fill="#2b2a26">6 · page cache</text>
+<rect class="bx-q" x="255" y="220" width="150" height="42" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="330" y="246" text-anchor="middle" font-size="14" fill="#2b2a26">7 · OOM 保险丝</text>
+<line class="fl" x1="210" y1="241" x2="251" y2="241" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern0As5)"/>
+<text class="ts" x="440" y="234" font-size="12" fill="#6b675e">释放线：先落盘缓存，</text>
+<text class="ts" x="440" y="252" font-size="12" fill="#6b675e">再最后保险</text>
+<text class="ts" x="20" y="284" font-size="12" fill="#6b675e">箭头是建议的阅读顺序，不是依赖：每篇开头都会重申当时需要的背景</text>
+</svg>
+</figure>
 
 三样东西讲完了。指针是每家自己编的门牌号，翻译由内核的页表完成；内存按 4KiB 一页发货，订单和到货是两回事；这一切的状态都挂在 /proc 里，可以自己去翻。
 
