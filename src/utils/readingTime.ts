@@ -3,6 +3,7 @@
  *
  * 规则：
  * - 围栏代码块（``` / ~~~）整段剔除，不参与计数——代码是「看」的，不是「读」的；
+ * - 内嵌 SVG 示意图（<svg>…</svg> 及外层 <figure> 标签）整段剔除——标签与属性不是正文；
  * - 中文按字数计（约 400 字/分钟），拉丁词按词数计（约 200 词/分钟）；
  * - 结果向上取整到分钟，最少 1 分钟。
  */
@@ -74,9 +75,14 @@ function stripFrontmatter(body: string): string {
   return nextLine === -1 ? '' : body.slice(nextLine + 1);
 }
 
-/** 剔除围栏代码块后的正文 */
+/** 剔除内嵌示意图：<svg>…</svg> 整段与 <figure> 开闭标签 */
+export function stripDiagramMarkup(body: string): string {
+  return body.replace(/<svg[\s\S]*?<\/svg>|<\/?figure[^>]*>/g, '');
+}
+
+/** 剔除围栏代码块与内嵌示意图后的正文 */
 export function readableBody(body: string): string {
-  return stripFencedCode(stripFrontmatter(body));
+  return stripDiagramMarkup(stripFencedCode(stripFrontmatter(body)));
 }
 
 /** 估算阅读时长 */
