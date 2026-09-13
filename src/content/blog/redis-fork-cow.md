@@ -28,11 +28,30 @@ T4  子进程完成 fsync 与 rename，退出
 
 把父子两条时间线并排看，会更清楚：
 
-```text
-主进程  ── 收到命令 ── [ fork 停顿 ] ── 继续 GET / SET / EXPIRE ──────
-                              │
-                              └──── 子进程 ── 编码 ── 写盘 ── 退出
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 216" role="img" aria-label="BGSAVE 父子双泳道时间线：主进程收到命令后经历 fork 停顿，随后继续服务 GET SET EXPIRE；子进程从 fork 返回那一刻诞生，遍历数据、编码、写临时 RDB，最后 fsync 加 rename 退出；fork 停顿只是主线程那一小段" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="red7As1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">前台一瞬，后台漫长</text>
+<text class="t" x="20" y="66" font-size="12" fill="#2b2a26">主进程</text>
+<line class="flk" x1="90" y1="50" x2="90" y2="86" stroke="#2b2a26" stroke-width="2"/>
+<text class="ts" x="90" y="44" text-anchor="middle" font-size="10" fill="#6b675e">T0 收到命令</text>
+<rect class="bx-sick" x="110" y="58" width="46" height="20" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="133" y="72" text-anchor="middle" font-size="9" fill="#b03a2e">fork</text>
+<text class="ts" x="133" y="44" text-anchor="middle" font-size="10" fill="#6b675e">T1→T2 停顿</text>
+<rect class="bx-q" x="156" y="58" width="450" height="20" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="381" y="72" text-anchor="middle" font-size="10" fill="#6b675e">继续服务：GET / SET / EXPIRE 照常</text>
+<line class="fl" x1="156" y1="78" x2="156" y2="112" stroke="#6b675e" stroke-width="1.6" marker-end="url(#red7As1)"/>
+<text class="ts" x="164" y="100" font-size="10" fill="#6b675e">fork 返回，子进程诞生</text>
+<text class="t" x="20" y="134" font-size="12" fill="#2b2a26">子进程</text>
+<rect class="bx" x="156" y="120" width="380" height="20" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="346" y="134" text-anchor="middle" font-size="10" fill="#6b675e">遍历 fork 时刻的数据 · 编码 · 写临时 RDB</text>
+<line class="flc" x1="536" y1="112" x2="536" y2="148" stroke="#b03a2e" stroke-width="2"/>
+<text class="tc" x="536" y="164" text-anchor="middle" font-size="10" fill="#b03a2e">T4：fsync + rename，退出</text>
+<text class="ts" x="20" y="196" font-size="12" fill="#6b675e">latest_fork_usec 量 T1→T2 那一小段；rdb_last_bgsave_time_sec 量 T2→T4 的漫长段</text>
+</svg>
+</figure>
 
 `rdbSaveBackground()` 最终通过统一的 `redisFork()` 创建 RDB 子进程。`fork()` 在主线程上同步发生；这段时间，上一篇那条事件循环没有机会处理其他普通命令。父分支返回后，主线程才重新进入事件循环。子分支则关闭不需要的监听资源，开始执行 `rdbSave()`。
 
@@ -51,15 +70,34 @@ BGSAVE 并非从第一条指令起就不阻塞。
 
 操作系统没有立即复制全部数据页。父进程和子进程先共享同一批物理页，只各自拥有一份描述虚拟地址怎样指向这些页的页表。概念上是这样：
 
-```text
-父进程页表 ──┬──> 物理页 A
-              ├──> 物理页 B
-              └──> 物理页 C
-
-子进程页表 ──┬──> 物理页 A
-              ├──> 物理页 B
-              └──> 物理页 C
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 240" role="img" aria-label="fork 后的共享结构：左边父进程页表、右边子进程页表，两份地图都指向居中的同一批物理页 A B C；页只有一份，每页引用计数加一，fork 的前台成本是建子进程和复制页表，数据页一页没动" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="red7As2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">地图两份，领土一份</text>
+<rect class="bx" x="20" y="90" width="120" height="52" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="80" y="112" text-anchor="middle" font-size="12" fill="#6b675e">父进程页表</text>
+<text class="ts" x="80" y="130" text-anchor="middle" font-size="10" fill="#6b675e">地图 ①</text>
+<rect class="bx" x="520" y="90" width="120" height="52" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="580" y="112" text-anchor="middle" font-size="12" fill="#6b675e">子进程页表</text>
+<text class="ts" x="580" y="130" text-anchor="middle" font-size="10" fill="#6b675e">地图 ②</text>
+<line class="fl" x1="140" y1="100" x2="264" y2="62" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red7As2)"/>
+<line class="fl" x1="140" y1="116" x2="264" y2="116" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red7As2)"/>
+<line class="fl" x1="140" y1="132" x2="264" y2="170" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red7As2)"/>
+<line class="fl" x1="520" y1="100" x2="396" y2="62" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red7As2)"/>
+<line class="fl" x1="520" y1="116" x2="396" y2="116" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red7As2)"/>
+<line class="fl" x1="520" y1="132" x2="396" y2="170" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red7As2)"/>
+<rect class="bx-q" x="270" y="40" width="120" height="40" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="330" y="64" text-anchor="middle" font-size="12" fill="#2b2a26">物理页 A</text>
+<rect class="bx-q" x="270" y="96" width="120" height="40" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="330" y="120" text-anchor="middle" font-size="12" fill="#2b2a26">物理页 B</text>
+<rect class="bx-q" x="270" y="152" width="120" height="40" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="330" y="176" text-anchor="middle" font-size="12" fill="#2b2a26">物理页 C</text>
+<text class="ts" x="330" y="212" text-anchor="middle" font-size="11" fill="#6b675e">每页引用计数 +1</text>
+<text class="ts" x="20" y="232" font-size="12" fill="#6b675e">fork 的前台成本 = 建子进程 + 复制页表与内核元数据；数据页一页没动</text>
+</svg>
+</figure>
 
 地图变成了两份，领土仍只有一份。
 
@@ -87,6 +125,37 @@ BGSAVE 并非从第一条指令起就不阻塞。
 
 fork 停顿的时长按页表的规模算，不按 RDB 文件的大小算。
 
+三档数据画成点：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 246" role="img" aria-label="三档数据量的 fork 停顿散点图：used_memory 85MB 时 latest_fork_usec 约 2806 微秒，338MB 时约 8570，843MB 时约 20159，停顿随实例占用近似线性上升，斜率约每 MB 24 微秒" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">三档数据量、三次 BGSAVE：fork 停顿随实例占用上升</text>
+<text class="ts" x="20" y="44" font-size="11" fill="#6b675e">latest_fork_usec</text>
+<line class="grid" x1="70" y1="160" x2="610" y2="160" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 4"/>
+<line class="grid" x1="70" y1="120" x2="610" y2="120" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 4"/>
+<line class="grid" x1="70" y1="80" x2="610" y2="80" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 4"/>
+<line class="grid" x1="70" y1="40" x2="610" y2="40" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 4"/>
+<line class="axis" x1="70" y1="200" x2="70" y2="36" stroke="#6b675e" stroke-width="1.2"/>
+<line class="axis" x1="70" y1="200" x2="620" y2="200" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="62" y="164" text-anchor="end" font-size="11" fill="#6b675e">5000</text>
+<text class="ts" x="62" y="124" text-anchor="end" font-size="11" fill="#6b675e">10000</text>
+<text class="ts" x="62" y="84" text-anchor="end" font-size="11" fill="#6b675e">15000</text>
+<text class="ts" x="62" y="44" text-anchor="end" font-size="11" fill="#6b675e">20000</text>
+<polyline class="curve-k" points="121,178 273,132 576,40" fill="none" stroke="#2b2a26" stroke-width="2"/>
+<circle class="fill-c" cx="121" cy="178" r="4" fill="#b03a2e"/>
+<circle class="fill-c" cx="273" cy="132" r="4" fill="#b03a2e"/>
+<circle class="fill-c" cx="576" cy="40" r="4" fill="#b03a2e"/>
+<text class="ts" x="131" y="172" font-size="11" fill="#6b675e">85MB · 2.8ms</text>
+<text class="ts" x="283" y="126" font-size="11" fill="#6b675e">338MB · 8.6ms</text>
+<text class="ts" x="566" y="62" text-anchor="end" font-size="11" fill="#6b675e">843MB · 20.2ms</text>
+<text class="ts" x="190" y="218" text-anchor="middle" font-size="11" fill="#6b675e">200</text>
+<text class="ts" x="310" y="218" text-anchor="middle" font-size="11" fill="#6b675e">400</text>
+<text class="ts" x="430" y="218" text-anchor="middle" font-size="11" fill="#6b675e">600</text>
+<text class="ts" x="550" y="218" text-anchor="middle" font-size="11" fill="#6b675e">800</text>
+<text class="ts" x="620" y="238" text-anchor="end" font-size="11" fill="#6b675e">used_memory（MB）</text>
+</svg>
+</figure>
+
 ## 子进程看到的世界，停在 fork 那一刻
 
 共享物理页带来一个问题：父进程恢复服务以后仍会处理 `SET`、`DEL` 和过期删除；子进程正在读取同一批数据，快照会不会前一半是旧值、后一半是新值？
@@ -97,17 +166,40 @@ Redis 不会在一条普通命令执行到一半时创建后台保存子进程�
 
 之后父进程要修改共享页，内核不会让它直接改坏子进程正在读的数据。写入会触发写时复制：
 
-```text
-fork 后
-父页表 ──> 旧页 P <── 子页表
-
-父进程准备写 P
-          ↓
-内核复制一页
-          ↓
-父页表 ──> 新页 P'      子页表 ──> 旧页 P
-父进程在 P' 上修改      子进程继续读取旧页 P
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 278" role="img" aria-label="写时复制两步：fork 后父子两张页表指向同一旧页 P；父进程要写 P 时内核复制出一页新页 P撇，父进程页表改指新页并在其上修改，子进程页表仍指旧页继续读 fork 时刻的数据，全程不需要全局锁" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="red7As3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">第一步 · fork 刚结束：父子指向同一旧页</text>
+<rect class="bx" x="30" y="44" width="130" height="36" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="95" y="66" text-anchor="middle" font-size="11" fill="#6b675e">父进程页表</text>
+<rect class="bx" x="30" y="90" width="130" height="36" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="95" y="112" text-anchor="middle" font-size="11" fill="#6b675e">子进程页表</text>
+<line class="fl" x1="160" y1="62" x2="296" y2="78" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red7As3)"/>
+<line class="fl" x1="160" y1="108" x2="296" y2="92" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red7As3)"/>
+<rect class="bx-q" x="300" y="66" width="110" height="40" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="355" y="90" text-anchor="middle" font-size="12" fill="#2b2a26">旧页 P</text>
+<text class="ts" x="430" y="90" font-size="11" fill="#6b675e">只读共享，引用计数 2</text>
+<text class="ts" x="355" y="140" text-anchor="middle" font-size="11" fill="#6b675e">父进程准备写 P：写保护缺页，内核复制一页</text>
+<line class="flc" x1="355" y1="146" x2="355" y2="166" stroke="#b03a2e" stroke-width="1.6"/>
+<text class="ts" x="20" y="184" font-size="12" fill="#6b675e">第二步 · 复制完成：各写各的，各读各的</text>
+<rect class="bx" x="30" y="196" width="130" height="36" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="95" y="218" text-anchor="middle" font-size="11" fill="#6b675e">父进程页表</text>
+<rect class="bx" x="30" y="240" width="130" height="36" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="95" y="262" text-anchor="middle" font-size="11" fill="#6b675e">子进程页表</text>
+<line class="fl" x1="160" y1="214" x2="296" y2="210" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red7As3)"/>
+<line class="fl" x1="160" y1="258" x2="296" y2="254" stroke="#6b675e" stroke-width="1.4" marker-end="url(#red7As3)"/>
+<rect class="bx-sick" x="300" y="192" width="110" height="36" rx="3" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="355" y="214" text-anchor="middle" font-size="12" fill="#b03a2e">新页 P'</text>
+<rect class="bx-q" x="300" y="238" width="110" height="36" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="355" y="260" text-anchor="middle" font-size="12" fill="#2b2a26">旧页 P</text>
+<text class="ts" x="430" y="206" font-size="11" fill="#6b675e">父进程在 P' 上修改：新分配的一页，</text>
+<text class="ts" x="430" y="222" font-size="11" fill="#6b675e">保存窗口额外内存的来源之一</text>
+<text class="ts" x="430" y="252" font-size="11" fill="#6b675e">子进程继续读 fork 时刻的旧世界</text>
+<text class="ts" x="430" y="268" font-size="11" fill="#6b675e">RDB 写的就是这一份</text>
+</svg>
+</figure>
 
 父进程看到最新数据，子进程仍看到 `fork` 时刻的数据。二者不需要为整次 RDB 保存持有一把全局锁。
 
@@ -190,13 +282,21 @@ COW 是内核按页记的账，Redis 命令只是可能改动这些页的原因�
 
 这说明快照期的内存压力至少要拆成三类：
 
-```text
-父进程正常新增的数据
-+
-父子共享页被修改后产生的 COW
-+
-子进程、文件缓存、输出缓冲等其他开销
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 172" role="img" aria-label="快照期内存压力的三笔账堆叠条：最大一段是父进程 fork 后新分配的数据页，子进程从未共享过不算 COW；中间一小段是共享页被写后复制出的 COW，实测峰值仅约 1.3MB；最后一段是子进程私有页、文件缓存与输出缓冲等其他开销" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">快照期的内存压力，拆成三笔账（宽度示意，非同一实验的等比数据）</text>
+<rect class="bar" x="40" y="48" width="300" height="26" fill="#2b2a26"/>
+<text class="onbar" x="190" y="65" text-anchor="middle" font-size="11" fill="#f6f3ec">① 父进程正常新增的数据</text>
+<rect class="bx-sick" x="340" y="48" width="40" height="26" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="tc" x="360" y="65" text-anchor="middle" font-size="10" fill="#b03a2e">②</text>
+<rect class="bx" x="380" y="48" width="140" height="26" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="450" y="65" text-anchor="middle" font-size="11" fill="#6b675e">③ 其他开销</text>
+<text class="ts" x="40" y="100" font-size="11" fill="#6b675e">① fork 后父进程新分配的页：子进程从未共享过它们，不算 COW</text>
+<text class="ts" x="40" y="122" font-size="11" fill="#6b675e">② 共享页被写后的复制：写入实验里峰值也只有约 1.3MB</text>
+<text class="ts" x="40" y="144" font-size="11" fill="#6b675e">③ 子进程私有页、文件缓存、客户端输出缓冲</text>
+<text class="ts" x="40" y="164" font-size="11" fill="#6b675e">写入实验里的大头是 ①：RSS 从 641MB 涨到 867MB，而 ② 只有约 1.3MB</text>
+</svg>
+</figure>
 
 监控只看 `used_memory_rss`，容易把三者全叫作“COW”；只看 `current_cow_size`，又会漏掉父进程正常增长和客户端缓冲。
 
@@ -239,13 +339,24 @@ fork 以后查看进程列表，常会看到父进程 RSS 和子进程 RSS 都�
 
 概念上：
 
-```text
-父进程 RSS  800MB ┐
-                  ├─ 其中大部分指向同一批共享物理页
-子进程 RSS  780MB ┘
-
-不能直接得出物理内存新增了 780MB
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 200" role="img" aria-label="父子 RSS 相加的陷阱：父进程 800MB 与子进程 780MB 两条横条的大部分是同一批共享物理页，各记一次；相加得到的 1580MB 远大于物理新增，深色小段才是各自的私有页" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">两个 RSS 直接相加，共享页会被数两次</text>
+<text class="ts" x="20" y="62" font-size="12" fill="#6b675e">父 RSS</text>
+<rect class="bx" x="90" y="48" width="350" height="22" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<rect class="bar" x="440" y="48" width="50" height="22" fill="#2b2a26"/>
+<text class="ts" x="265" y="63" text-anchor="middle" font-size="11" fill="#6b675e">共享物理页（大部分）</text>
+<text class="ts" x="500" y="63" text-anchor="middle" font-size="10" fill="#f6f3ec">私有</text>
+<text class="ts" x="20" y="106" font-size="12" fill="#6b675e">子 RSS</text>
+<rect class="bx" x="90" y="92" width="350" height="22" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<rect class="bar" x="440" y="92" width="40" height="22" fill="#2b2a26"/>
+<line class="flc" x1="265" y1="70" x2="265" y2="92" stroke="#b03a2e" stroke-width="1.4" stroke-dasharray="3 2"/>
+<text class="tc" x="272" y="86" font-size="11" fill="#b03a2e">同一批物理页，两边各记一次</text>
+<text class="ts" x="90" y="140" font-size="12" fill="#6b675e">800MB + 780MB = 1580MB？物理内存的新增远小于这个和</text>
+<text class="ts" x="90" y="162" font-size="12" fill="#6b675e">smaps 把 shared / private / clean / dirty 分开记，才是能相加的口径</text>
+<text class="ts" x="90" y="184" font-size="12" fill="#6b675e">额外复制页的近似值看 rdb_last_cow_size，不看两个 RSS 的和</text>
+</svg>
+</figure>
 
 更细的 `/proc/<pid>/smaps` 或 `smaps_rollup` 会区分 shared、private、clean、dirty；容器的 `memory.current` 与宿主机内存统计又有自己的记账规则。Redis 的 COW 指标则从子进程 `Private_Dirty` 近似额外复制页。
 
