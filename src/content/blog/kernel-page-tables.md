@@ -22,20 +22,63 @@ Redis 系列写过快照与 fork：那次说，fork 复制的是地图，不是�
 
 x86-64 的虚拟地址是 48 位（用户空间有效 47 位），被切成五段：
 
-```text
-虚拟地址 48 位
-├─ 9 位  PGD 索引   ─┐
-├─ 9 位  PUD 索引   ─┤
-├─ 9 位  PMD 索引   ─┼─ 四层，每层一张 4KiB 页表
-├─ 9 位  PTE 索引   ─┘
-└─ 12 位 页内偏移
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 118" role="img" aria-label="x86-64 的 48 位虚拟地址切成五段：PGD、PUD、PMD、PTE 四段各 9 位，对应 512 个条目，最后 12 位页内偏移对应页内 4096 个字节" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">48 位虚拟地址：四段选条目，一段定字节</text>
+<rect class="bx" x="40" y="44" width="109" height="48" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="94" y="65" text-anchor="middle" font-size="13" fill="#2b2a26">PGD 索引</text>
+<text class="ts" x="94" y="84" text-anchor="middle" font-size="11" fill="#6b675e">9 位 · 512 条目</text>
+<rect class="bx" x="149" y="44" width="109" height="48" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="203" y="65" text-anchor="middle" font-size="13" fill="#2b2a26">PUD 索引</text>
+<text class="ts" x="203" y="84" text-anchor="middle" font-size="11" fill="#6b675e">9 位 · 512 条目</text>
+<rect class="bx" x="258" y="44" width="109" height="48" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="312" y="65" text-anchor="middle" font-size="13" fill="#2b2a26">PMD 索引</text>
+<text class="ts" x="312" y="84" text-anchor="middle" font-size="11" fill="#6b675e">9 位 · 512 条目</text>
+<rect class="bx" x="367" y="44" width="109" height="48" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="421" y="65" text-anchor="middle" font-size="13" fill="#2b2a26">PTE 索引</text>
+<text class="ts" x="421" y="84" text-anchor="middle" font-size="11" fill="#6b675e">9 位 · 512 条目</text>
+<rect class="bx-q" x="476" y="44" width="144" height="48" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="548" y="65" text-anchor="middle" font-size="13" fill="#2b2a26">页内偏移</text>
+<text class="ts" x="548" y="84" text-anchor="middle" font-size="11" fill="#6b675e">12 位 · 4096 字节</text>
+<text class="ts" x="40" y="110" font-size="12" fill="#6b675e">高位在左：前四段每段从对应层的表里挑一个条目，末段直接指到页内第几个字节</text>
+</svg>
+</figure>
 
 9 位索引意味着每张表 512 个条目；每个条目 8 字节；512 × 8B = 4KiB，一张表恰好占一页。硬件的翻译流程是从 CR3 寄存器拿到 PGD 的物理地址起步，然后一层一层读下去：
 
-```text
-CR3 ──> PGD 页 ─[9 位]──> PUD 页 ─[9 位]──> PMD 页 ─[9 位]──> PTE 页 ─[9 位]──> 物理页 ─+12 位偏移──> 字节
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 176" role="img" aria-label="硬件翻译链：CPU 从 CR3 寄存器拿到 PGD 物理地址，依次走 PGD 页、PUD 页、PMD 页、PTE 页四层表，找到物理页，再用 12 位偏移定位字节" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="kern1As2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">硬件的走表路线：一跳一层，每跳用掉一段 9 位索引</text>
+<rect class="bx-q" x="16" y="64" width="84" height="52" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="58" y="86" text-anchor="middle" font-size="13" fill="#2b2a26">CR3</text>
+<text class="ts" x="58" y="104" text-anchor="middle" font-size="11" fill="#6b675e">寄存器</text>
+<line class="fl" x1="100" y1="90" x2="113" y2="90" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern1As2)"/>
+<rect class="bx" x="118" y="64" width="84" height="52" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="160" y="86" text-anchor="middle" font-size="13" fill="#2b2a26">PGD 页</text>
+<text class="ts" x="160" y="104" text-anchor="middle" font-size="11" fill="#6b675e">第一层</text>
+<line class="fl" x1="202" y1="90" x2="215" y2="90" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern1As2)"/>
+<rect class="bx" x="220" y="64" width="84" height="52" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="262" y="86" text-anchor="middle" font-size="13" fill="#2b2a26">PUD 页</text>
+<text class="ts" x="262" y="104" text-anchor="middle" font-size="11" fill="#6b675e">第二层</text>
+<line class="fl" x1="304" y1="90" x2="317" y2="90" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern1As2)"/>
+<rect class="bx" x="322" y="64" width="84" height="52" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="364" y="86" text-anchor="middle" font-size="13" fill="#2b2a26">PMD 页</text>
+<text class="ts" x="364" y="104" text-anchor="middle" font-size="11" fill="#6b675e">第三层</text>
+<line class="fl" x1="406" y1="90" x2="419" y2="90" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern1As2)"/>
+<rect class="bx" x="424" y="64" width="84" height="52" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="466" y="86" text-anchor="middle" font-size="13" fill="#2b2a26">PTE 页</text>
+<text class="ts" x="466" y="104" text-anchor="middle" font-size="11" fill="#6b675e">第四层</text>
+<line class="fl" x1="508" y1="90" x2="521" y2="90" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern1As2)"/>
+<rect class="bx-q" x="526" y="64" width="84" height="52" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="568" y="86" text-anchor="middle" font-size="13" fill="#2b2a26">物理页</text>
+<text class="ts" x="568" y="104" text-anchor="middle" font-size="11" fill="#6b675e">数据在这</text>
+<text class="ts" x="20" y="142" font-size="12" fill="#6b675e">进了物理页，再用那 12 位偏移定位到第几个字节</text>
+<text class="ts" x="20" y="162" font-size="12" fill="#6b675e">起点在 CPU 寄存器里，后面每一步都在内存里：走表的成本就是这么来的</text>
+</svg>
+</figure>
 
 注意这条链上每一步存的都是下一层页表的**物理地址**，所以走表这件事本身不需要「先翻译页表自己的地址」，没有鸡生蛋的问题。内核软件想读写页表时才需要借助直映射窗口，那是另一回事。
 
@@ -120,6 +163,53 @@ phase 2 那次清除，是往 `/proc/self/clear_refs` 写一个 `4`。v7.2 源�
 
 于是 phase 3 的读数变成了教科书式的对照：A 被写过，PTE 级重新标脏；B 自清除后没动过，`soft-dirty=0`；C 从未被触碰，两层记录都是干净的零。对比 phase 0，它出生时那个「可疑」的 VMA 标志也被抹掉了。
 
+三页的三个阶段，摆在一张格子里：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 312" role="img" aria-label="三页三阶段状态格：phase 0 刚 mmap 时 A B C 三页 present 全为 0，soft-dirty 全为 1，Rss 为 0；phase 2 A 读一页后 present=1 但 exclusive=0 落在共享零页，B 写一页后 present=1 exclusive=1，C 没动，Rss 4kB；phase 3 清除标志后 A 再写，present=1 dirty=1 转正，B 保持 dirty=0，C 两层记录全干净，Rss 8kB" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="130" y="60" font-size="12" fill="#6b675e" text-anchor="middle">A · 读了一个字节</text>
+<text class="ts" x="377" y="60" font-size="12" fill="#6b675e" text-anchor="middle">B · 写了一个字节</text>
+<text class="ts" x="547" y="60" font-size="12" fill="#6b675e" text-anchor="middle">C · 没碰</text>
+<text class="ts" x="16" y="94" font-size="12" fill="#6b675e">phase 0</text>
+<text class="ts" x="16" y="112" font-size="12" fill="#6b675e">刚 mmap</text>
+<text class="tc" x="16" y="130" font-size="12" fill="#b03a2e">Rss=0kB</text>
+<rect class="bx-gone" x="130" y="76" width="155" height="60" rx="4" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<text class="t" x="207" y="100" text-anchor="middle" font-size="13" fill="#2b2a26">present=0</text>
+<text class="ts" x="207" y="120" text-anchor="middle" font-size="11" fill="#6b675e">soft-dirty=1：出生即可疑</text>
+<rect class="bx-gone" x="300" y="76" width="155" height="60" rx="4" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<text class="t" x="377" y="100" text-anchor="middle" font-size="13" fill="#2b2a26">present=0</text>
+<text class="ts" x="377" y="120" text-anchor="middle" font-size="11" fill="#6b675e">soft-dirty=1：出生即可疑</text>
+<rect class="bx-gone" x="470" y="76" width="155" height="60" rx="4" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<text class="t" x="547" y="100" text-anchor="middle" font-size="13" fill="#2b2a26">present=0</text>
+<text class="ts" x="547" y="120" text-anchor="middle" font-size="11" fill="#6b675e">soft-dirty=1：出生即可疑</text>
+<text class="ts" x="16" y="166" font-size="12" fill="#6b675e">phase 2</text>
+<text class="ts" x="16" y="184" font-size="12" fill="#6b675e">A 读、B 写</text>
+<text class="tc" x="16" y="202" font-size="12" fill="#b03a2e">Rss=4kB</text>
+<rect class="bx" x="130" y="148" width="155" height="60" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="207" y="172" text-anchor="middle" font-size="12" fill="#2b2a26">present=1 · exclusive=0</text>
+<text class="ts" x="207" y="192" text-anchor="middle" font-size="11" fill="#6b675e">读缺页：落在共享零页</text>
+<rect class="bx-q" x="300" y="148" width="155" height="60" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="377" y="172" text-anchor="middle" font-size="12" fill="#2b2a26">present=1 · exclusive=1</text>
+<text class="ts" x="377" y="192" text-anchor="middle" font-size="11" fill="#6b675e">写缺页：独占页才记账</text>
+<rect class="bx-gone" x="470" y="148" width="155" height="60" rx="4" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<text class="t" x="547" y="172" text-anchor="middle" font-size="13" fill="#2b2a26">present=0</text>
+<text class="ts" x="547" y="192" text-anchor="middle" font-size="11" fill="#6b675e">谁也没碰</text>
+<text class="ts" x="16" y="238" font-size="12" fill="#6b675e">phase 3</text>
+<text class="ts" x="16" y="256" font-size="12" fill="#6b675e">clear 后 A 再写</text>
+<text class="tc" x="16" y="274" font-size="12" fill="#b03a2e">Rss=8kB</text>
+<rect class="bx-sick" x="130" y="220" width="155" height="60" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.4"/>
+<text class="t" x="207" y="244" text-anchor="middle" font-size="12" fill="#2b2a26">present=1 · dirty=1</text>
+<text class="ts" x="207" y="264" text-anchor="middle" font-size="11" fill="#6b675e">转正，且重新标脏</text>
+<rect class="bx-q" x="300" y="220" width="155" height="60" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="377" y="244" text-anchor="middle" font-size="12" fill="#2b2a26">present=1 · dirty=0</text>
+<text class="ts" x="377" y="264" text-anchor="middle" font-size="11" fill="#6b675e">清除之后没再动过</text>
+<rect class="bx-gone" x="470" y="220" width="155" height="60" rx="4" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<text class="t" x="547" y="244" text-anchor="middle" font-size="12" fill="#2b2a26">present=0 · dirty=0</text>
+<text class="ts" x="547" y="264" text-anchor="middle" font-size="11" fill="#6b675e">两层记录都干净</text>
+<text class="ts" x="20" y="302" font-size="12" fill="#6b675e">A 列走完三种状态：不存在 → 借来的 → 自己的；Rss 只为最后两种里的独占页掏钱</text>
+</svg>
+</figure>
+
 这套机制不是观赏用的。增量备份、热迁移、数据库脏页追踪，都靠「清除 → 干活 → 再读」的循环，把两次快照之间真正被写过的页筛出来。Redis 的 `SET` 触发多少 COW 不能从命令推算，但内核这本页级账本一直是准的。
 
 ### PFN 为什么读不到
@@ -153,6 +243,41 @@ munmap 后      44kB              2012kB
 
 每触碰 128MiB，`VmPTE` 恰好增加 256kB：128MiB ÷ 2MiB = 64 张 PTE 页 × 4KiB = 256kB。**512:1。** 公式成立。
 
+这笔账画成线：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 270" role="img" aria-label="VmPTE 随触碰量线性增长：从 128MiB 时 304kB 到 1024MiB 时 2096kB，八个测量点落在同一条直线上，斜率是触碰量的五百一十二分之一" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">1GiB 匿名映射，nohuge 臂：VmPTE 随触碰量线性增长</text>
+<line class="grid" x1="70" y1="179" x2="610" y2="179" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 4"/>
+<line class="grid" x1="70" y1="138" x2="610" y2="138" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 4"/>
+<line class="grid" x1="70" y1="97" x2="610" y2="97" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 4"/>
+<line class="grid" x1="70" y1="56" x2="610" y2="56" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 4"/>
+<line class="axis" x1="70" y1="220" x2="70" y2="36" stroke="#6b675e" stroke-width="1.2"/>
+<line class="axis" x1="70" y1="220" x2="618" y2="220" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="62" y="183" text-anchor="end" font-size="11" fill="#6b675e">500</text>
+<text class="ts" x="62" y="142" text-anchor="end" font-size="11" fill="#6b675e">1000</text>
+<text class="ts" x="62" y="101" text-anchor="end" font-size="11" fill="#6b675e">1500</text>
+<text class="ts" x="62" y="60" text-anchor="end" font-size="11" fill="#6b675e">2000</text>
+<text class="ts" x="20" y="44" font-size="11" fill="#6b675e">VmPTE（kB）</text>
+<polyline class="curve-k" points="137,195 205,174 272,153 340,132 407,111 475,90 542,70 610,49" fill="none" stroke="#2b2a26" stroke-width="2"/>
+<circle class="fill-c" cx="137" cy="195" r="3" fill="#b03a2e"/>
+<circle class="fill-c" cx="205" cy="174" r="3" fill="#b03a2e"/>
+<circle class="fill-c" cx="272" cy="153" r="3" fill="#b03a2e"/>
+<circle class="fill-c" cx="340" cy="132" r="3" fill="#b03a2e"/>
+<circle class="fill-c" cx="407" cy="111" r="3" fill="#b03a2e"/>
+<circle class="fill-c" cx="475" cy="90" r="3" fill="#b03a2e"/>
+<circle class="fill-c" cx="542" cy="70" r="3" fill="#b03a2e"/>
+<circle class="fill-c" cx="610" cy="49" r="3" fill="#b03a2e"/>
+<text class="tc" x="240" y="186" font-size="12" fill="#b03a2e">斜率 1/512：触碰量 ÷ 512 = 新增页表字节</text>
+<text class="ts" x="240" y="204" font-size="12" fill="#6b675e">一路直线到 1GiB，中途没有拐点</text>
+<text class="ts" x="205" y="238" text-anchor="middle" font-size="11" fill="#6b675e">256</text>
+<text class="ts" x="340" y="238" text-anchor="middle" font-size="11" fill="#6b675e">512</text>
+<text class="ts" x="475" y="238" text-anchor="middle" font-size="11" fill="#6b675e">768</text>
+<text class="ts" x="610" y="238" text-anchor="middle" font-size="11" fill="#6b675e">1024</text>
+<text class="ts" x="616" y="258" text-anchor="end" font-size="11" fill="#6b675e">触碰量（MiB）</text>
+</svg>
+</figure>
+
 这个数字也和 Redis 那篇的算例接上了头。那篇说：24GiB 地址空间按每页 8 字节条目估算，页表条目约 48MB。那是「条目账」；本文量的是「页账」。密集填充时两本账恰好相等：一张 PTE 页 512 个条目 × 8B = 4KiB，24GiB ÷ 4KiB × 8B = 48MiB = 12,288 张 PTE 页 × 4KiB。殊途同归不是巧合，是 512 × 8B = 4KiB 这个设计的必然。稀疏时则页账吃亏：一张表哪怕只有一个条目，也要整张驻留。
 
 另外两处细节。RSS 一栏：1050588kB − 1048576kB（触碰量）= 2012kB，正好等于 munmap 后的残值。**RSS 就是触碰面积加进程基线**，本实验没有隐藏开销。`VmPTE` 的残值 44kB 则是进程自身（代码段、栈、libc）的页表；旧资料里常有的 `VmPMD` 行在这台 7.2.3 的 status 里已经不存在，PMD 页如今一并计入 `VmPTE` 的口径，拿旧脚本去读会读到一个空值，这也是踩过才知道的坑。
@@ -181,6 +306,33 @@ mm_inc_nr_ptes(vma->vm_mm);                            /* 计入页表字节 */
 ```
 
 那张 PTE 页是空的，当场不用，`deposit` 这个词也确实像押金：将来某个时刻（迁移、remap、或者把大页拆回 4KiB），内核需要在这位 PMD 底下挂出 512 个 PTE，缺页路径上不许分配失败（失败处理的代价太高），所以提前把表押在这里。`mm_inc_nr_ptes()` 让它如实计入 `VmPTE`。
+
+押金关系画出来：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 244" role="img" aria-label="大页的押金结构：一个 PMD 条目指向 2MiB 大页，同时旁边押着一张空的 4KiB PTE 页，当场不用但如实计入 VmPTE；将来大页拆回 512 个小页时这张表顶上" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="kern1As5" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">一个 PMD 条目管一个大页，旁边另押一张空表</text>
+<rect class="bx" x="40" y="52" width="120" height="52" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="t" x="100" y="74" text-anchor="middle" font-size="13" fill="#2b2a26">PMD 条目</text>
+<text class="ts" x="100" y="94" text-anchor="middle" font-size="11" fill="#6b675e">1 个</text>
+<line class="fl" x1="160" y1="78" x2="196" y2="78" stroke="#6b675e" stroke-width="1.6" marker-end="url(#kern1As5)"/>
+<text class="ts" x="178" y="68" text-anchor="middle" font-size="11" fill="#6b675e">指向</text>
+<rect class="bx-q" x="200" y="48" width="250" height="60" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.4"/>
+<text class="t" x="325" y="72" text-anchor="middle" font-size="14" fill="#2b2a26">2MiB 大页</text>
+<text class="ts" x="325" y="94" text-anchor="middle" font-size="11" fill="#6b675e">顶 512 个小页，物理连续</text>
+<line class="fl" x1="100" y1="104" x2="100" y2="146" stroke="#6b675e" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#kern1As5)"/>
+<text class="ts" x="110" y="130" font-size="11" fill="#6b675e">顺手押下</text>
+<rect class="bx-gone" x="40" y="150" width="120" height="52" rx="4" fill="none" stroke="#a29d90" stroke-dasharray="4 3"/>
+<text class="ts" x="100" y="172" text-anchor="middle" font-size="12" fill="#6b675e">空的 PTE 页</text>
+<text class="ts" x="100" y="190" text-anchor="middle" font-size="11" fill="#6b675e">512 格全空着</text>
+<text class="tc" x="200" y="166" font-size="12" fill="#b03a2e">表是空的，账是实的：如实计入 VmPTE</text>
+<text class="ts" x="200" y="186" font-size="12" fill="#6b675e">将来大页拆回 512 个小页，这张表就地顶上</text>
+<text class="ts" x="20" y="230" font-size="12" fill="#6b675e">三条实验臂的大页占比 0%、69%、88%，VmPTE 读数纹丝不动</text>
+</svg>
+</figure>
 
 于是账目清楚了：每个大页省下的那张 PTE 页（512 个条目只占一个 PMD 条目），被押金原样抵消，1GiB 触碰量的页表一分没省。大页的收益在另一处：TLB。下一节把它的单价量出来。
 
@@ -220,6 +372,37 @@ for (size_t k = 0; k < npages; k++) {
 | 512MiB | 131072 | 123.8 ns |
 
 曲线有两个台阶。64 页以内每跳 3.6ns，全部塞进 L1 dTLB，地图查询近乎免费，慢的只是数据自己（在 L2 缓存里）。8MiB（2048 页）处跳上 100ns 平台：2048 超过了 L2 dTLB 的 1536 项，TLB 彻底沦陷，每跳都要由硬件页表行走器去内存里翻四层表，再加上工作集也早已出了 L3（本机每 CCX 4MiB），平台值 100～130ns 就是「页表行走 + DRAM 取数」的合计。中间 4MiB 那档 40ns，是 L3 尚能接住一部分、TLB 已经开始漏的过渡带。这些台阶位置与 AMD 公开的 Zen 2 缓存/TLB 参数对得上，但归属解读应读作「与结构参数一致的解释」，不是逐位的取证。
+
+两个台阶画出来：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 276" role="img" aria-label="指针追逐链每跳平均耗时曲线：横轴是工作集页数（对数），64 页以内每跳 3.6 纳秒贴着底部，128 到 1024 页缓慢爬升，2048 页起跳上 100 纳秒平台直到 13 万页；两道虚线分别标出 L1 dTLB 64 项和 L2 dTLB 1536 项的容量墙" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="12" fill="#6b675e">指针追逐链：每跳平均耗时随工作集的变化</text>
+<text class="ts" x="20" y="44" font-size="11" fill="#6b675e">每跳 ns</text>
+<line class="grid" x1="70" y1="162" x2="620" y2="162" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 4"/>
+<line class="grid" x1="70" y1="94" x2="620" y2="94" stroke="#a29d90" stroke-width="1" stroke-dasharray="3 4"/>
+<line class="axis" x1="70" y1="230" x2="70" y2="36" stroke="#6b675e" stroke-width="1.2"/>
+<line class="axis" x1="70" y1="230" x2="624" y2="230" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="62" y="166" text-anchor="end" font-size="11" fill="#6b675e">50</text>
+<text class="ts" x="62" y="98" text-anchor="end" font-size="11" fill="#6b675e">100</text>
+<polyline class="curve-k" points="70,225 119,219 168,214 217,213 266,176 315,94 364,83 413,83 462,55 511,77 560,70 609,62" fill="none" stroke="#2b2a26" stroke-width="2"/>
+<circle class="fill-c" cx="70" cy="225" r="3.5" fill="#b03a2e"/>
+<circle class="fill-c" cx="315" cy="94" r="3.5" fill="#b03a2e"/>
+<line class="fl" x1="94" y1="230" x2="94" y2="64" stroke="#6b675e" stroke-width="1.2" stroke-dasharray="4 3"/>
+<text class="tc" x="100" y="80" font-size="12" fill="#b03a2e">64 页：L1 dTLB（64 项）在这里装满</text>
+<line class="fl" x1="289" y1="230" x2="289" y2="40" stroke="#6b675e" stroke-width="1.2" stroke-dasharray="4 3"/>
+<text class="tc" x="295" y="44" font-size="12" fill="#b03a2e">1536 项：L2 dTLB 在这里沦陷</text>
+<text class="ts" x="110" y="190" font-size="12" fill="#6b675e">左段贴底：翻译全在 L1 命中</text>
+<text class="ts" x="430" y="140" font-size="12" fill="#6b675e">从这里往右，每跳都背上一次页表行走</text>
+<text class="ts" x="70" y="248" text-anchor="middle" font-size="11" fill="#6b675e">64</text>
+<text class="ts" x="168" y="248" text-anchor="middle" font-size="11" fill="#6b675e">256</text>
+<text class="ts" x="266" y="248" text-anchor="middle" font-size="11" fill="#6b675e">1024</text>
+<text class="ts" x="364" y="248" text-anchor="middle" font-size="11" fill="#6b675e">4096</text>
+<text class="ts" x="462" y="248" text-anchor="middle" font-size="11" fill="#6b675e">16K</text>
+<text class="ts" x="560" y="248" text-anchor="middle" font-size="11" fill="#6b675e">64K</text>
+<text class="ts" x="624" y="266" text-anchor="end" font-size="11" fill="#6b675e">工作集（4KiB 页数，横轴对数）</text>
+</svg>
+</figure>
 
 最能说明问题的是最后一组的对照：同样 512MiB 工作集、同一条链，只把页的尺寸从 4KiB 换成 2MiB 大页：
 
