@@ -16,6 +16,34 @@ Zig 的回答是把这段真空标出来：`undefined`。语言文档的原文�
 
 这个值可以是任何东西，哪怕按类型来讲是胡说八道的东西。它的实际语义是一份你写给编译器的承诺：这个值不会被读，除非先被写。文档里那句大白话翻译就是："The value will be unused, or overwritten before being used."
 
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 206" role="img" aria-label="三种语言对声明与有值之间真空的回答：Java 提前铺零，安全但零像善意的谎言且归零有真实开销；C 把未初始化读定义成未定义行为，读出来随缘，编译器还拿它做优化；Zig 用 undefined 把真空标出来，换取不生成清零代码，承诺先写后读" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="22" font-size="11.5" fill="#6b675e">「声明」与「有值」之间的真空，三种回答</text>
+<rect class="bx-q" x="20" y="34" width="196" height="140" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="t" x="118" y="56" text-anchor="middle" font-size="11" fill="#2b2a26">Java · 填掉</text>
+<text class="ts" x="118" y="80" text-anchor="middle" font-size="9" fill="#6b675e">每个字段提前铺零</text>
+<text class="ts" x="118" y="100" text-anchor="middle" font-size="9" fill="#6b675e">零像善意的谎言：</text>
+<text class="ts" x="118" y="116" text-anchor="middle" font-size="9" fill="#6b675e">忘初始化的 0 混过所有检查</text>
+<text class="ts" x="118" y="140" text-anchor="middle" font-size="9" fill="#6b675e">大数组归零</text>
+<text class="ts" x="118" y="156" text-anchor="middle" font-size="9" fill="#6b675e">是热路径上的真实开销</text>
+<rect class="bx-q" x="232" y="34" width="196" height="140" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="t" x="330" y="56" text-anchor="middle" font-size="11" fill="#2b2a26">C · 装作没有</text>
+<text class="ts" x="330" y="80" text-anchor="middle" font-size="9" fill="#6b675e">未初始化读 = UB</text>
+<text class="ts" x="330" y="100" text-anchor="middle" font-size="9" fill="#6b675e">读出来随缘：</text>
+<text class="ts" x="330" y="116" text-anchor="middle" font-size="9" fill="#6b675e">fresh page 常年恰好是零</text>
+<text class="ts" x="330" y="140" text-anchor="middle" font-size="9" fill="#6b675e">bug 在测试机藏得很好</text>
+<text class="ts" x="330" y="156" text-anchor="middle" font-size="9" fill="#6b675e">编译器还拿 UB 做优化</text>
+<rect class="bx" x="444" y="34" width="196" height="140" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="t" x="542" y="56" text-anchor="middle" font-size="11" fill="#2b2a26">Zig · 标出来</text>
+<text class="ts" x="542" y="80" text-anchor="middle" font-size="9" fill="#6b675e">undefined：显式记号</text>
+<text class="ts" x="542" y="100" text-anchor="middle" font-size="9" fill="#6b675e">承诺：先写后读</text>
+<text class="ts" x="542" y="124" text-anchor="middle" font-size="9" fill="#6b675e">回报：不生成清零代码</text>
+<text class="ts" x="542" y="148" text-anchor="middle" font-size="9" fill="#6b675e">违约仍是 UB，</text>
+<text class="ts" x="542" y="164" text-anchor="middle" font-size="9" fill="#6b675e">但写在了明面上</text>
+<text class="ts" x="20" y="196" font-size="10" fill="#6b675e">真空本身消不掉，区别只在：填平它、假装没有，还是立一块牌子</text>
+</svg>
+</figure>
+
 上一篇讲 Allocator，结尾实测了 use-after-free：Debug 构建下崩溃报告精确到行号，ReleaseFast 下五次运行五次静默退出。那篇讲的是内存还了之后的事；这篇往前走一步，问一个更早的问题：内存拿到之后、写入之前，那段时间里它是什么。文中的四种构建实验都在 Zig 0.16.0 上跑的。
 
 ## 正确用法：占住内存，值由写入赋予
@@ -48,6 +76,37 @@ pub fn main() !void {
 ```
 
 这就是 undefined 的正确用法：它标注的那段真空，随后被一次写入完整覆盖。「听雨」两个字能安全地待在里面，因为它们是先写进去的，不是从真空里读出来的。
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 178" role="img" aria-label="buf 的 128 字节：声明时全部 undefined；fakeRead 只写入前 6 个字节，即听雨的 UTF-8；程序只读 buf 的 0 到 n 共 6 字节，读取范围与写入范围完全重合，其余 122 字节始终未被读取" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="22" font-size="11" fill="#6b675e">var buf: [128]u8 = undefined · 每格 ≈ 8 字节（示意）</text>
+<rect class="bx" x="24" y="34" width="34" height="36" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<rect class="bx" x="60" y="34" width="34" height="36" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="59" y="57" text-anchor="middle" font-size="9" fill="#2b2a26">听雨 · 6 字节</text>
+<rect class="bx-gone" x="96" y="34" width="34" height="36" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="4 3"/>
+<rect class="bx-gone" x="132" y="34" width="34" height="36" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="4 3"/>
+<rect class="bx-gone" x="168" y="34" width="34" height="36" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="4 3"/>
+<rect class="bx-gone" x="204" y="34" width="34" height="36" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="4 3"/>
+<rect class="bx-gone" x="240" y="34" width="34" height="36" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="4 3"/>
+<rect class="bx-gone" x="276" y="34" width="34" height="36" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="4 3"/>
+<rect class="bx-gone" x="312" y="34" width="34" height="36" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="4 3"/>
+<rect class="bx-gone" x="348" y="34" width="34" height="36" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="4 3"/>
+<rect class="bx-gone" x="384" y="34" width="34" height="36" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="4 3"/>
+<rect class="bx-gone" x="420" y="34" width="34" height="36" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="4 3"/>
+<rect class="bx-gone" x="456" y="34" width="34" height="36" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="4 3"/>
+<rect class="bx-gone" x="492" y="34" width="34" height="36" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="4 3"/>
+<rect class="bx-gone" x="528" y="34" width="34" height="36" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="4 3"/>
+<rect class="bx-gone" x="564" y="34" width="34" height="36" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="4 3"/>
+<text class="ts" x="380" y="57" text-anchor="middle" font-size="9" fill="#a29d90">其余 122 字节：undefined，从未被读</text>
+<line class="flc" x1="24" y1="82" x2="94" y2="82" stroke="#b03a2e" stroke-width="1.6"/>
+<line class="flc" x1="24" y1="78" x2="24" y2="86" stroke="#b03a2e" stroke-width="1.6"/>
+<line class="flc" x1="94" y1="78" x2="94" y2="86" stroke="#b03a2e" stroke-width="1.6"/>
+<text class="tc" x="59" y="100" text-anchor="middle" font-size="9.5" fill="#b03a2e">读取 buf[0..n]，n = 6</text>
+<text class="ts" x="24" y="132" font-size="10" fill="#2b2a26">① 声明：128 字节全部 undefined，零初始化指令一条没有</text>
+<text class="ts" x="24" y="152" font-size="10" fill="#2b2a26">② fakeRead 写入前 6 字节　③ 只读这 6 字节：读取范围 ⊆ 写入范围，承诺履行</text>
+<text class="tc" x="24" y="172" font-size="9.5" fill="#b03a2e">四种构建模式输出一模一样：读到 6 字节 "听雨"</text>
+</svg>
+</figure>
 
 ## Debug 下的 0xAA
 
@@ -185,6 +244,39 @@ ReleaseFast 的结果更妙：`retries = 3`。本次运行没有一行代码写�
 
 把两份结果放在一起，undefined 的完整语义就显形了。它不是一块放着垃圾的内存，垃圾至少是一块确定的内存。它更像一张空白支票：每一处使用，编译器都可以独立地填一个对自己最方便的数。ReleaseSafe 给 retries 填了 0xAA，给 mode 填了 "fast"，两张支票出自同一支笔，金额却各不相干；ReleaseFast 干脆把隔壁的 3 填了进来。语言文档那句 "could be anything, even something that is nonsense according to the type"，字字都是实指。
 
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 252" role="img" aria-label="同一只未写入的 cfg 在三种运行模式下的读数：Debug 下 mode 的 tag 是 0xAA，非法值被 tagName 检查当场拦下 panic；ReleaseSafe 下 retries 固化成常量 0xAA 即 170，mode 的分支被编译期折叠成 fast；ReleaseFast 下 retries 被填成 3，来自旁边没走到的分支里的常量" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="udA3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-sick" x="160" y="16" width="340" height="42" rx="5" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.3"/>
+<text class="ts" x="330" y="34" text-anchor="middle" font-size="10" fill="#b03a2e">var cfg: Config = undefined</text>
+<text class="ts" x="330" y="50" text-anchor="middle" font-size="9" fill="#6b675e">分支没走到：retries 与 mode 都未被写入</text>
+<line class="fl" x1="240" y1="58" x2="120" y2="86" stroke="#6b675e" stroke-width="1.2" marker-end="url(#udA3)"/>
+<line class="fl" x1="330" y1="58" x2="330" y2="86" stroke="#6b675e" stroke-width="1.2" marker-end="url(#udA3)"/>
+<line class="fl" x1="420" y1="58" x2="540" y2="86" stroke="#6b675e" stroke-width="1.2" marker-end="url(#udA3)"/>
+<rect class="bx-sick" x="20" y="90" width="196" height="120" rx="5" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="ts" x="118" y="112" text-anchor="middle" font-size="10" fill="#b03a2e">Debug</text>
+<text class="ts" x="118" y="136" text-anchor="middle" font-size="9" fill="#6b675e">mode 的 tag 读出 0xAA</text>
+<text class="ts" x="118" y="152" text-anchor="middle" font-size="9" fill="#6b675e">不在 { fast, safe } 里</text>
+<text class="ts" x="118" y="176" text-anchor="middle" font-size="9" fill="#b03a2e">panic: invalid enum value</text>
+<text class="ts" x="118" y="192" text-anchor="middle" font-size="9" fill="#6b675e">行列号精确到出错处</text>
+<rect class="bx-q" x="232" y="90" width="196" height="120" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="330" y="112" text-anchor="middle" font-size="10" fill="#2b2a26">ReleaseSafe</text>
+<text class="ts" x="330" y="136" text-anchor="middle" font-size="9" fill="#6b675e">retries ← 0xAA（= 170）</text>
+<text class="ts" x="330" y="152" text-anchor="middle" font-size="9" fill="#6b675e">u8 被固化成常量</text>
+<text class="ts" x="330" y="176" text-anchor="middle" font-size="9" fill="#6b675e">mode ← "fast"</text>
+<text class="ts" x="330" y="192" text-anchor="middle" font-size="9" fill="#6b675e">switch 在编译期被整体折叠</text>
+<rect class="bx-q" x="444" y="90" width="196" height="120" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="542" y="112" text-anchor="middle" font-size="10" fill="#2b2a26">ReleaseFast / Small</text>
+<text class="ts" x="542" y="136" text-anchor="middle" font-size="9" fill="#6b675e">retries ← 3</text>
+<text class="ts" x="542" y="152" text-anchor="middle" font-size="9" fill="#6b675e">捡自没走到的分支的常量</text>
+<text class="ts" x="542" y="176" text-anchor="middle" font-size="9" fill="#6b675e">mode ← "fast"</text>
+<text class="ts" x="542" y="192" text-anchor="middle" font-size="9" fill="#6b675e">本次运行没有任何代码写过 3</text>
+<text class="ts" x="20" y="240" font-size="10" fill="#6b675e">每处使用各填各的数：它是记号，不是一块内容未知的内存</text>
+</svg>
+</figure>
+
 所以「ReleaseFast 下 undefined 恰好是零」这句话是错的，错得和「C 的未初始化恰好是零」一模一样。它不是零，也不是任何具体的东西。
 
 ## 编译期不检查
@@ -203,6 +295,28 @@ pub fn main() void {
 `const` 声明，赋值 undefined，然后直接读。这段违约写得明目张胆，编译器一个字的意见都没有，Debug 构建照常打出 `x = 12297829382473034410`，还是那八个 0xAA。静态层面，Zig 对「读 undefined」没有任何检查。它唯一管过的是第一个实验里那个 `var` 从未被写入的报错，但那是变量可变性的检查，不是初始化的检查。
 
 一层层数下来，防线是这样的：语法层没有，类型层没有，Debug/ReleaseSafe 的运行时有一层显影（0xAA 加安全检查），ReleaseFast/Small 什么都没有。承诺的履行完全靠写代码的人自觉，0xAA 只是事后验伤的手段。文档在这件事上罕见地坦白：0xAA 填充 "is only an implementation feature, not a language semantic"，是实现细节，不是语言承诺。依赖它写的代码，换个后端就可能碎。
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 208" role="img" aria-label="读 undefined 的四层防线盘点：语法层没有，undefined 与 0 的写法同样无辜；类型层没有，const 赋 undefined 再直接读也能编译；Debug 与 ReleaseSafe 运行时有一层显影，0xAA 填充加非法值检查；ReleaseFast 与 ReleaseSmall 什么都没有，编译器编造一个值继续跑" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<rect class="bx-sick" x="20" y="20" width="270" height="36" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.1"/>
+<text class="ts" x="36" y="43" font-size="10" fill="#b03a2e">语法层</text>
+<text class="tc" x="300" y="43" font-size="10" fill="#b03a2e">✗</text>
+<text class="ts" x="324" y="43" font-size="9.5" fill="#6b675e">= undefined 与 = 0 写出来同样无辜</text>
+<rect class="bx-sick" x="20" y="64" width="270" height="36" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.1"/>
+<text class="ts" x="36" y="87" font-size="10" fill="#b03a2e">类型层</text>
+<text class="tc" x="300" y="87" font-size="10" fill="#b03a2e">✗</text>
+<text class="ts" x="324" y="87" font-size="9.5" fill="#6b675e">const x: usize = undefined 直接读，照样编译</text>
+<rect class="bx" x="20" y="108" width="270" height="36" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="36" y="131" font-size="10" fill="#2b2a26">运行时 · Debug / ReleaseSafe</text>
+<text class="ts" x="300" y="131" font-size="10" fill="#2b2a26">✓</text>
+<text class="ts" x="324" y="131" font-size="9.5" fill="#6b675e">0xAA 显影 + 非法 tag / 越界检查</text>
+<rect class="bx-sick" x="20" y="152" width="270" height="36" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.1"/>
+<text class="ts" x="36" y="175" font-size="10" fill="#b03a2e">运行时 · ReleaseFast / Small</text>
+<text class="tc" x="300" y="175" font-size="10" fill="#b03a2e">✗</text>
+<text class="ts" x="324" y="175" font-size="9.5" fill="#6b675e">编译器编个最省事的值，程序继续跑</text>
+<text class="ts" x="20" y="202" font-size="9.5" fill="#a29d90">唯一的一层还有开关：发布构建通常选 Fast，显影随之消失</text>
+</svg>
+</figure>
 
 ## 显影管不住的事
 
