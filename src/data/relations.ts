@@ -78,7 +78,7 @@ export const concepts: ConceptMeta[] = [
     id: 'cache-locality',
     label: '缓存与局部性',
     description: '中点插入与时间窗：一次访问不足以驻留',
-    posts: ['kernel-page-cache-writeback', 'mysql-innodb-buffer-pool-lru'],
+    posts: ['kernel-page-cache-writeback', 'mysql-innodb-buffer-pool-lru', 'hardware-memory-mountain'],
   },
   {
     id: 'false-sharing',
@@ -102,7 +102,7 @@ export const concepts: ConceptMeta[] = [
     id: 'huge-page',
     label: '透明大页',
     description: '2MiB 巨页换 TLB 命中率，代价是碎片与拆分',
-    posts: ['kernel-page-tables', 'kernel-buddy-allocator', 'kernel-copy-on-write', 'redis-fork-cow'],
+    posts: ['kernel-page-tables', 'kernel-buddy-allocator', 'kernel-copy-on-write', 'redis-fork-cow', 'hardware-memory-mountain'],
   },
   {
     id: 'integer-overflow',
