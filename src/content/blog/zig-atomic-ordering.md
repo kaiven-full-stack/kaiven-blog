@@ -105,6 +105,30 @@ C 09:43:12  ready 已完整读成 true。
 
 两边对这一位布尔值没有争议，争议仍在旁边那份普通数据。原子性保证这一笔访问不被并发撕裂；内存顺序决定别的读写能否随这一笔建立先后。两件事出现在同一个 API 上，是两份不同的保证。
 
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 236" role="img" aria-label="monotonic 标志的缺口：生产者普通写 payload 再 monotonic 存 ready，消费者 monotonic 读到 true 再读 payload；两次原子访问各自完整，但 P2 与 C1 之间没有同步边，payload 可能仍是 0" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="aoA2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="t" x="160" y="28" text-anchor="middle" font-size="11.5" fill="#2b2a26">生产者</text>
+<text class="t" x="500" y="28" text-anchor="middle" font-size="11.5" fill="#2b2a26">消费者</text>
+<rect class="bx-q" x="40" y="40" width="240" height="38" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="160" y="64" text-anchor="middle" font-size="10" fill="#2b2a26">P1 · payload = 42（普通写）</text>
+<line class="fl" x1="160" y1="78" x2="160" y2="98" stroke="#6b675e" stroke-width="1.2" marker-end="url(#aoA2)"/>
+<rect class="bx-q" x="40" y="102" width="240" height="38" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="160" y="126" text-anchor="middle" font-size="10" fill="#2b2a26">P2 · ready.store(true, .monotonic)</text>
+<rect class="bx-q" x="380" y="102" width="240" height="38" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="500" y="126" text-anchor="middle" font-size="10" fill="#2b2a26">C1 · ready.load(.monotonic) == true</text>
+<line class="fl" x1="500" y1="140" x2="500" y2="160" stroke="#6b675e" stroke-width="1.2" marker-end="url(#aoA2)"/>
+<rect class="bx-sick" x="380" y="164" width="240" height="38" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="ts" x="500" y="188" text-anchor="middle" font-size="10" fill="#b03a2e">C2 · return payload（可能是 0）</text>
+<line class="flc" x1="280" y1="121" x2="376" y2="121" stroke="#b03a2e" stroke-width="1.4" stroke-dasharray="5 4"/>
+<text class="tc" x="328" y="112" text-anchor="middle" font-size="11" fill="#b03a2e">✗</text>
+<text class="tc" x="328" y="92" text-anchor="middle" font-size="9.5" fill="#b03a2e">没有同步边</text>
+<text class="tc" x="40" y="226" font-size="10.5" fill="#b03a2e">标志完好无损，数据却不跟着过来：两笔原子访问各自完整，串不成一条线</text>
+</svg>
+</figure>
+
 ## release 与 acquire：发布与接收
 
 发布数据的惯用形式是：生产者先写普通数据，最后用 release store 发布标志；消费者先用 acquire load 接住标志，再读普通数据。
@@ -130,15 +154,32 @@ fn consumer() u64 {
 
 把两边摆成四行：
 
-```text
-生产者                         消费者
-P1  payload = 42
-P2  flag.store(1, .release) ──┐
-                              ├── synchronizes-with
-                         ┌────┘
-                         C1  flag.load(.acquire) == 1
-                         C2  read payload
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 260" role="img" aria-label="release 与 acquire 建立同步边：生产者 P1 普通写 payload，P2 以 release 存 flag；消费者 C1 以 acquire 读到 1，C2 再读 payload；P2 与 C1 之间 synchronizes-with，P1 顺序先于 P2，C1 顺序先于 C2，于是 P1 happens-before C2，读到 42 合法" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="aoA1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+<marker id="aoA1c" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-c" d="M0 0 L8 4 L0 8 Z" fill="#b03a2e"/></marker>
+</defs>
+<text class="t" x="160" y="28" text-anchor="middle" font-size="11.5" fill="#2b2a26">生产者</text>
+<text class="t" x="500" y="28" text-anchor="middle" font-size="11.5" fill="#2b2a26">消费者</text>
+<rect class="bx-q" x="40" y="40" width="240" height="38" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="160" y="64" text-anchor="middle" font-size="10" fill="#2b2a26">P1 · payload = 42</text>
+<line class="fl" x1="160" y1="78" x2="160" y2="98" stroke="#6b675e" stroke-width="1.2" marker-end="url(#aoA1)"/>
+<text class="ts" x="170" y="92" font-size="8.5" fill="#6b675e">顺序在前</text>
+<rect class="bx" x="40" y="102" width="240" height="38" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="160" y="126" text-anchor="middle" font-size="10" fill="#2b2a26">P2 · flag.store(1, .release)</text>
+<rect class="bx" x="380" y="102" width="240" height="38" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="500" y="126" text-anchor="middle" font-size="10" fill="#2b2a26">C1 · flag.load(.acquire) == 1</text>
+<line class="flc" x1="280" y1="121" x2="376" y2="121" stroke="#b03a2e" stroke-width="1.8" marker-end="url(#aoA1c)"/>
+<text class="tc" x="328" y="112" text-anchor="middle" font-size="9.5" fill="#b03a2e">synchronizes-with</text>
+<line class="fl" x1="500" y1="140" x2="500" y2="160" stroke="#6b675e" stroke-width="1.2" marker-end="url(#aoA1)"/>
+<text class="ts" x="510" y="154" font-size="8.5" fill="#6b675e">顺序在后</text>
+<rect class="bx-q" x="380" y="164" width="240" height="38" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="500" y="188" text-anchor="middle" font-size="10" fill="#2b2a26">C2 · read payload → 42</text>
+<path class="flc" d="M 40 59 C 10 59 10 183 376 183" fill="none" stroke="#b03a2e" stroke-width="1.2" stroke-dasharray="5 4" marker-end="url(#aoA1c)"/>
+<text class="tc" x="150" y="226" text-anchor="middle" font-size="10" fill="#b03a2e">P1 happens-before C2</text>
+</svg>
+</figure>
 
 P1 在 P2 之前，P2 同步到 C1，C1 又在 C2 之前。于是 P1 happens-before C2，消费者可以合法读取 `42`。
 
@@ -208,6 +249,30 @@ P 与 C 建立同步，不代表第三个观察者 O 自动获得同一保证。
 
 这就是发布协议要把「数据已完成」集中在一个明确原子状态上的原因。若用多个标志分别发布同一批数据，每个消费者又读取不同标志，局部的 release/acquire 关系未必能拼出需要的全局结论。同步关系建立在具体的两次操作之间，不会广播给旁观的线程。
 
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 168" role="img" aria-label="同步是成对关系不是广播：P 用 release 写 flag，C 用 acquire 读到那次写入，两者之间建立 synchronizes-with 边；只做 monotonic load 的第三个观察者 O 与 P 之间没有任何边，得不到同一份保证" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="aoA4" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-c" d="M0 0 L8 4 L0 8 Z" fill="#b03a2e"/></marker>
+</defs>
+<rect class="bx" x="30" y="40" width="180" height="56" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="120" y="62" text-anchor="middle" font-size="10" fill="#2b2a26">P</text>
+<text class="ts" x="120" y="82" text-anchor="middle" font-size="9.5" fill="#6b675e">flag.store(1, .release)</text>
+<rect class="bx" x="250" y="40" width="180" height="56" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="340" y="62" text-anchor="middle" font-size="10" fill="#2b2a26">C</text>
+<text class="ts" x="340" y="82" text-anchor="middle" font-size="9.5" fill="#6b675e">flag.load(.acquire) → 1</text>
+<rect class="bx-gone" x="470" y="40" width="170" height="56" rx="5" fill="#ece9e2" stroke="#a29d90" stroke-width="1.2" stroke-dasharray="5 3"/>
+<text class="ts" x="555" y="62" text-anchor="middle" font-size="10" fill="#6b675e">O · 旁观线程</text>
+<text class="ts" x="555" y="82" text-anchor="middle" font-size="9.5" fill="#6b675e">只做 monotonic load</text>
+<line class="flc" x1="210" y1="68" x2="246" y2="68" stroke="#b03a2e" stroke-width="1.8" marker-end="url(#aoA4)"/>
+<text class="tc" x="228" y="30" text-anchor="middle" font-size="9.5" fill="#b03a2e">读到那次写入：</text>
+<text class="tc" x="228" y="118" text-anchor="middle" font-size="9.5" fill="#b03a2e">同步边成立 ✓</text>
+<line class="fl" x1="430" y1="68" x2="466" y2="68" stroke="#a29d90" stroke-width="1.3" stroke-dasharray="5 4"/>
+<text class="ts" x="448" y="30" text-anchor="middle" font-size="9.5" fill="#a29d90">没有边</text>
+<text class="ts" x="448" y="118" text-anchor="middle" font-size="9.5" fill="#a29d90">保证不外溢 ✗</text>
+<text class="ts" x="30" y="152" font-size="10" fill="#6b675e">同理：C 若 acquire 读到旧值 0，也没有边，payload 碰不得，只能继续等</text>
+</svg>
+</figure>
+
 ## `cmpxchg`：成功与失败各用一个 ordering
 
 compare-exchange 比普通 load/store 多一层：它可能成功，也可能失败。
@@ -258,6 +323,34 @@ const SpinLock = struct {
 
 成功获取锁时需要 acquire，接住前任持锁者 release unlock 之前的临界区写入；交换失败只得到当前锁状态，用 monotonic 即可。
 
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 210" role="img" aria-label="自旋锁的接力：前一持锁者临界区普通读写后以 release 存 unlocked；后一持锁者 cmpxchg 以 acquire 成功换到 locked，两个 ordering 之间建立同步边，临界区里的全部写入随边过去" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="aoA6" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+<marker id="aoA6c" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-c" d="M0 0 L8 4 L0 8 Z" fill="#b03a2e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="11" fill="#6b675e">前任持锁者</text>
+<rect class="bx-q" x="20" y="34" width="200" height="44" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="120" y="52" text-anchor="middle" font-size="9.5" fill="#2b2a26">临界区</text>
+<text class="ts" x="120" y="69" text-anchor="middle" font-size="9" fill="#6b675e">普通读写 counter、缓冲…</text>
+<line class="fl" x1="220" y1="56" x2="256" y2="56" stroke="#6b675e" stroke-width="1.3" marker-end="url(#aoA6)"/>
+<rect class="bx" x="260" y="34" width="200" height="44" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="360" y="52" text-anchor="middle" font-size="9.5" fill="#2b2a26">unlock</text>
+<text class="ts" x="360" y="69" text-anchor="middle" font-size="9" fill="#6b675e">store(.unlocked, .release)</text>
+<line class="flc" x1="360" y1="78" x2="360" y2="118" stroke="#b03a2e" stroke-width="1.8" marker-end="url(#aoA6c)"/>
+<text class="tc" x="372" y="102" font-size="9.5" fill="#b03a2e">synchronizes-with</text>
+<text class="ts" x="20" y="140" font-size="11" fill="#6b675e">后任持锁者</text>
+<rect class="bx" x="260" y="122" width="200" height="44" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="360" y="140" text-anchor="middle" font-size="9.5" fill="#2b2a26">lock：cmpxchgStrong</text>
+<text class="ts" x="360" y="157" text-anchor="middle" font-size="9" fill="#6b675e">unlocked→locked · 成功序 .acquire</text>
+<line class="fl" x1="460" y1="144" x2="496" y2="144" stroke="#6b675e" stroke-width="1.3" marker-end="url(#aoA6)"/>
+<rect class="bx-q" x="500" y="122" width="140" height="44" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="570" y="140" text-anchor="middle" font-size="9.5" fill="#2b2a26">自己的临界区</text>
+<text class="ts" x="570" y="157" text-anchor="middle" font-size="9" fill="#6b675e">看得见前任的写入</text>
+<text class="ts" x="20" y="196" font-size="10" fill="#6b675e">失败序 .monotonic 足够：那条路只读到当前锁状态，接着自旋重试</text>
+</svg>
+</figure>
+
 `cmpxchgWeak` 允许虚假失败，即当前值等于 expected 也可能报告失败。它适合本来就会重试的循环，在某些架构上能更直接映射机器指令；只尝试一次的场景通常用 strong。
 
 本机四个线程各在锁内递增二十万次，最终结果：
@@ -274,11 +367,28 @@ release/acquire 很适合单向发布，但并非所有算法都只需要两方�
 
 设两个线程分别写 `x`、`y`，随后读取对方：
 
-```text
-线程 A                         线程 B
-x.store(true, release)         y.store(true, release)
-read_y = y.load(acquire)       read_x = x.load(acquire)
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 268" role="img" aria-label="两面旗 litmus 测试：线程 A 先 release 写 x 再 acquire 读 y，线程 B 先 release 写 y 再 acquire 读 x；若两边的 acquire 都没读到对方的 release，就没有同步边，read_x 与 read_y 同时为 false 是被允许的结果；把四个操作全部提升为 seq_cst 后，单一全序使双 false 不可能出现" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="t" x="170" y="26" text-anchor="middle" font-size="11" fill="#2b2a26">线程 A</text>
+<text class="t" x="490" y="26" text-anchor="middle" font-size="11" fill="#2b2a26">线程 B</text>
+<rect class="bx-q" x="50" y="36" width="240" height="34" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="170" y="58" text-anchor="middle" font-size="9.5" fill="#2b2a26">x.store(true, .release)</text>
+<rect class="bx-q" x="370" y="36" width="240" height="34" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="490" y="58" text-anchor="middle" font-size="9.5" fill="#2b2a26">y.store(true, .release)</text>
+<rect class="bx-q" x="50" y="80" width="240" height="34" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="170" y="102" text-anchor="middle" font-size="9.5" fill="#2b2a26">read_y = y.load(.acquire)</text>
+<rect class="bx-q" x="370" y="80" width="240" height="34" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="490" y="102" text-anchor="middle" font-size="9.5" fill="#2b2a26">read_x = x.load(.acquire)</text>
+<line class="grid" x1="290" y1="80" x2="370" y2="80" stroke="#a29d90" stroke-width="1" stroke-dasharray="4 3"/>
+<text class="ts" x="330" y="72" text-anchor="middle" font-size="8.5" fill="#a29d90">互相没读到对方</text>
+<rect class="bx-sick" x="40" y="134" width="580" height="52" rx="5" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.3"/>
+<text class="ts" x="330" y="155" text-anchor="middle" font-size="10" fill="#b03a2e">release / acquire：没有 synchronizes-with 边</text>
+<text class="ts" x="330" y="174" text-anchor="middle" font-size="9.5" fill="#6b675e">read_x == false 且 read_y == false 是模型允许的结果</text>
+<rect class="bx" x="40" y="198" width="580" height="52" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="330" y="219" text-anchor="middle" font-size="10" fill="#2b2a26">四个操作全部 .seq_cst：进入一条全局单一顺序</text>
+<text class="ts" x="330" y="238" text-anchor="middle" font-size="9.5" fill="#6b675e">两次 store 不可能都排在对方 load 之后 → 双 false 不可能</text>
+</svg>
+</figure>
 
 若两个 acquire 都没有读到对方的 release 写入，就没有 synchronizes-with 边。当前 LLVM/C++ 模型允许 `read_x == false` 且 `read_y == false`。
 
@@ -367,6 +477,27 @@ Zig 没有替所有原子操作默认选择 `.seq_cst`。不设默认、要求�
 但显式并不自动意味着正确。写下 `.monotonic` 很容易，证明它足够则可能需要完整画出每条同步边。若没有能力证明较弱 ordering，`.seq_cst` 或成熟锁通常是更好的起点。
 
 内存顺序描述算法允许哪些观察；选错了，压力测试可能仍然安静地通过几十亿次。
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 136" role="img" aria-label="ordering 选型光谱：monotonic 用于计数与统计，release 与 acquire 用于发布接收的交接，seq_cst 用于多方协议的全序；越往左越弱，允许的执行越多，要自己证明的越多；越往右越强，观察越少，硬件成本可能越高" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="aoA7" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-q" x="40" y="36" width="180" height="56" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="130" y="58" text-anchor="middle" font-size="10.5" fill="#2b2a26">.monotonic</text>
+<text class="ts" x="130" y="78" text-anchor="middle" font-size="9" fill="#6b675e">计数、统计：本身对就行</text>
+<line class="fl" x1="220" y1="64" x2="236" y2="64" stroke="#6b675e" stroke-width="1.3" marker-end="url(#aoA7)"/>
+<rect class="bx" x="240" y="36" width="180" height="56" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="330" y="58" text-anchor="middle" font-size="10.5" fill="#2b2a26">.release / .acquire</text>
+<text class="ts" x="330" y="78" text-anchor="middle" font-size="9" fill="#6b675e">发布与接收的交接</text>
+<line class="fl" x1="420" y1="64" x2="436" y2="64" stroke="#6b675e" stroke-width="1.3" marker-end="url(#aoA7)"/>
+<rect class="bx-sick" x="440" y="36" width="180" height="56" rx="5" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.3"/>
+<text class="ts" x="530" y="58" text-anchor="middle" font-size="10.5" fill="#b03a2e">.seq_cst</text>
+<text class="ts" x="530" y="78" text-anchor="middle" font-size="9" fill="#6b675e">多方协议：一条共同全序</text>
+<text class="ts" x="40" y="118" font-size="9.5" fill="#6b675e">← 弱：允许的执行多，要自己证明的多</text>
+<text class="ts" x="620" y="118" text-anchor="end" font-size="9.5" fill="#6b675e">强：观察少，硬件成本可能高 →</text>
+</svg>
+</figure>
 
 ## 测试只能发现反例，不能完成证明
 
