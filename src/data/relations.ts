@@ -153,7 +153,7 @@ export const concepts: ConceptMeta[] = [
     id: 'numa-topology',
     label: 'NUMA 与拓扑',
     description: '核与核、核与数据的远近关系决定访问价钱',
-    posts: ['hardware-numa', 'hardware-cache-line', 'hardware-hyperthreading'],
+    posts: ['hardware-numa', 'hardware-cache-line', 'hardware-hyperthreading', 'kernel-memory-boot'],
   },
   {
     id: 'page-table',
@@ -489,6 +489,12 @@ export const concepts: ConceptMeta[] = [
   },
 
   // ---- Linux 内核系列 ----
+  {
+    id: 'boot-memory',
+    label: '内存初始化',
+    description: '固件清单、临时管家与交接给伙伴系统前的两本账',
+    posts: ['kernel-memory-boot', 'kernel-buddy-allocator'],
+  },
   {
     id: 'buddy-system',
     label: '伙伴系统',
