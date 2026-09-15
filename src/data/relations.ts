@@ -87,6 +87,12 @@ export const concepts: ConceptMeta[] = [
     posts: ['hardware-cache-line', 'zig-atomic-ordering', 'kernel-slab-slub'],
   },
   {
+    id: 'smt-hyperthreading',
+    label: '超线程',
+    description: '一个物理核的多线程共享执行单元，收益取决于流水线空窗',
+    posts: ['hardware-hyperthreading', 'hardware-cache-line'],
+  },
+  {
     id: 'fsync-durability',
     label: '落盘语义',
     description: 'write 只进页缓存，fsync 才等设备',
