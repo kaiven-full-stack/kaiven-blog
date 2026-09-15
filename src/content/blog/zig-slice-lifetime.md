@@ -44,6 +44,22 @@ slice=16
 
 八个字节的指针，加八个字节的长度，具体尺寸依目标平台而异。比尺寸更值得注意的是里面没有第三个字段：没有 allocator、没有引用计数，也没有任何形式的过期标记。`slice.len == 4` 说明这份切片声称有四个元素，说明不了那四个元素此刻仍然存在。
 
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 116" role="img" aria-label="切片的运行时形状：本机 16 字节，只有 ptr 与 len 两格；没有第三格，allocator、引用计数、过期标记都不在类型里" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="22" font-size="11" fill="#6b675e">[]i32 的运行时形状（本机 16 字节）</text>
+<rect class="bx-q" x="60" y="34" width="180" height="46" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="ts" x="150" y="53" text-anchor="middle" font-size="10.5" fill="#2b2a26">ptr · 8 字节</text>
+<text class="ts" x="150" y="70" text-anchor="middle" font-size="9" fill="#6b675e">第一个元素在哪</text>
+<rect class="bx-q" x="240" y="34" width="180" height="46" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="ts" x="330" y="53" text-anchor="middle" font-size="10.5" fill="#2b2a26">len · 8 字节</text>
+<text class="ts" x="330" y="70" text-anchor="middle" font-size="9" fill="#6b675e">能访问到多远</text>
+<rect class="bx-gone" x="420" y="34" width="200" height="46" rx="3" fill="#ece9e2" stroke="#a29d90" stroke-width="1.2" stroke-dasharray="5 3"/>
+<text class="ts" x="520" y="53" text-anchor="middle" font-size="10" fill="#a29d90">没有第三格</text>
+<text class="ts" x="520" y="70" text-anchor="middle" font-size="8.5" fill="#a29d90">allocator / 引用计数 / 过期标记</text>
+<text class="ts" x="60" y="104" font-size="9.5" fill="#6b675e">「去哪读、读多远」写进了类型；「归谁、活多久」一个字都没有</text>
+</svg>
+</figure>
+
 ## 同一种切片，不同的来处
 
 下面四个值都可以成为 `[]const u8`：
@@ -69,6 +85,45 @@ const from_literal: []const u8 = "ink";
 - `from_literal` 指向具有静态存储期的只读数据，可以活到程序结束。
 
 类型没有区分这四种来处。`[]const u8` 只说明「这里有一段只读内存」，所有权和有效期得从别处来：变量作用域、allocator 参数、容器文档、函数契约，共同决定一段借用何时到期。
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 236" role="img" aria-label="四种来处的 []const u8：栈上局部数组不能活过作用域；allocator 分配的有效到 free 或 resize；ArrayList.items 受扩容删除清空约束；字符串字面量是静态存储期可以活到程序结束；四行中间的类型一模一样" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="slA2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="22" font-size="11.5" fill="#6b675e">来处</text>
+<text class="ts" x="280" y="22" font-size="11.5" fill="#6b675e">类型</text>
+<text class="ts" x="420" y="22" font-size="11.5" fill="#6b675e">期限</text>
+<rect class="bx-q" x="20" y="32" width="220" height="36" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="34" y="55" font-size="9.5" fill="#2b2a26">栈上局部数组 &amp;local</text>
+<line class="fl" x1="240" y1="50" x2="262" y2="50" stroke="#6b675e" stroke-width="1.1" marker-end="url(#slA2)"/>
+<rect class="bx" x="266" y="32" width="120" height="36" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="326" y="55" text-anchor="middle" font-size="9.5" fill="#2b2a26">[]const u8</text>
+<line class="fl" x1="386" y1="50" x2="408" y2="50" stroke="#6b675e" stroke-width="1.1" marker-end="url(#slA2)"/>
+<text class="tc" x="420" y="55" font-size="9.5" fill="#b03a2e">不能活过 local 所在作用域</text>
+<rect class="bx-q" x="20" y="80" width="220" height="36" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="34" y="103" font-size="9.5" fill="#2b2a26">allocator.alloc(u8, 3)</text>
+<line class="fl" x1="240" y1="98" x2="262" y2="98" stroke="#6b675e" stroke-width="1.1" marker-end="url(#slA2)"/>
+<rect class="bx" x="266" y="80" width="120" height="36" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="326" y="103" text-anchor="middle" font-size="9.5" fill="#2b2a26">[]const u8</text>
+<line class="fl" x1="386" y1="98" x2="408" y2="98" stroke="#6b675e" stroke-width="1.1" marker-end="url(#slA2)"/>
+<text class="ts" x="420" y="103" font-size="9.5" fill="#6b675e">到 free / resize 为止，所有者负责</text>
+<rect class="bx-q" x="20" y="128" width="220" height="36" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="34" y="151" font-size="9.5" fill="#2b2a26">list.items（ArrayList）</text>
+<line class="fl" x1="240" y1="146" x2="262" y2="146" stroke="#6b675e" stroke-width="1.1" marker-end="url(#slA2)"/>
+<rect class="bx" x="266" y="128" width="120" height="36" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="326" y="151" text-anchor="middle" font-size="9.5" fill="#2b2a26">[]const u8</text>
+<line class="fl" x1="386" y1="146" x2="408" y2="146" stroke="#6b675e" stroke-width="1.1" marker-end="url(#slA2)"/>
+<text class="ts" x="420" y="151" font-size="9.5" fill="#6b675e">扩容、删除、清空都可能作废它</text>
+<rect class="bx-q" x="20" y="176" width="220" height="36" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="34" y="199" font-size="9.5" fill="#2b2a26">字符串字面量 "ink"</text>
+<line class="fl" x1="240" y1="194" x2="262" y2="194" stroke="#6b675e" stroke-width="1.1" marker-end="url(#slA2)"/>
+<rect class="bx" x="266" y="176" width="120" height="36" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="326" y="199" text-anchor="middle" font-size="9.5" fill="#2b2a26">[]const u8</text>
+<line class="fl" x1="386" y1="194" x2="408" y2="194" stroke="#6b675e" stroke-width="1.1" marker-end="url(#slA2)"/>
+<text class="ts" x="420" y="199" font-size="9.5" fill="#6b675e">静态存储 · 活到程序结束</text>
+</svg>
+</figure>
 
 ## 栈帧结束，地址还留在切片里
 
@@ -100,6 +155,37 @@ fn escaped() []const u8 {
 ```
 
 它在 Zig 0.16.0 上仍能编译。返回的切片带着长度 `8`，它指向的栈内存却已经随函数调用结束而不再可用。还可以先把地址降成多项指针再切回来，或者经另一个函数转一手——绕来绕去，事实不变：栈帧一结束，局部数组就退出了程序可访问的内存。
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 210" role="img" aria-label="悬空切片的两个时刻：函数内 buffer 住在栈帧里，返回的切片 ptr 指向它、len 为 8；函数返回后栈帧收回，切片里的旧地址还在，解引用即 Illegal Behavior" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="slA3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+<marker id="slA3c" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-c" d="M0 0 L8 4 L0 8 Z" fill="#b03a2e"/></marker>
+</defs>
+<rect class="bx-q" x="20" y="26" width="280" height="160" rx="6" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="ts" x="160" y="48" text-anchor="middle" font-size="10.5" fill="#2b2a26">fn escaped() 执行中</text>
+<rect class="bx" x="40" y="60" width="240" height="44" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="160" y="78" text-anchor="middle" font-size="9.5" fill="#2b2a26">栈帧里的 buffer: [8]u8</text>
+<text class="ts" x="160" y="95" text-anchor="middle" font-size="9" fill="#6b675e">存储期 = 本次函数调用</text>
+<rect class="bx-q" x="40" y="128" width="240" height="40" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="160" y="145" text-anchor="middle" font-size="9.5" fill="#2b2a26">返回值 buffer[0..]</text>
+<text class="ts" x="160" y="161" text-anchor="middle" font-size="9" fill="#6b675e">ptr ↑ · len = 8</text>
+<line class="fl" x1="160" y1="128" x2="160" y2="108" stroke="#6b675e" stroke-width="1.2" marker-end="url(#slA3)"/>
+<line class="fl" x1="300" y1="106" x2="356" y2="106" stroke="#6b675e" stroke-width="1.4" marker-end="url(#slA3)"/>
+<text class="ts" x="328" y="96" text-anchor="middle" font-size="9.5" fill="#6b675e">return</text>
+<rect class="bx-sick" x="360" y="26" width="280" height="160" rx="6" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="ts" x="500" y="48" text-anchor="middle" font-size="10.5" fill="#b03a2e">函数返回之后</text>
+<rect class="bx-gone" x="380" y="60" width="240" height="44" rx="4" fill="#ece9e2" stroke="#a29d90" stroke-width="1.2" stroke-dasharray="5 3"/>
+<text class="ts" x="500" y="78" text-anchor="middle" font-size="9.5" fill="#a29d90">栈帧已收回</text>
+<text class="ts" x="500" y="95" text-anchor="middle" font-size="9" fill="#a29d90">buffer 退出可访问内存</text>
+<rect class="bx-q" x="380" y="128" width="240" height="40" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="500" y="145" text-anchor="middle" font-size="9.5" fill="#2b2a26">调用者手里的切片</text>
+<text class="ts" x="500" y="161" text-anchor="middle" font-size="9" fill="#6b675e">旧地址与 len=8 原封不动</text>
+<line class="flc" x1="500" y1="128" x2="500" y2="108" stroke="#b03a2e" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#slA3c)"/>
+<text class="tc" x="512" y="122" font-size="9" fill="#b03a2e">解引用 = Illegal Behavior</text>
+<text class="ts" x="20" y="202" font-size="9.5" fill="#6b675e">切片值本身完好无损：坏掉的只是它指的那块内存的可用性</text>
+</svg>
+</figure>
 
 语言参考说得很直接：
 
@@ -227,6 +313,36 @@ moved=true
 
 此后再解引用 `old`，访问的就是已经失效的视图。不过地址变没变只是这次的观察结果，不能当判断标准。标准库对失效的措辞更严：当操作把内存交给 allocator 的 `resize` 或 `free` 时，元素指针就算失效；即使 allocator 恰好原地调整、数值地址看上去没变，旧指针也不能继续用。
 
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 234" role="img" aria-label="扩容前后的 ArrayList：扩容前 old 切片与 list.items 指向同一块缓冲区；ensureTotalCapacity 之后 list.items 指向新缓冲区，old 仍握着旧地址，那块内存已经交还分配器，再解引用就是访问失效视图" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="slA4" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+<marker id="slA4c" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-c" d="M0 0 L8 4 L0 8 Z" fill="#b03a2e"/></marker>
+</defs>
+<text class="ts" x="20" y="22" font-size="11" fill="#6b675e">扩容前：old 与 list.items 同指一块缓冲</text>
+<rect class="bx-q" x="20" y="32" width="180" height="36" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="110" y="55" text-anchor="middle" font-size="9.5" fill="#2b2a26">list · capacity = 4</text>
+<rect class="bx-q" x="240" y="32" width="180" height="36" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="330" y="55" text-anchor="middle" font-size="9.5" fill="#2b2a26">old = list.items</text>
+<rect class="bx" x="460" y="32" width="180" height="36" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="550" y="55" text-anchor="middle" font-size="9.5" fill="#2b2a26">缓冲区 A：1 2 3 4</text>
+<path class="fl" d="M 150 68 C 200 96 400 96 470 70" fill="none" stroke="#6b675e" stroke-width="1.1" marker-end="url(#slA4)"/>
+<line class="fl" x1="420" y1="50" x2="456" y2="50" stroke="#6b675e" stroke-width="1.1" marker-end="url(#slA4)"/>
+<text class="ts" x="20" y="100" font-size="11" fill="#6b675e">ensureTotalCapacity(4096) 之后：</text>
+<rect class="bx-q" x="20" y="110" width="180" height="36" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="110" y="133" text-anchor="middle" font-size="9.5" fill="#2b2a26">list · capacity = 4096</text>
+<rect class="bx-sick" x="240" y="110" width="180" height="36" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="ts" x="330" y="133" text-anchor="middle" font-size="9.5" fill="#b03a2e">old：地址纹丝不动</text>
+<rect class="bx" x="460" y="110" width="180" height="36" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="550" y="133" text-anchor="middle" font-size="9.5" fill="#2b2a26">缓冲区 B：1 2 3 4 …</text>
+<line class="fl" x1="200" y1="128" x2="456" y2="128" stroke="#6b675e" stroke-width="1.1" marker-end="url(#slA4)"/>
+<rect class="bx-gone" x="240" y="170" width="400" height="36" rx="4" fill="#ece9e2" stroke="#a29d90" stroke-width="1.2" stroke-dasharray="5 3"/>
+<text class="ts" x="440" y="193" text-anchor="middle" font-size="9.5" fill="#a29d90">缓冲区 A：已交还 resize / free</text>
+<line class="flc" x1="330" y1="146" x2="330" y2="166" stroke="#b03a2e" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#slA4c)"/>
+<text class="tc" x="342" y="162" font-size="9" fill="#b03a2e">悬空</text>
+</svg>
+</figure>
+
 不同操作的边界也不同：
 
 | 操作 | 元素指针何时失效 |
@@ -269,6 +385,35 @@ All 1 tests passed.
 
 `list` 从此不再负责那块存储，释放义务移交给调用者。
 
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 200" role="img" aria-label="toOwnedSlice 的所有权转移：转移前 ArrayList 通过 items 拥有缓冲区；转移后列表被清空、容量归零，缓冲区原封不动，owned 切片接手，释放义务随 defer allocator.free 归调用者" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="slA6" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+<marker id="slA6c" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-c" d="M0 0 L8 4 L0 8 Z" fill="#b03a2e"/></marker>
+</defs>
+<text class="ts" x="20" y="22" font-size="11" fill="#6b675e">toOwnedSlice 之前</text>
+<rect class="bx-q" x="20" y="32" width="190" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="115" y="50" text-anchor="middle" font-size="9.5" fill="#2b2a26">list（ArrayList）</text>
+<text class="ts" x="115" y="67" text-anchor="middle" font-size="9" fill="#6b675e">items = "ink" · capacity 4</text>
+<line class="fl" x1="115" y1="76" x2="115" y2="122" stroke="#6b675e" stroke-width="1.2" marker-end="url(#slA6)"/>
+<text class="ts" x="125" y="102" font-size="9" fill="#6b675e">拥有</text>
+<rect class="bx" x="20" y="126" width="280" height="40" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="160" y="151" text-anchor="middle" font-size="10" fill="#2b2a26">缓冲区：i n k</text>
+<text class="ts" x="20" y="190" font-size="9.5" fill="#6b675e">释放义务在 list.deinit</text>
+<text class="ts" x="370" y="22" font-size="11" fill="#6b675e">之后</text>
+<rect class="bx-gone" x="370" y="32" width="190" height="44" rx="4" fill="#ece9e2" stroke="#a29d90" stroke-width="1.2" stroke-dasharray="5 3"/>
+<text class="ts" x="465" y="50" text-anchor="middle" font-size="9.5" fill="#a29d90">list 被清空</text>
+<text class="ts" x="465" y="67" text-anchor="middle" font-size="9" fill="#a29d90">items.len = 0 · capacity = 0</text>
+<rect class="bx-q" x="370" y="98" width="260" height="40" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="ts" x="500" y="115" text-anchor="middle" font-size="9.5" fill="#2b2a26">owned = try list.toOwnedSlice(allocator)</text>
+<text class="ts" x="500" y="131" text-anchor="middle" font-size="9" fill="#6b675e">defer allocator.free(owned)</text>
+<line class="flc" x1="210" y1="46" x2="366" y2="110" stroke="#b03a2e" stroke-width="1.3" marker-end="url(#slA6c)"/>
+<text class="tc" x="238" y="76" font-size="9" fill="#b03a2e">释放义务移交</text>
+<line class="fl" x1="300" y1="146" x2="366" y2="130" stroke="#6b675e" stroke-width="1.2" marker-end="url(#slA6)"/>
+<text class="ts" x="370" y="190" font-size="9.5" fill="#6b675e">字节一个没动，动的只是「谁负责还」</text>
+</svg>
+</figure>
+
 反过来要注意：不能把 `items` 的子切片拿去 `free`。allocator 认的是当初分配出的完整区域，不是碰巧落在区域内部的地址。切片可以裁短自己的视野，裁不出一份新的分配记录。
 
 ## arena 把许多期限并成一个
@@ -298,6 +443,28 @@ fn buildName(backing_allocator: std.mem.Allocator) ![]u8 {
 ```
 
 这段代码能编译，但函数返回前会先执行 `arena.deinit()`，调用者接到的是已经悬空的切片。要把结果交给外层，就用外层提供且寿命够长的 allocator 来分配，或在 arena 结束前把数据复制到那样的存储里去。
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 196" role="img" aria-label="arena 逃逸时间线：buildName 函数体内 arena 存活，dupe 出切片；defer 触发 arena.deinit 统一归还存储；随后函数返回，调用者手里的切片指向已经归还的内存，成为悬空切片" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="slA5" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="22" font-size="11" fill="#6b675e">buildName() 里的时间线</text>
+<rect class="bar" x="60" y="96" width="320" height="16" rx="3" fill="#2b2a26"/>
+<text class="onbar" x="220" y="108" text-anchor="middle" font-size="9.5" fill="#ece9e2">arena 存活 · dupe 出 "borrowed name"</text>
+<line class="flc" x1="380" y1="82" x2="380" y2="126" stroke="#b03a2e" stroke-width="1.6"/>
+<text class="tc" x="380" y="72" text-anchor="middle" font-size="9.5" fill="#b03a2e">defer arena.deinit()</text>
+<text class="tc" x="380" y="142" text-anchor="middle" font-size="9" fill="#b03a2e">存储统一归还</text>
+<line class="axis" x1="470" y1="82" x2="470" y2="126" stroke="#a29d90" stroke-width="1.3"/>
+<text class="ts" x="470" y="72" text-anchor="middle" font-size="9.5" fill="#6b675e">函数返回</text>
+<line class="axis" x1="30" y1="160" x2="630" y2="160" stroke="#a29d90" stroke-width="1.2" marker-end="url(#slA5)"/>
+<rect class="bx-sick" x="490" y="88" width="150" height="40" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="ts" x="565" y="105" text-anchor="middle" font-size="9" fill="#b03a2e">调用者接到切片</text>
+<text class="ts" x="565" y="121" text-anchor="middle" font-size="9" fill="#b03a2e">已经悬空</text>
+<line class="flc" x1="470" y1="104" x2="486" y2="104" stroke="#b03a2e" stroke-width="1.2" marker-end="url(#slA5)"/>
+<text class="ts" x="60" y="184" font-size="9.5" fill="#6b675e">deinit 排在 return 之前执行：切片想活过函数，就得换一块寿命够长的存储</text>
+</svg>
+</figure>
 
 ## 字符串字面量为什么可以直接返回
 
