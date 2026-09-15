@@ -18,6 +18,21 @@ tags: [Zig, 编程语言]
 
 两行日志都没有说谎。把事故缩成最小复现之后才看清矛盾在哪：它们读的从来不是同一个字段。连接状态被记了两遍，一遍是 `phase`，一遍是旁边 union 里实际存放的 payload。两份记录各自合法，合在一起讲不通。
 
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 172" role="img" aria-label="事故时刻的 conn#41：phase 字段记着 online，供监控读取；旁边的 detail union 里 active 的却是 backoff，存着 attempt 3 与 next_ms 4000，供重试定时器读取；两份记录指向同一条连接" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="22" font-size="12" fill="#6b675e">事故时刻的 conn#41：一条连接，两份记录</text>
+<rect class="bx" x="120" y="36" width="420" height="88" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="140" y="56" font-size="10" fill="#6b675e">Connection</text>
+<line class="axis" x1="330" y1="62" x2="330" y2="118" stroke="#a29d90" stroke-width="1"/>
+<text class="t" x="228" y="84" text-anchor="middle" font-size="11.5" fill="#2b2a26">phase = .online</text>
+<text class="ts" x="228" y="106" text-anchor="middle" font-size="9.5" fill="#6b675e">监控读这一份</text>
+<text class="t" x="437" y="78" text-anchor="middle" font-size="11.5" fill="#2b2a26">detail = .backoff</text>
+<text class="ts" x="437" y="96" text-anchor="middle" font-size="9.5" fill="#6b675e">{ attempt: 3, next_ms: 4000 }</text>
+<text class="ts" x="437" y="112" text-anchor="middle" font-size="9.5" fill="#6b675e">重试定时器读这一份</text>
+<text class="tc" x="330" y="152" text-anchor="middle" font-size="11" fill="#b03a2e">phase 说已经在线，payload 说还在第三次重试</text>
+</svg>
+</figure>
+
 Zig 对这类问题有一个专门的数据模型：tagged union。它不保证状态机永不出错，但先撤掉最荒唐的那种可能——一个值同时声称自己处于两种状态。
 
 前几篇讲过值在哪里写成、切片能活多久；这一篇从日志出发，沿着代码、测试和编译器诊断把事故反过来查一遍。示例和报错都在 Zig 0.16.0 上验证过。
@@ -202,6 +217,35 @@ must initialize payload field 'online'
 
 Zig 没有提供一条「先偷偷改 tag、稍后再补 payload」的路径，要更换 active field 就整体赋值。事故里的两份记录从此不需要同步，因为只剩一份记录。
 
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 244" role="img" aria-label="两种记法对照：事故版把状态记两遍，phase 与 detail 两个字段靠每条写入路径自觉同步，漏改一处就出现矛盾；修复版 union(enum) 只记一遍，tag 与 payload 装在同一个值里，换状态必须整体赋新值" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="tuA2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="22" font-size="12" fill="#6b675e">状态记两遍，还是记一遍</text>
+<rect class="bx-gone" x="20" y="36" width="290" height="180" rx="6" fill="#ece9e2" stroke="#a29d90" stroke-width="1.3" stroke-dasharray="6 4"/>
+<text class="ts" x="165" y="58" text-anchor="middle" font-size="10.5" fill="#6b675e">事故版：struct { phase, detail }</text>
+<rect class="bx-q" x="40" y="70" width="115" height="40" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="97" y="94" text-anchor="middle" font-size="10" fill="#2b2a26">phase: Phase</text>
+<rect class="bx-q" x="175" y="70" width="115" height="40" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="232" y="94" text-anchor="middle" font-size="10" fill="#2b2a26">detail: Detail</text>
+<line class="flc" x1="155" y1="90" x2="171" y2="90" stroke="#b03a2e" stroke-width="1.3" marker-end="url(#tuA2)"/>
+<text class="tc" x="165" y="136" text-anchor="middle" font-size="9.5" fill="#b03a2e">一致性靠每条写入路径自觉</text>
+<text class="ts" x="165" y="160" text-anchor="middle" font-size="9.5" fill="#6b675e">改状态要动两个字段</text>
+<text class="ts" x="165" y="178" text-anchor="middle" font-size="9.5" fill="#6b675e">漏一处 = 开头那两行日志</text>
+<line class="fl" x1="310" y1="126" x2="346" y2="126" stroke="#6b675e" stroke-width="1.6" marker-end="url(#tuA2)"/>
+<text class="ts" x="328" y="114" text-anchor="middle" font-size="10" fill="#6b675e">修复</text>
+<rect class="bx" x="350" y="36" width="290" height="180" rx="6" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="495" y="58" text-anchor="middle" font-size="10.5" fill="#2b2a26">修复版：union(enum)</text>
+<rect class="bx-q" x="370" y="70" width="250" height="64" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="495" y="92" text-anchor="middle" font-size="10" fill="#2b2a26">tag: .online</text>
+<text class="ts" x="495" y="112" text-anchor="middle" font-size="10" fill="#2b2a26">payload: { id, peer }</text>
+<text class="ts" x="495" y="128" text-anchor="middle" font-size="8.5" fill="#6b675e">同一个值，同一个初始化器</text>
+<text class="ts" x="495" y="160" text-anchor="middle" font-size="9.5" fill="#6b675e">换状态 = 整体赋一个新 union 值</text>
+<text class="ts" x="495" y="178" text-anchor="middle" font-size="9.5" fill="#6b675e">只写 tag 不写 payload：编译错误</text>
+</svg>
+</figure>
+
 ## `switch` 逐一核对，不许漏
 
 有了 tag，`switch` 才能看见当前状态：
@@ -333,6 +377,32 @@ const retryable = switch (conn) {
 
 `else` 没有错，它只是明确放弃了逐项复核未来状态的机会。如果各个未列出的状态在业务上确实同义，`else` 能减少重复；如果新增状态理应触发设计审查，就把分支写全。编译器的检查范围，到你写下 `else` 的地方为止。
 
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 236" role="img" aria-label="新增 draining 状态后的两种遭遇：没有 else 的穷尽 switch 当场编译报错，错误清单带维护者走遍每个分派点；写了 else 的 switch 安静通过，新状态按默认逻辑处理，不触发任何复核" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="tuA3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx" x="210" y="20" width="240" height="36" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="330" y="43" text-anchor="middle" font-size="11" fill="#2b2a26">类型新增状态 .draining</text>
+<line class="fl" x1="270" y1="56" x2="170" y2="92" stroke="#6b675e" stroke-width="1.3" marker-end="url(#tuA3)"/>
+<line class="fl" x1="390" y1="56" x2="490" y2="92" stroke="#6b675e" stroke-width="1.3" marker-end="url(#tuA3)"/>
+<rect class="bx-sick" x="40" y="96" width="260" height="50" rx="5" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.3"/>
+<text class="ts" x="170" y="116" text-anchor="middle" font-size="10.5" fill="#b03a2e">没有 else 的 switch</text>
+<text class="ts" x="170" y="136" text-anchor="middle" font-size="9" fill="#6b675e">error: unhandled 'draining'</text>
+<rect class="bx-q" x="370" y="96" width="260" height="50" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="500" y="116" text-anchor="middle" font-size="10.5" fill="#2b2a26">写了 else 的 switch</text>
+<text class="ts" x="500" y="136" text-anchor="middle" font-size="9" fill="#6b675e">安静编译 · 新状态落进 else</text>
+<line class="fl" x1="170" y1="146" x2="170" y2="170" stroke="#6b675e" stroke-width="1.3" marker-end="url(#tuA3)"/>
+<line class="fl" x1="500" y1="146" x2="500" y2="170" stroke="#6b675e" stroke-width="1.3" marker-end="url(#tuA3)"/>
+<rect class="bx-q" x="40" y="174" width="260" height="44" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="170" y="192" text-anchor="middle" font-size="9.5" fill="#2b2a26">报错就是清单：</text>
+<text class="ts" x="170" y="208" text-anchor="middle" font-size="9.5" fill="#2b2a26">每处分派点逐一过堂</text>
+<rect class="bx-q" x="370" y="174" width="260" height="44" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="500" y="192" text-anchor="middle" font-size="9.5" fill="#2b2a26">默认按旧逻辑继续跑</text>
+<text class="ts" x="500" y="208" text-anchor="middle" font-size="9.5" fill="#2b2a26">.draining 的处理无人复核</text>
+</svg>
+</figure>
+
 ## 状态迁移：把合法路径集中到一处
 
 tagged union 消除了 tag 与 payload 的不一致，但没有限制任意状态之间的跳转。`.closed` 仍可以直接变成 `.online`，只要给出合法 payload。
@@ -390,6 +460,39 @@ fn step(conn: Connection, event: Event) Connection {
 
 类型解决表示问题，转移函数解决过程问题。非法组合消失了，非法迁移没有。
 
+`step` 允许的全部迁移画在一张图上：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 288" role="img" aria-label="连接状态机：dialing 收到 established 变 online，收到 timeout 变 backoff，收到 shutdown 直接 closed；backoff 收到 connect 回到 dialing，收到 shutdown 进 closed；online 收到 shutdown 进 closed；closed 忽略所有事件保持原状" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="tuA4" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<path class="fl" d="M 100 56 Q 330 4 552 56" fill="none" stroke="#6b675e" stroke-width="1.2" marker-end="url(#tuA4)"/>
+<text class="ts" x="330" y="26" text-anchor="middle" font-size="9.5" fill="#6b675e">shutdown(reason)</text>
+<rect class="bx-q" x="40" y="60" width="120" height="40" rx="6" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="t" x="100" y="85" text-anchor="middle" font-size="11" fill="#2b2a26">.dialing</text>
+<rect class="bx-q" x="270" y="60" width="120" height="40" rx="6" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="t" x="330" y="85" text-anchor="middle" font-size="11" fill="#2b2a26">.online</text>
+<rect class="bx-sick" x="500" y="60" width="120" height="40" rx="6" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.3"/>
+<text class="t" x="560" y="85" text-anchor="middle" font-size="11" fill="#b03a2e">.closed</text>
+<rect class="bx-q" x="270" y="210" width="120" height="40" rx="6" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="t" x="330" y="235" text-anchor="middle" font-size="11" fill="#2b2a26">.backoff</text>
+<line class="fl" x1="160" y1="80" x2="266" y2="80" stroke="#6b675e" stroke-width="1.3" marker-end="url(#tuA4)"/>
+<text class="ts" x="213" y="70" text-anchor="middle" font-size="9.5" fill="#6b675e">established</text>
+<line class="fl" x1="390" y1="80" x2="496" y2="80" stroke="#6b675e" stroke-width="1.3" marker-end="url(#tuA4)"/>
+<text class="ts" x="443" y="70" text-anchor="middle" font-size="9.5" fill="#6b675e">shutdown</text>
+<line class="fl" x1="95" y1="100" x2="285" y2="210" stroke="#6b675e" stroke-width="1.3" marker-end="url(#tuA4)"/>
+<text class="ts" x="150" y="180" font-size="9.5" fill="#6b675e">timeout</text>
+<line class="fl" x1="300" y1="210" x2="125" y2="104" stroke="#6b675e" stroke-width="1.3" marker-end="url(#tuA4)"/>
+<text class="ts" x="196" y="138" font-size="9.5" fill="#6b675e">connect</text>
+<line class="fl" x1="390" y1="228" x2="516" y2="104" stroke="#6b675e" stroke-width="1.3" marker-end="url(#tuA4)"/>
+<text class="ts" x="470" y="176" font-size="9.5" fill="#6b675e">shutdown</text>
+<path class="fl" d="M 545 100 C 552 134 596 134 604 104" fill="none" stroke="#6b675e" stroke-width="1.2" marker-end="url(#tuA4)"/>
+<text class="ts" x="574" y="152" text-anchor="middle" font-size="9.5" fill="#6b675e">其余事件：else => conn</text>
+<text class="ts" x="40" y="272" font-size="10" fill="#6b675e">每条边都要交出该状态需要的 payload：状态机之外没有第二条改写路径</text>
+</svg>
+</figure>
+
 ## 拷贝带走 tag，也带走 payload 的值
 
 tagged union 仍然服从 Zig 的值语义：
@@ -423,6 +526,33 @@ try std.testing.expect(snapshot.online.peer.ptr == &peer);
 
 统一状态事实，不等于获得深拷贝。上一篇切片生命周期里的期限与所有权问题，在 union payload 中照常成立：一个状态快照保得住 `.online` 这个 tag，未必保得住 `online.peer` 指向的内存。
 
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 220" role="img" aria-label="拷贝语义示意：snapshot 复制了 conn 当时的 tag 与 payload 值，peer 切片只复制指针和长度，底层字节数组 n、o、d、e 仍只有一份；之后 conn 整体赋值为 closed，snapshot 保持 online" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="tuA5" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx" x="30" y="30" width="240" height="72" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="t" x="150" y="52" text-anchor="middle" font-size="11" fill="#2b2a26">snapshot（拷贝）</text>
+<text class="ts" x="150" y="72" text-anchor="middle" font-size="9.5" fill="#6b675e">.online { id: 41, peer: ptr+len }</text>
+<text class="ts" x="150" y="90" text-anchor="middle" font-size="9" fill="#6b675e">tag 与 payload 的值都复制了一份</text>
+<rect class="bx-sick" x="30" y="126" width="240" height="56" rx="5" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="t" x="150" y="148" text-anchor="middle" font-size="11" fill="#b03a2e">conn（随后整体赋值）</text>
+<text class="ts" x="150" y="168" text-anchor="middle" font-size="9.5" fill="#6b675e">.closed { reason: "shutdown" }</text>
+<line class="fl" x1="270" y1="66" x2="396" y2="66" stroke="#6b675e" stroke-width="1.3" marker-end="url(#tuA5)"/>
+<text class="ts" x="333" y="56" text-anchor="middle" font-size="9" fill="#6b675e">peer.ptr</text>
+<rect class="bx-q" x="400" y="46" width="40" height="36" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="420" y="69" text-anchor="middle" font-size="11" fill="#2b2a26">n</text>
+<rect class="bx-q" x="440" y="46" width="40" height="36" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="460" y="69" text-anchor="middle" font-size="11" fill="#2b2a26">o</text>
+<rect class="bx-q" x="480" y="46" width="40" height="36" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="500" y="69" text-anchor="middle" font-size="11" fill="#2b2a26">d</text>
+<rect class="bx-q" x="520" y="46" width="40" height="36" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="540" y="69" text-anchor="middle" font-size="11" fill="#2b2a26">e</text>
+<text class="ts" x="400" y="104" font-size="9.5" fill="#6b675e">peer 的底层数组 · 始终只有这一份</text>
+<text class="ts" x="30" y="210" font-size="10.5" fill="#6b675e">值语义复制到指针为止：箭头那头的字节不在拷贝里，寿命也不归 snapshot 管</text>
+</svg>
+</figure>
+
 ## 量出来的尺寸，不等于布局保证
 
 把独立 `phase` 合并进 tagged union，总要付出存储 tag 的成本，而具体成本不能靠「最大 payload 加一个字节」心算。
@@ -453,6 +583,26 @@ bare=24 tagged=32 align=8
 ```
 
 Debug 下 bare union 也要保存足以实施 active-field 安全检查的信息，因此本例中与 tagged union 同为 32 字节；ReleaseFast 关闭这道检查后，bare union 缩到 24 字节，而 tagged union 的业务 tag 是值语义的一部分，尺寸保持 32 字节。
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 188" role="img" aria-label="尺寸实测条形图：Debug 构建下 bare union 与 tagged union 都是 32 字节；ReleaseFast 构建下 bare union 缩到 24 字节，tagged union 保持 32 字节" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="22" font-size="12" fill="#6b675e">@sizeOf 实测（字节）· x86_64 · Zig 0.16.0</text>
+<line class="axis" x1="180" y1="32" x2="180" y2="142" stroke="#a29d90" stroke-width="1"/>
+<text class="ts" x="20" y="51" font-size="10.5" fill="#6b675e">Debug · bare</text>
+<rect class="bx-q" x="180" y="36" width="416" height="20" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="604" y="51" font-size="10.5" fill="#6b675e">32</text>
+<text class="ts" x="20" y="77" font-size="10.5" fill="#6b675e">Debug · tagged</text>
+<rect class="bar" x="180" y="62" width="416" height="20" rx="2" fill="#2b2a26"/>
+<text class="onbar" x="588" y="77" text-anchor="end" font-size="10.5" fill="#ece9e2">32</text>
+<text class="ts" x="20" y="103" font-size="10.5" fill="#6b675e">ReleaseFast · bare</text>
+<rect class="bx-q" x="180" y="88" width="312" height="20" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="500" y="103" font-size="10.5" fill="#6b675e">24</text>
+<text class="ts" x="20" y="129" font-size="10.5" fill="#6b675e">ReleaseFast · tagged</text>
+<rect class="bar" x="180" y="114" width="416" height="20" rx="2" fill="#2b2a26"/>
+<text class="onbar" x="588" y="129" text-anchor="end" font-size="10.5" fill="#ece9e2">32</text>
+<text class="ts" x="20" y="168" font-size="10.5" fill="#6b675e">同一份源码，构建模式量出不同尺寸：数字是实现观察，不是布局承诺</text>
+</svg>
+</figure>
 
 这些数字都是当前实现的观察，不能当作文件格式可以依赖的规则。普通 bare union 和 tagged union 也都没有稳定的内存布局，下面的代码会被拒绝：
 
@@ -515,6 +665,43 @@ All 1 tests passed.
 也可以先用带 `_` 的非穷尽 enum 承接任意 `u8`，再在 `switch` 的 `_` 分支返回协议错误。但非穷尽 enum 能容纳未知整数，不代表 union 能凭空为未知 tag 造出一个不存在的字段。
 
 类型系统核对 active field 与访问是否一致；外部数据可不可信，要由解析代码负责。
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 238" role="img" aria-label="外部 tag 解码流程：网络字节 tag 先经业务校验，不是 1 或 2 就返回 error.BadTag 普通错误；通过校验才用 enumFromInt 交给 switch 构造 WireMessage；绕过校验直接 enumFromInt 未知值属于 Illegal Behavior，安全构建 panic，ReleaseFast 照单解释坏字节" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="tuA7" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+<marker id="tuA7c" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-c" d="M0 0 L8 4 L0 8 Z" fill="#b03a2e"/></marker>
+</defs>
+<rect class="bx-q" x="20" y="30" width="180" height="42" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="ts" x="110" y="48" text-anchor="middle" font-size="10" fill="#2b2a26">网络字节 tag: u8</text>
+<text class="ts" x="110" y="64" text-anchor="middle" font-size="9" fill="#6b675e">什么值都可能来</text>
+<line class="fl" x1="200" y1="51" x2="236" y2="51" stroke="#6b675e" stroke-width="1.3" marker-end="url(#tuA7)"/>
+<polygon class="bx" points="330,23 420,51 330,79 240,51" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="330" y="47" text-anchor="middle" font-size="9.5" fill="#2b2a26">tag 是 1</text>
+<text class="ts" x="330" y="61" text-anchor="middle" font-size="9.5" fill="#2b2a26">或 2？</text>
+<line class="fl" x1="330" y1="79" x2="330" y2="99" stroke="#6b675e" stroke-width="1.3" marker-end="url(#tuA7)"/>
+<text class="ts" x="340" y="94" font-size="9.5" fill="#6b675e">否</text>
+<rect class="bx-q" x="250" y="103" width="170" height="36" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="335" y="125" text-anchor="middle" font-size="10" fill="#2b2a26">return error.BadTag</text>
+<line class="fl" x1="420" y1="51" x2="456" y2="51" stroke="#6b675e" stroke-width="1.3" marker-end="url(#tuA7)"/>
+<text class="ts" x="436" y="42" text-anchor="middle" font-size="9.5" fill="#6b675e">是</text>
+<rect class="bx-q" x="460" y="30" width="180" height="42" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="550" y="48" text-anchor="middle" font-size="9.5" fill="#2b2a26">@enumFromInt → switch</text>
+<text class="ts" x="550" y="64" text-anchor="middle" font-size="9" fill="#6b675e">构造 WireMessage</text>
+<line class="fl" x1="550" y1="72" x2="550" y2="99" stroke="#6b675e" stroke-width="1.3" marker-end="url(#tuA7)"/>
+<rect class="bx" x="450" y="103" width="95" height="36" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="497" y="125" text-anchor="middle" font-size="9.5" fill="#2b2a26">.data = payload</text>
+<rect class="bx" x="555" y="103" width="85" height="36" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="597" y="125" text-anchor="middle" font-size="9.5" fill="#2b2a26">.close</text>
+<line class="flc" x1="110" y1="72" x2="110" y2="178" stroke="#b03a2e" stroke-width="1.2" stroke-dasharray="5 3"/>
+<line class="flc" x1="110" y1="178" x2="146" y2="178" stroke="#b03a2e" stroke-width="1.2" stroke-dasharray="5 3" marker-end="url(#tuA7c)"/>
+<text class="tc" x="118" y="160" font-size="9.5" fill="#b03a2e">绕过校验直接 @enumFromInt(200)</text>
+<rect class="bx-sick" x="150" y="158" width="480" height="42" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.3"/>
+<text class="ts" x="390" y="176" text-anchor="middle" font-size="9.5" fill="#b03a2e">Illegal Behavior：Debug / ReleaseSafe 当场 panic</text>
+<text class="ts" x="390" y="192" text-anchor="middle" font-size="9" fill="#6b675e">ReleaseFast 不拦：200 的坏字节被照单解释</text>
+<text class="ts" x="20" y="226" font-size="10" fill="#6b675e">协议错误应该是普通 error，走上面的菱形；panic 不是解析器</text>
+</svg>
+</figure>
 
 ## 新增状态时，哪些地方会报错
 
