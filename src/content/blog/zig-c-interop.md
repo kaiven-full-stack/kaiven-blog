@@ -10,6 +10,46 @@ C 那边，字符串常是一枚以零结尾的裸指针，数组参数只剩地
 
 数据能不能跨过这条边界，先看形状；过界之后还能不能安全使用，是另一组问题——长度、有效期、所有权、失败语义，ABI 一个都不管。这个系列已经几次走到这条边界上：指针篇见过 `[*c]T`，布局篇核对过 `extern struct`，切片篇追问过借用期限，安全模式篇划清了 panic 的效力范围。这一篇把这些线索放进同一次交接，用一份小型 C 库走完全程。
 
+先把边界的路标立起来：
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 262" role="img" aria-label="边界全景：Zig 一侧切片带长度、失败是 error union、指针分型精确；C 一侧字符串是零终止裸指针、数组只剩地址、失败写返回码或 errno；中间只隔一层 C ABI，它只管形状；长度、有效期、所有权、失败语义四件事分别由 ptr+len 拆合、成对接口约定、create/destroy 配对和包装层 error 翻译接住" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="ciA1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-q" x="20" y="40" width="264" height="116" rx="6" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="t" x="152" y="62" text-anchor="middle" font-size="11.5" fill="#2b2a26">Zig 一侧</text>
+<text class="ts" x="36" y="86" font-size="9.5" fill="#6b675e">切片：指针与长度同行</text>
+<text class="ts" x="36" y="106" font-size="9.5" fill="#6b675e">失败：error union，类型盯着处理</text>
+<text class="ts" x="36" y="126" font-size="9.5" fill="#6b675e">指针：单项 / 多项 / 可选 / 哨兵</text>
+<text class="ts" x="36" y="146" font-size="9.5" fill="#6b675e">各就各位</text>
+<rect class="bx" x="376" y="40" width="264" height="116" rx="6" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="t" x="508" y="62" text-anchor="middle" font-size="11.5" fill="#2b2a26">C 一侧</text>
+<text class="ts" x="392" y="86" font-size="9.5" fill="#6b675e">字符串：零结尾裸指针</text>
+<text class="ts" x="392" y="106" font-size="9.5" fill="#6b675e">数组：只剩地址，长度另传</text>
+<text class="ts" x="392" y="126" font-size="9.5" fill="#6b675e">失败：返回码或 errno</text>
+<text class="ts" x="392" y="146" font-size="9.5" fill="#6b675e">回调：函数指针 + void *ctx</text>
+<line class="grid" x1="330" y1="28" x2="330" y2="168" stroke="#a29d90" stroke-width="1.4" stroke-dasharray="6 4"/>
+<rect class="bx" x="298" y="16" width="64" height="24" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="330" y="32" text-anchor="middle" font-size="10" fill="#2b2a26">C ABI</text>
+<line class="fl" x1="250" y1="98" x2="404" y2="98" stroke="#6b675e" stroke-width="1.4" marker-end="url(#ciA1)"/>
+<text class="ts" x="330" y="90" text-anchor="middle" font-size="9.5" fill="#6b675e">只管形状</text>
+<text class="ts" x="20" y="192" font-size="10.5" fill="#6b675e">ABI 不管的四件事，各自要有人接：</text>
+<rect class="bx-sick" x="20" y="202" width="150" height="44" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.1"/>
+<text class="ts" x="95" y="220" text-anchor="middle" font-size="10" fill="#b03a2e">长度</text>
+<text class="ts" x="95" y="238" text-anchor="middle" font-size="8.5" fill="#6b675e">ptr + len 拆开与重组</text>
+<rect class="bx-sick" x="178" y="202" width="150" height="44" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.1"/>
+<text class="ts" x="253" y="220" text-anchor="middle" font-size="10" fill="#b03a2e">有效期</text>
+<text class="ts" x="253" y="238" text-anchor="middle" font-size="8.5" fill="#6b675e">从 C 文档读出并写明约定</text>
+<rect class="bx-sick" x="336" y="202" width="150" height="44" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.1"/>
+<text class="ts" x="411" y="220" text-anchor="middle" font-size="10" fill="#b03a2e">所有权</text>
+<text class="ts" x="411" y="238" text-anchor="middle" font-size="8.5" fill="#6b675e">create / destroy 成对接口</text>
+<rect class="bx-sick" x="494" y="202" width="150" height="44" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.1"/>
+<text class="ts" x="569" y="220" text-anchor="middle" font-size="10" fill="#b03a2e">失败语义</text>
+<text class="ts" x="569" y="238" text-anchor="middle" font-size="8.5" fill="#6b675e">包装层翻译成 error union</text>
+</svg>
+</figure>
+
 文中代码与输出全部取自 Zig 0.16.0、x86_64 Linux 上的实测。
 
 ## 函数原型：声明只是单方面的
@@ -106,6 +146,34 @@ fn add(
 const bytes = c_ptr[0..c_len];
 ```
 
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 190" role="img" aria-label="切片跨边界的双向拆合：出境时 []const f64 拆成 ptr 与 len 分别填进 C 的两个参数；回程时把 C 给的地址与长度用区间表达式重新组成切片" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="ciA2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-q" x="30" y="22" width="210" height="56" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="ts" x="135" y="40" text-anchor="middle" font-size="10.5" fill="#2b2a26">[]const f64</text>
+<rect class="bx-q" x="46" y="48" width="84" height="22" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="88" y="63" text-anchor="middle" font-size="9" fill="#2b2a26">ptr</text>
+<rect class="bx-q" x="138" y="48" width="84" height="22" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1"/>
+<text class="ts" x="180" y="63" text-anchor="middle" font-size="9" fill="#2b2a26">len</text>
+<line class="fl" x1="240" y1="50" x2="366" y2="50" stroke="#6b675e" stroke-width="1.4" marker-end="url(#ciA2)"/>
+<text class="ts" x="303" y="40" text-anchor="middle" font-size="9.5" fill="#6b675e">出境：拆成两个参数</text>
+<rect class="bx" x="370" y="24" width="260" height="24" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1.1"/>
+<text class="ts" x="382" y="40" font-size="9.5" fill="#2b2a26">const double *values ← ptr</text>
+<rect class="bx" x="370" y="54" width="260" height="24" rx="3" fill="#ece9e2" stroke="#6b675e" stroke-width="1.1"/>
+<text class="ts" x="382" y="70" font-size="9.5" fill="#2b2a26">size_t count ← len</text>
+<rect class="bx" x="370" y="116" width="260" height="44" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="500" y="135" text-anchor="middle" font-size="10" fill="#2b2a26">C 交回：地址 + 长度</text>
+<text class="ts" x="500" y="152" text-anchor="middle" font-size="9" fill="#6b675e">c_ptr 与 c_len 两个散装值</text>
+<line class="fl" x1="370" y1="138" x2="244" y2="138" stroke="#6b675e" stroke-width="1.4" marker-end="url(#ciA2)"/>
+<text class="ts" x="307" y="128" text-anchor="middle" font-size="9.5" fill="#6b675e">回程：c_ptr[0..c_len]</text>
+<rect class="bx-q" x="30" y="116" width="210" height="44" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="ts" x="135" y="135" text-anchor="middle" font-size="10" fill="#2b2a26">重组为切片</text>
+<text class="ts" x="135" y="152" text-anchor="middle" font-size="9" fill="#6b675e">长度回到类型里，边界检查恢复</text>
+</svg>
+</figure>
+
 C 的数组形参本质上仍是指针，不携带长度，不提供 Zig 切片的边界检查，也不自动记住底层分配有多大。长度参数若填错，ABI 完全正确，程序照样越过实际边界——跨语言边界最常见的 bug 就出在这里，两边形状对上了，掌握的信息却差着一份长度。
 
 ## `[*c]T`：translate-c 带回来的模糊指针
@@ -171,6 +239,31 @@ mean=0 count=8 flags=12
 ```
 
 C 侧的 `sizeof`、`_Alignof` 与 `offsetof` 得到相同数字。
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 128" role="img" aria-label="Sample 的 extern struct 字节图：mean 是 f64 占偏移 0 起 8 字节，count 是 u32 占偏移 8 起 4 字节，flags 是 i16 占偏移 12 起 2 字节，偏移 14 起有 2 字节 padding，总尺寸 16、对齐 8，与 C 侧 sizeof 和 offsetof 完全一致" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="40" y="20" font-size="11" fill="#6b675e">Sample · size = 16 · align = 8（1 格 = 1 字节）</text>
+<rect class="bx-q" x="40" y="30" width="288" height="44" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="ts" x="184" y="49" text-anchor="middle" font-size="10.5" fill="#2b2a26">mean: f64</text>
+<text class="ts" x="184" y="66" text-anchor="middle" font-size="9" fill="#6b675e">8 字节</text>
+<rect class="bx-q" x="328" y="30" width="144" height="44" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="400" y="49" text-anchor="middle" font-size="10.5" fill="#2b2a26">count: u32</text>
+<text class="ts" x="400" y="66" text-anchor="middle" font-size="9" fill="#6b675e">4 字节</text>
+<rect class="bx-q" x="472" y="30" width="72" height="44" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="508" y="49" text-anchor="middle" font-size="10" fill="#2b2a26">flags</text>
+<text class="ts" x="508" y="66" text-anchor="middle" font-size="9" fill="#6b675e">i16 · 2B</text>
+<rect class="bx-gone" x="544" y="30" width="72" height="44" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1.1" stroke-dasharray="4 3"/>
+<text class="ts" x="580" y="49" text-anchor="middle" font-size="9" fill="#a29d90">padding</text>
+<text class="ts" x="580" y="66" text-anchor="middle" font-size="9" fill="#a29d90">2 字节</text>
+<line class="axis" x1="40" y1="86" x2="616" y2="86" stroke="#a29d90" stroke-width="1"/>
+<text class="ts" x="40" y="102" text-anchor="middle" font-size="9" fill="#6b675e">0</text>
+<text class="ts" x="328" y="102" text-anchor="middle" font-size="9" fill="#6b675e">8</text>
+<text class="ts" x="472" y="102" text-anchor="middle" font-size="9" fill="#6b675e">12</text>
+<text class="ts" x="544" y="102" text-anchor="middle" font-size="9" fill="#6b675e">14</text>
+<text class="ts" x="616" y="102" text-anchor="middle" font-size="9" fill="#6b675e">16</text>
+<text class="ts" x="40" y="122" font-size="9.5" fill="#6b675e">extern struct 按 C ABI 排字段与补齐；普通 Zig struct 不承诺这份布局</text>
+</svg>
+</figure>
 
 `extern struct` 保证遵循目标平台的 C ABI，包括字段顺序、对齐与 padding。普通 Zig `struct` 没有这份布局保证，即使今天量出来恰好相同，也不能拿来替代。
 
@@ -274,6 +367,42 @@ fn statusToError(status: c_int) Error!void {
 
 C 返回码在边界内被消费，Zig 一侧的 API 返回普通 error union。这里让底层函数直接返回 `c_int`，再用整数 `switch` 翻译，未知码也能落进 `error.UnknownStatus`；不要先把未经验证的返回值强转成穷尽 enum。
 
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 220" role="img" aria-label="statusToError 映射表：返回码 0 直接放行，-1 译成 error.Empty，-2 译成 error.NoMemory，100 译成 error.OutOfRange，其余任何整数落进 error.UnknownStatus" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="ciA4" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="60" y="22" text-anchor="middle" font-size="10.5" fill="#6b675e">C 返回码（c_int）</text>
+<text class="ts" x="440" y="22" text-anchor="middle" font-size="10.5" fill="#6b675e">Error!void</text>
+<rect class="bx-q" x="20" y="32" width="80" height="28" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="60" y="51" text-anchor="middle" font-size="10.5" fill="#2b2a26">0</text>
+<line class="fl" x1="100" y1="46" x2="316" y2="46" stroke="#6b675e" stroke-width="1.2" marker-end="url(#ciA4)"/>
+<rect class="bx-q" x="320" y="32" width="240" height="28" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="336" y="51" font-size="10" fill="#2b2a26">放行：返回 {}</text>
+<rect class="bx-q" x="20" y="68" width="80" height="28" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="60" y="87" text-anchor="middle" font-size="10.5" fill="#2b2a26">-1</text>
+<line class="fl" x1="100" y1="82" x2="316" y2="82" stroke="#6b675e" stroke-width="1.2" marker-end="url(#ciA4)"/>
+<rect class="bx-q" x="320" y="68" width="240" height="28" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="336" y="87" font-size="10" fill="#b03a2e">error.Empty</text>
+<rect class="bx-q" x="20" y="104" width="80" height="28" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="60" y="123" text-anchor="middle" font-size="10.5" fill="#2b2a26">-2</text>
+<line class="fl" x1="100" y1="118" x2="316" y2="118" stroke="#6b675e" stroke-width="1.2" marker-end="url(#ciA4)"/>
+<rect class="bx-q" x="320" y="104" width="240" height="28" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="336" y="123" font-size="10" fill="#b03a2e">error.NoMemory</text>
+<rect class="bx-q" x="20" y="140" width="80" height="28" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="60" y="159" text-anchor="middle" font-size="10.5" fill="#2b2a26">100</text>
+<line class="fl" x1="100" y1="154" x2="316" y2="154" stroke="#6b675e" stroke-width="1.2" marker-end="url(#ciA4)"/>
+<rect class="bx-q" x="320" y="140" width="240" height="28" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="336" y="159" font-size="10" fill="#b03a2e">error.OutOfRange</text>
+<rect class="bx-sick" x="20" y="176" width="80" height="28" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="ts" x="60" y="195" text-anchor="middle" font-size="10" fill="#b03a2e">其他</text>
+<line class="fl" x1="100" y1="190" x2="316" y2="190" stroke="#6b675e" stroke-width="1.2" marker-end="url(#ciA4)"/>
+<rect class="bx-sick" x="320" y="176" width="240" height="28" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="ts" x="336" y="195" font-size="10" fill="#b03a2e">error.UnknownStatus</text>
+<text class="ts" x="580" y="195" font-size="9.5" fill="#6b675e">兜底</text>
+</svg>
+</figure>
+
 `errno` 更讲究时机。它是一份线程局部的附加状态，任何后续库调用都可能覆盖。一次失败的 C 调用之后，应立即读取：
 
 ```zig
@@ -313,6 +442,30 @@ ok
 ```
 
 哨兵说明的是在哪里停止，说明不了指针活多久。上例可以长期保存，是因为 C 头文件约定返回静态字符串；若函数返回内部缓冲区，它可能在下一次调用时失效；若返回 malloc 内存，调用者还要负责释放。相同的 `const char *` 可以承载三种完全不同的生命周期，Zig 类型只能表达其中一部分，余下必须从 C API 文档里读出来。
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 212" role="img" aria-label="同一个 const char 指针的三种生命周期：静态存储可以长期保存；内部缓冲区可能在下一次调用时失效；malloc 内存要由调用者负责释放" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="ciA6" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx" x="30" y="80" width="160" height="52" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="110" y="101" text-anchor="middle" font-size="10.5" fill="#2b2a26">const char *</text>
+<text class="ts" x="110" y="119" text-anchor="middle" font-size="9" fill="#6b675e">类型上三种毫无区别</text>
+<line class="fl" x1="190" y1="92" x2="316" y2="46" stroke="#6b675e" stroke-width="1.2" marker-end="url(#ciA6)"/>
+<line class="fl" x1="190" y1="106" x2="316" y2="106" stroke="#6b675e" stroke-width="1.2" marker-end="url(#ciA6)"/>
+<line class="fl" x1="190" y1="120" x2="316" y2="166" stroke="#6b675e" stroke-width="1.2" marker-end="url(#ciA6)"/>
+<rect class="bx-q" x="320" y="24" width="310" height="44" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="336" y="42" font-size="10" fill="#2b2a26">静态存储</text>
+<text class="ts" x="336" y="60" font-size="9" fill="#6b675e">进程活多久它活多久 · 可长期保存</text>
+<rect class="bx-sick" x="320" y="84" width="310" height="44" rx="5" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="ts" x="336" y="102" font-size="10" fill="#b03a2e">内部缓冲区</text>
+<text class="ts" x="336" y="120" font-size="9" fill="#6b675e">下一次调用就可能覆写 · 用完即抄</text>
+<rect class="bx-q" x="320" y="144" width="310" height="44" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="336" y="162" font-size="10" fill="#2b2a26">malloc 出来的内存</text>
+<text class="ts" x="336" y="180" font-size="9" fill="#6b675e">调用者负责 free · 忘了就是泄漏</text>
+<text class="ts" x="30" y="204" font-size="9.5" fill="#6b675e">同一个指针类型，三种命运：区别写在头文件的注释里，不在类型里</text>
+</svg>
+</figure>
 
 ## 谁分配，谁释放
 
@@ -392,6 +545,40 @@ observer: count=4 sum=10
 ```
 
 这个指针上没有附带任何类型标签。C 不知道里面是 `Observer`，也不保证地址仍然有效；Zig 的转换只表达「程序员声称它就是这个类型」，成立与否完全靠约定。因此 context 必须活过所有可能的回调，线程规则必须由双方约定，回调函数也不应让 panic 或异语言异常越过 ABI 边界。
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 204" role="img" aria-label="回调 context 的原路返回：Zig 把 Observer 实例地址擦成 void * 交给 C 保存；C 回调时把 ctx 原样传回；Zig 侧用 ptrCast 与 alignCast 把类型声称回来，继续读写字段" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="ciA5" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="22" font-size="11.5" fill="#6b675e">去程：类型被擦掉</text>
+<rect class="bx-q" x="20" y="32" width="180" height="52" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="ts" x="110" y="53" text-anchor="middle" font-size="10" fill="#2b2a26">Observer 实例</text>
+<text class="ts" x="110" y="71" text-anchor="middle" font-size="9" fill="#6b675e">count · sum</text>
+<line class="fl" x1="200" y1="58" x2="242" y2="58" stroke="#6b675e" stroke-width="1.3" marker-end="url(#ciA5)"/>
+<text class="ts" x="221" y="48" text-anchor="middle" font-size="8.5" fill="#6b675e">&amp;observer</text>
+<rect class="bx" x="246" y="32" width="170" height="52" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="331" y="53" text-anchor="middle" font-size="10" fill="#2b2a26">void *ctx</text>
+<text class="ts" x="331" y="71" text-anchor="middle" font-size="9" fill="#6b675e">没有类型标签的地址</text>
+<line class="fl" x1="416" y1="58" x2="458" y2="58" stroke="#6b675e" stroke-width="1.3" marker-end="url(#ciA5)"/>
+<rect class="bx-gone" x="462" y="32" width="178" height="52" rx="5" fill="#ece9e2" stroke="#a29d90" stroke-width="1.2" stroke-dasharray="5 3"/>
+<text class="ts" x="551" y="53" text-anchor="middle" font-size="10" fill="#6b675e">C 库原样保存</text>
+<text class="ts" x="551" y="71" text-anchor="middle" font-size="9" fill="#6b675e">不知道也不关心内容</text>
+<line class="fl" x1="551" y1="84" x2="551" y2="112" stroke="#6b675e" stroke-width="1.3" marker-end="url(#ciA5)"/>
+<text class="ts" x="20" y="130" font-size="11.5" fill="#6b675e">回程：类型被声称回来</text>
+<rect class="bx" x="462" y="140" width="178" height="46" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.2"/>
+<text class="ts" x="551" y="159" text-anchor="middle" font-size="9.5" fill="#2b2a26">回调触发</text>
+<text class="ts" x="551" y="176" text-anchor="middle" font-size="9" fill="#6b675e">callback(ctx, index, value)</text>
+<line class="fl" x1="462" y1="163" x2="436" y2="163" stroke="#6b675e" stroke-width="1.3" marker-end="url(#ciA5)"/>
+<rect class="bx-q" x="230" y="140" width="202" height="46" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="331" y="159" text-anchor="middle" font-size="9.5" fill="#2b2a26">@alignCast + @ptrCast</text>
+<text class="ts" x="331" y="176" text-anchor="middle" font-size="9" fill="#6b675e">恢复成 *Observer</text>
+<line class="fl" x1="230" y1="163" x2="204" y2="163" stroke="#6b675e" stroke-width="1.3" marker-end="url(#ciA5)"/>
+<rect class="bx-q" x="20" y="140" width="180" height="46" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="110" y="159" text-anchor="middle" font-size="9.5" fill="#2b2a26">self.count += 1</text>
+<text class="ts" x="110" y="176" text-anchor="middle" font-size="9.5" fill="#2b2a26">self.sum += value</text>
+</svg>
+</figure>
 
 ## 可变参数：类型必须先说清
 
