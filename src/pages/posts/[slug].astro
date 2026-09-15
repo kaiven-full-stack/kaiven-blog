@@ -8,7 +8,7 @@ import ReadingDock from '../../components/ReadingDock.astro';
 import { cnDate } from '../../utils/date';
 import { readingTime } from '../../utils/readingTime';
 import { getAdjacentPosts, getPublishedPosts, getSeriesForPost } from '../../utils/posts';
-import { getRelatedPosts } from '../../utils/graph';
+import { getRelatedPosts } from '../../utils/related';
 import RelatedPosts from '../../components/RelatedPosts.astro';
 
 export async function getStaticPaths() {

@@ -1,9 +1,9 @@
 ---
 /**
- * 文章页底部「相关文章」推荐：数据来自 utils/graph.ts 的 getRelatedPosts()
+ * 文章页底部「相关文章」推荐：数据来自 utils/related.ts 的 getRelatedPosts()
  * （共同知识点 / 文内互链 / 精选关联），没有实质关联时不渲染。
  */
-import type { RelatedPost } from '../utils/graph';
+import type { RelatedPost } from '../utils/related';
 
 interface Props {
   related: RelatedPost[];
