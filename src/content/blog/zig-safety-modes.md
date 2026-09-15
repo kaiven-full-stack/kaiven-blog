@@ -36,6 +36,30 @@ Release    = 不安全
 
 Zig 里没有笼统的 "Release" 模式。ReleaseSafe 开着优化，同时保留运行时检查；ReleaseSmall 关掉检查，图的是产物更小，谈不上「为了速度牺牲安全」。所以安全和优化是两个独立的选择，四种模式只是把它们组合了出来：怎么优化，以及要不要为 safety-checked Illegal Behavior 设置运行时检查。
 
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 306" role="img" aria-label="四种构建模式的二维组合：横轴是运行时安全检查开关，纵轴是优化开关；Debug 无优化有检查，ReleaseSafe 有优化有检查，ReleaseFast 有优化无检查，ReleaseSmall 面向体积无检查" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<line class="axis" x1="80" y1="252" x2="620" y2="252" stroke="#a29d90" stroke-width="1.3"/>
+<line class="axis" x1="80" y1="252" x2="80" y2="36" stroke="#a29d90" stroke-width="1.3"/>
+<text class="ts" x="92" y="276" font-size="10" fill="#6b675e">检查关</text>
+<text class="ts" x="560" y="276" font-size="10" fill="#6b675e">检查开 →</text>
+<text class="ts" x="20" y="48" font-size="10" fill="#6b675e">优化开</text>
+<text class="ts" x="20" y="240" font-size="10" fill="#6b675e">优化关</text>
+<rect class="bx" x="120" y="60" width="200" height="66" rx="6" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="t" x="220" y="84" text-anchor="middle" font-size="11.5" fill="#2b2a26">ReleaseFast</text>
+<text class="ts" x="220" y="104" text-anchor="middle" font-size="9.5" fill="#6b675e">优化开 · 检查关 · 图速度</text>
+<rect class="bx-sick" x="360" y="60" width="200" height="66" rx="6" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.3"/>
+<text class="t" x="460" y="84" text-anchor="middle" font-size="11.5" fill="#b03a2e">ReleaseSafe</text>
+<text class="ts" x="460" y="104" text-anchor="middle" font-size="9.5" fill="#6b675e">优化开 · 检查也开</text>
+<rect class="bx-q" x="120" y="164" width="200" height="66" rx="6" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="t" x="220" y="188" text-anchor="middle" font-size="11.5" fill="#2b2a26">ReleaseSmall</text>
+<text class="ts" x="220" y="208" text-anchor="middle" font-size="9.5" fill="#6b675e">面向体积优化 · 检查关</text>
+<rect class="bx-q" x="360" y="164" width="200" height="66" rx="6" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="t" x="460" y="188" text-anchor="middle" font-size="11.5" fill="#2b2a26">Debug（默认）</text>
+<text class="ts" x="460" y="208" text-anchor="middle" font-size="9.5" fill="#6b675e">优化关 · 检查开 · 编译快</text>
+<text class="ts" x="80" y="298" font-size="10" fill="#6b675e">两个旋钮各自独立：「Release = 不安全」在这张图上找不到对应格子</text>
+</svg>
+</figure>
+
 ## Illegal Behavior 意味着什么
 
 Zig 0.16.0 的语言参考把 Illegal Behavior 分成两类。
@@ -56,6 +80,32 @@ Zig 0.16.0 的语言参考把 Illegal Behavior 分成两类。
 这两类一旦真正发生，语言都不再约束程序后果，区别只在于前者通常有机会在发生前被运行时检查按住。
 
 语言参考里还有一句更关键的话：当 safety checks 被关闭，safety-checked Illegal Behavior 会像 unchecked Illegal Behavior 一样处理。
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 244" role="img" aria-label="Illegal Behavior 的两个类别：safety-checked 一类编译器插得进检查，失败即 panic，例如溢出、越界、除零、读错 union 字段、非法 enum tag；unchecked 一类边界对齐别名事实已不在类型里，无从检查；模式关闭检查时，左类被并入右类处理" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="smA2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-c" d="M0 0 L8 4 L0 8 Z" fill="#b03a2e"/></marker>
+</defs>
+<rect class="bx" x="20" y="24" width="620" height="192" rx="6" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="t" x="330" y="48" text-anchor="middle" font-size="11.5" fill="#2b2a26">Illegal Behavior：一旦发生，语言不再约束后果</text>
+<rect class="bx-q" x="44" y="62" width="280" height="132" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="ts" x="184" y="84" text-anchor="middle" font-size="10.5" fill="#2b2a26">safety-checked</text>
+<text class="ts" x="60" y="106" font-size="9" fill="#6b675e">溢出 · 越界 · 除零 · 解错 null</text>
+<text class="ts" x="60" y="122" font-size="9" fill="#6b675e">读错 union 字段 · 非法 enum tag</text>
+<text class="ts" x="60" y="138" font-size="9" fill="#6b675e">@alignCast 失配 · 抵达 unreachable</text>
+<text class="ts" x="60" y="162" font-size="9" fill="#6b675e">插得进检查：</text>
+<text class="tc" x="60" y="178" font-size="9" fill="#b03a2e">失败当场 panic，钉在发生点</text>
+<rect class="bx-gone" x="344" y="62" width="272" height="132" rx="5" fill="#ece9e2" stroke="#a29d90" stroke-width="1.2" stroke-dasharray="5 3"/>
+<text class="ts" x="480" y="84" text-anchor="middle" font-size="10.5" fill="#6b675e">unchecked</text>
+<text class="ts" x="360" y="106" font-size="9" fill="#6b675e">边界、对齐、别名等事实</text>
+<text class="ts" x="360" y="122" font-size="9" fill="#6b675e">已经不在类型里</text>
+<text class="ts" x="360" y="146" font-size="9" fill="#6b675e">无从设置检查：</text>
+<text class="ts" x="360" y="162" font-size="9" fill="#6b675e">崩溃 / 垃圾值 / 悄悄写坏数据</text>
+<text class="ts" x="360" y="178" font-size="9" fill="#6b675e">/ 整条分支被优化掉</text>
+<line class="flc" x1="250" y1="204" x2="410" y2="204" stroke="#b03a2e" stroke-width="1.4" marker-end="url(#smA2)"/>
+<text class="tc" x="330" y="234" text-anchor="middle" font-size="10" fill="#b03a2e">ReleaseFast / ReleaseSmall 关闭检查：左类并入右类</text>
+</svg>
+</figure>
 
 所以 ReleaseFast 撤掉的只是运行时检查，它并没有顺手把溢出定义成回绕、把越界定义成「尽量读一下」。非法行为一旦发生，程序可能直接崩溃，可能打印一个看似合理的数，也可能什么动静都没有、只是悄悄写坏了别处的数据；甚至整条分支都可能被优化器依据「这里不会发生」删掉。语言在 Illegal Behavior 发生之后不再担保任何结果，具体落到哪一种，属于实现行为。
 
@@ -166,6 +216,38 @@ ret
 
 这是 ReleaseFast 真正的风险：优化器会把源码里的承诺当作推理前提，删除只有违约时才可能出现的分支。也因此，ReleaseFast 下偶然看见 `255 + 1` 打印为 `0`，并不能宣布普通 `+` 拥有回绕语义。那只是这份程序、这个目标、这次优化留下的现象；稍微换一个上下文，溢出的值可能根本不会被计算。
 
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 250" role="img" aria-label="优化器采信前提的对照：普通加号版本 x+1>x 因不溢出承诺被折叠成恒真，机器码只剩 mov al,1 与 ret，x 不再被读取；模运算版本 x +% 1 > x 必须保留 maxInt 回绕为 0 的语义，机器码仍是 cmp 与 setne" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="smA4" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="11" fill="#2b2a26">ordinaryIsGreater：普通 + 承诺不溢出</text>
+<rect class="bx-q" x="20" y="34" width="180" height="48" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="110" y="63" text-anchor="middle" font-size="10.5" fill="#2b2a26">x + 1 &gt; x</text>
+<line class="fl" x1="200" y1="58" x2="226" y2="58" stroke="#6b675e" stroke-width="1.3" marker-end="url(#smA4)"/>
+<rect class="bx-q" x="230" y="34" width="190" height="48" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="325" y="54" text-anchor="middle" font-size="9.5" fill="#2b2a26">优化器推理：</text>
+<text class="ts" x="325" y="70" text-anchor="middle" font-size="9.5" fill="#2b2a26">合法输入下恒为真</text>
+<line class="fl" x1="420" y1="58" x2="446" y2="58" stroke="#6b675e" stroke-width="1.3" marker-end="url(#smA4)"/>
+<rect class="bx-sick" x="450" y="34" width="190" height="48" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.3"/>
+<text class="ts" x="545" y="54" text-anchor="middle" font-size="9.5" fill="#b03a2e">mov al, 1 · ret</text>
+<text class="ts" x="545" y="70" text-anchor="middle" font-size="9" fill="#6b675e">x 是多少已经不重要</text>
+<text class="ts" x="20" y="128" font-size="11" fill="#2b2a26">wrappingIsGreater：+% 明确要求模运算</text>
+<rect class="bx-q" x="20" y="138" width="180" height="48" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="110" y="167" text-anchor="middle" font-size="10.5" fill="#2b2a26">x +% 1 &gt; x</text>
+<line class="fl" x1="200" y1="162" x2="226" y2="162" stroke="#6b675e" stroke-width="1.3" marker-end="url(#smA4)"/>
+<rect class="bx-q" x="230" y="138" width="190" height="48" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="325" y="158" text-anchor="middle" font-size="9.5" fill="#2b2a26">maxInt +% 1 == 0</text>
+<text class="ts" x="325" y="174" text-anchor="middle" font-size="9.5" fill="#2b2a26">是必须保留的语义</text>
+<line class="fl" x1="420" y1="162" x2="446" y2="162" stroke="#6b675e" stroke-width="1.3" marker-end="url(#smA4)"/>
+<rect class="bx" x="450" y="138" width="190" height="48" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="545" y="158" text-anchor="middle" font-size="9.5" fill="#2b2a26">cmp edi, -1</text>
+<text class="ts" x="545" y="174" text-anchor="middle" font-size="9.5" fill="#2b2a26">setne al · ret</text>
+<text class="ts" x="20" y="222" font-size="10" fill="#6b675e">喂进 x = maxInt(u32)：第一只返回 true（合法语义之外），第二只如实返回 false</text>
+<text class="ts" x="20" y="240" font-size="10" fill="#6b675e">差别不在「检查没了」，在优化器拿承诺当了前提</text>
+</svg>
+</figure>
+
 ## ReleaseSmall：为体积关闭检查
 
 ReleaseSmall 面向产物体积优化，默认同样关闭运行时安全检查。
@@ -216,6 +298,30 @@ error: overflow of integer type 'u8' with value '256'
 ```
 
 编译期求值发现的 Illegal Behavior 仍然是编译错误。`@setRuntimeSafety` 控制的是运行时检查，不会给非法语义发放豁免；编译器在 comptime 拥有完整的值信息，能直接判定操作不合法，用不着等程序运行。
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 146" role="img" aria-label="编译期求值没有模式之分：comptime 块里的 u8 溢出在 Debug、ReleaseSafe、ReleaseFast、ReleaseSmall 四种模式下都是同一条编译错误，setRuntimeSafety 也豁免不了" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="smA5" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-q" x="20" y="30" width="200" height="52" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="ts" x="120" y="51" text-anchor="middle" font-size="9.5" fill="#2b2a26">comptime {</text>
+<text class="ts" x="120" y="67" text-anchor="middle" font-size="9.5" fill="#2b2a26">var v: u8 = 255; v += 1; }</text>
+<line class="fl" x1="220" y1="56" x2="256" y2="56" stroke="#6b675e" stroke-width="1.4" marker-end="url(#smA5)"/>
+<rect class="bx-sick" x="260" y="30" width="380" height="52" rx="5" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.3"/>
+<text class="ts" x="450" y="51" text-anchor="middle" font-size="9.5" fill="#b03a2e">error: overflow of integer type 'u8' with value '256'</text>
+<text class="ts" x="450" y="70" text-anchor="middle" font-size="9" fill="#6b675e">编译错误 · 根本走不到运行时</text>
+<rect class="bx-q" x="260" y="106" width="86" height="28" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="303" y="124" text-anchor="middle" font-size="9" fill="#2b2a26">Debug</text>
+<rect class="bx-q" x="356" y="106" width="86" height="28" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="399" y="124" text-anchor="middle" font-size="9" fill="#2b2a26">ReleaseSafe</text>
+<rect class="bx-q" x="452" y="106" width="86" height="28" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="495" y="124" text-anchor="middle" font-size="9" fill="#2b2a26">ReleaseFast</text>
+<rect class="bx-q" x="548" y="106" width="92" height="28" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="594" y="124" text-anchor="middle" font-size="9" fill="#2b2a26">ReleaseSmall</text>
+<text class="ts" x="20" y="124" font-size="9.5" fill="#6b675e">四种模式，同一条错误</text>
+</svg>
+</figure>
 
 写实验探针时尤其要留意这一点：输入若全是编译期常量，你以为在对比四种运行时模式，实际测到的可能只是同一份编译错误。前面那些例子里 `_ = &value` 干的就是反向的事——把值留到运行时。
 
@@ -357,6 +463,33 @@ const value = ptr[index];
 索引若走出实际分配范围，Debug 不一定有足够信息判断。类似地，`@ptrCast` 可以改变指针声称的元素类型；若程序员给出的对齐、位模式或别名事实不成立，有些错误不会在发生点留下可插入的检查。
 
 所以「Debug 能抓住」从来不是内存安全的证明。检查只覆盖语言明确定义为 safety-checked、且编译器仍掌握必要信息的行为。类型越早丢掉边界和对齐信息，检查能做的事就越少；到最后只剩一个裸地址时，再严格的构建模式也无法从数值本身还原它的来历。
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 196" role="img" aria-label="检查能力随类型信息流失的三级阶梯：切片带长度，越界当场 panic；取出 .ptr 变成多项指针后长度留在身后，Debug 也不一定有足够信息；再经 ptrCast 改换声称类型，对齐与别名只剩程序员的口头断言，检查无从插入" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="smA8" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-q" x="20" y="20" width="270" height="44" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="ts" x="36" y="38" font-size="10" fill="#2b2a26">[]T 切片：ptr + len 都在</text>
+<text class="ts" x="36" y="55" font-size="9" fill="#6b675e">slice[10] 越界 → 当场 panic</text>
+<text class="tc" x="310" y="46" font-size="9.5" fill="#b03a2e">查得了</text>
+<line class="fl" x1="155" y1="64" x2="195" y2="82" stroke="#6b675e" stroke-width="1.2" marker-end="url(#smA8)"/>
+<text class="ts" x="205" y="76" font-size="8.5" fill="#6b675e">取 .ptr</text>
+<rect class="bx" x="80" y="86" width="270" height="44" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="96" y="104" font-size="10" fill="#2b2a26">[*]T 多项指针：长度留在身后</text>
+<text class="ts" x="96" y="121" font-size="9" fill="#6b675e">ptr[100] 越界 → Debug 不一定判断得动</text>
+<text class="tc" x="370" y="112" font-size="9.5" fill="#b03a2e">不一定查得了</text>
+<line class="fl" x1="215" y1="130" x2="255" y2="148" stroke="#6b675e" stroke-width="1.2" marker-end="url(#smA8)"/>
+<text class="ts" x="265" y="142" font-size="8.5" fill="#6b675e">@ptrCast</text>
+<rect class="bx-sick" x="140" y="152" width="270" height="44" rx="5" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="ts" x="156" y="170" font-size="10" fill="#b03a2e">改换声称类型：只剩一个地址</text>
+<text class="ts" x="156" y="187" font-size="9" fill="#6b675e">对齐 / 别名 / 位模式全凭断言</text>
+<text class="tc" x="430" y="178" font-size="9.5" fill="#b03a2e">查不了</text>
+<text class="ts" x="450" y="46" font-size="9.5" fill="#6b675e">每下一级台阶，</text>
+<text class="ts" x="450" y="62" font-size="9.5" fill="#6b675e">类型交出一份信息，</text>
+<text class="ts" x="450" y="78" font-size="9.5" fill="#6b675e">检查就少一件事可做</text>
+</svg>
+</figure>
 
 ## panic 不该进业务流程
 
