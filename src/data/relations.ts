@@ -87,6 +87,12 @@ export const concepts: ConceptMeta[] = [
     posts: ['hardware-dram-internals', 'hardware-memory-mountain', 'kafka-log-segments'],
   },
   {
+    id: 'ecc-integrity',
+    label: '纠错与完整性',
+    description: '硬件海明码与软件校验和各管一层损坏',
+    posts: ['hardware-ecc-hamming', 'mysql-innodb-redo-recovery', 'kafka-log-segments'],
+  },
+  {
     id: 'false-sharing',
     label: '伪共享',
     description: '同一行里的无关变量让多核互相拖慢',
