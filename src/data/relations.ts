@@ -505,13 +505,19 @@ export const concepts: ConceptMeta[] = [
     id: 'page-fault',
     label: '缺页异常',
     description: '首次触碰才分配，读落零页写转正',
-    posts: ['kernel-primer', 'kernel-page-tables', 'kernel-copy-on-write'],
+    posts: ['kernel-primer', 'kernel-page-tables', 'kernel-copy-on-write', 'kernel-two-stacks'],
+  },
+  {
+    id: 'stack-growth',
+    label: '栈的生长与守护',
+    description: '进程栈缺页自动扩，线程栈一次发放，守护各有各的修法',
+    posts: ['kernel-two-stacks'],
   },
   {
     id: 'vma',
     label: '虚拟内存区域',
     description: '地址空间按 VMA 记账与合并',
-    posts: ['kernel-vma-malloc'],
+    posts: ['kernel-vma-malloc', 'kernel-two-stacks'],
   },
   // ---- 消息队列系列 ----
   {
@@ -756,4 +762,5 @@ export const relatedLinks: RelatedLink[] = [
   { from: 'kafka-idempotent-transactions', to: 'redis-multi-exec-watch', note: '两种事务：可中止围栏 vs 即执行乐观锁' },
   { from: 'kafka-latency-measurement', to: 'mysql-performance-schema', note: '两个收官篇都先拆产生读数的仪器' },
   { from: 'kafka-latency-measurement', to: 'kernel-page-cache-writeback', note: '读端冷热差落在内核页缓存' },
+  { from: 'kernel-two-stacks', to: 'cpython-frames-eval-loop', note: '递归上限守的就是这条栈' },
 ];
