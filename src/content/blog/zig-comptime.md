@@ -12,6 +12,36 @@ C++ 有预处理宏、模板、`constexpr`；Rust 有 `derive`、`macro_rules!`�
 
 Zig 的答案简洁得有点过分：一套都没有。它只有 `comptime`，一个标注，意思是「这段代码在编译期执行」。宏、模板、反射这三件事，在 Zig 里全是同一个机制的不同侧面。
 
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 236" role="img" aria-label="一个机制三个侧面：comptime 编译期执行居中，向左展开为泛型（类型是普通值，Stack 是接收类型返回类型的函数），向中展开为反射（typeInfo 把类型信息变成编译期数据，field 按名取值），向右展开为代码生成与检查（inline for 展开、compileError 守卫、格式串编译期校验）" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="ctA1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx" x="210" y="16" width="240" height="48" rx="6" fill="#ece9e2" stroke="#6b675e" stroke-width="1.5"/>
+<text class="t" x="330" y="37" text-anchor="middle" font-size="12" fill="#2b2a26">comptime · 编译期执行</text>
+<text class="ts" x="330" y="55" text-anchor="middle" font-size="9" fill="#6b675e">编译器里住着一个 Zig 解释器</text>
+<line class="fl" x1="260" y1="64" x2="128" y2="100" stroke="#6b675e" stroke-width="1.2" marker-end="url(#ctA1)"/>
+<line class="fl" x1="330" y1="64" x2="330" y2="100" stroke="#6b675e" stroke-width="1.2" marker-end="url(#ctA1)"/>
+<line class="fl" x1="400" y1="64" x2="532" y2="100" stroke="#6b675e" stroke-width="1.2" marker-end="url(#ctA1)"/>
+<rect class="bx-q" x="20" y="104" width="200" height="92" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="t" x="120" y="126" text-anchor="middle" font-size="11" fill="#2b2a26">泛型</text>
+<text class="ts" x="120" y="146" text-anchor="middle" font-size="9" fill="#6b675e">type 是普通的值</text>
+<text class="ts" x="120" y="162" text-anchor="middle" font-size="9" fill="#6b675e">fn Stack(comptime T: type) type</text>
+<text class="ts" x="120" y="178" text-anchor="middle" font-size="9" fill="#6b675e">接收类型、返回类型的函数</text>
+<rect class="bx-q" x="230" y="104" width="200" height="92" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="t" x="330" y="126" text-anchor="middle" font-size="11" fill="#2b2a26">反射</text>
+<text class="ts" x="330" y="146" text-anchor="middle" font-size="9" fill="#6b675e">@typeInfo(T)</text>
+<text class="ts" x="330" y="162" text-anchor="middle" font-size="9" fill="#6b675e">类型信息 = 编译期数据</text>
+<text class="ts" x="330" y="178" text-anchor="middle" font-size="9" fill="#6b675e">@field 按名字取值</text>
+<rect class="bx-q" x="440" y="104" width="200" height="92" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="t" x="540" y="126" text-anchor="middle" font-size="11" fill="#2b2a26">代码生成与检查</text>
+<text class="ts" x="540" y="146" text-anchor="middle" font-size="9" fill="#6b675e">inline for 编译期展开</text>
+<text class="ts" x="540" y="162" text-anchor="middle" font-size="9" fill="#6b675e">@compileError 守卫误用</text>
+<text class="ts" x="540" y="178" text-anchor="middle" font-size="9" fill="#6b675e">格式串在编译期校验</text>
+<text class="ts" x="330" y="224" text-anchor="middle" font-size="10" fill="#6b675e">别的语言分三套系统的事，这里是同一个解释器的三种用法</text>
+</svg>
+</figure>
+
 这篇把三个侧面挨个看一遍。文中代码都在 Zig 0.16.0 上编译运行过；语言没到 1.0，版本必须写明。
 
 ## comptime 不是另一门语言
@@ -39,6 +69,27 @@ pub fn main() !void {
 Zig 里只有一个 `factorial`。想让它编译期跑，调用处标 `comptime`；想运行期跑，直接调用。求值时机由调用方定，函数自己不做主张。
 
 这是 comptime 的第一层含义：它算不上一个特性，只是求值时机的标注。
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 196" role="img" aria-label="同一个 factorial 两条调用路：标注 comptime 时在编译期由解释器算出 120，二进制里只剩常量；直接调用时生成普通机器码在运行期执行；函数自己不变，求值时机由调用方决定" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="ctA2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx" x="220" y="16" width="220" height="42" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="330" y="34" text-anchor="middle" font-size="10.5" fill="#2b2a26">fn factorial(n: u32) u32</text>
+<text class="ts" x="330" y="50" text-anchor="middle" font-size="9" fill="#6b675e">只写一份，不做主张</text>
+<line class="fl" x1="270" y1="58" x2="150" y2="92" stroke="#6b675e" stroke-width="1.2" marker-end="url(#ctA2)"/>
+<line class="fl" x1="390" y1="58" x2="510" y2="92" stroke="#6b675e" stroke-width="1.2" marker-end="url(#ctA2)"/>
+<rect class="bx-q" x="30" y="96" width="240" height="42" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="150" y="114" text-anchor="middle" font-size="10" fill="#2b2a26">comptime factorial(5)</text>
+<text class="ts" x="150" y="130" text-anchor="middle" font-size="9" fill="#6b675e">编译期由解释器执行</text>
+<rect class="bx-q" x="390" y="96" width="240" height="42" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="510" y="114" text-anchor="middle" font-size="10" fill="#2b2a26">factorial(n)</text>
+<text class="ts" x="510" y="130" text-anchor="middle" font-size="9" fill="#6b675e">运行期普通机器码</text>
+<text class="tc" x="150" y="166" text-anchor="middle" font-size="10" fill="#b03a2e">f5 = 120：二进制里只剩常量</text>
+<text class="ts" x="510" y="166" text-anchor="middle" font-size="10" fill="#6b675e">n 运行期才知道，照常在运行时算</text>
+</svg>
+</figure>
 
 ## 泛型：类型是普通的值
 
@@ -71,6 +122,27 @@ fn Stack(comptime T: type) type {
 这里没有 trait，没有 concept，没有前置的约束声明。约束写在函数体里：你写了 `a < b`，`T` 就得支持 `<`；不支持，编译错误直接指向那一行。Rust 把约束前置在签名上（`fn min<T: Ord>(...)`），换来签名自解释；Zig 让约束留在用法里，换来少一层概念。两种取向各有道理，但「泛型不需要新概念」这件事，Zig 做到了。
 
 顺带一提，`Stack(T)` 是惰性求值的，只有真正调用 `Stack(u8)` 时函数体才执行。类型可以递归定义，链表节点引用自身也不是问题。
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 158" role="img" aria-label="泛型即普通函数：类型值 u8 作为实参传进 Stack，函数体在编译期惰性执行，返回一个全新的 struct 类型；换一个 T 就再执行一次，得到另一个互不相干的类型" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="ctA3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-q" x="20" y="40" width="160" height="52" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="100" y="61" text-anchor="middle" font-size="10" fill="#2b2a26">类型值：u8</text>
+<text class="ts" x="100" y="79" text-anchor="middle" font-size="9" fill="#6b675e">type 也能当实参传</text>
+<line class="fl" x1="180" y1="66" x2="226" y2="66" stroke="#6b675e" stroke-width="1.3" marker-end="url(#ctA3)"/>
+<rect class="bx" x="230" y="40" width="200" height="52" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="330" y="61" text-anchor="middle" font-size="10" fill="#2b2a26">Stack(comptime T: type)</text>
+<text class="ts" x="330" y="79" text-anchor="middle" font-size="9" fill="#6b675e">普通函数 · 调用才执行</text>
+<line class="fl" x1="430" y1="66" x2="476" y2="66" stroke="#6b675e" stroke-width="1.3" marker-end="url(#ctA3)"/>
+<rect class="bx-q" x="480" y="40" width="160" height="52" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="560" y="61" text-anchor="middle" font-size="10" fill="#2b2a26">返回一个新类型</text>
+<text class="ts" x="560" y="79" text-anchor="middle" font-size="9" fill="#6b675e">Stack(u8) 专属 struct</text>
+<text class="ts" x="20" y="128" font-size="10" fill="#6b675e">换 T 再调用就再执行一次：Stack(u8) 与 Stack(u32) 是两个互不相干的类型</text>
+<text class="ts" x="20" y="148" font-size="9.5" fill="#a29d90">约束不写在签名上：函数体里用了 a &lt; b，T 就得支持 &lt;，不支持错到那一行</text>
+</svg>
+</figure>
 
 ## 反射：类型信息是一份数据
 
@@ -126,6 +198,33 @@ const Article = struct {
 - `@field(value, f.name)` 按名字取值，然后递归调用 `dump` 自己。
 
 整个过程没有字符串拼接，也没有代码生成和宏。序列化、配置解析、结构体比较、深拷贝，这些能力在别的语言里要靠手写、反射框架或派生宏，在这里就是一个普通函数，恰好运行在编译期。
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 196" role="img" aria-label="dump 的反射三步：typeInfo 把类型 T 变成 tagged union 数据；inline for 在字段元数据上编译期循环；field 按名字取出字段值并递归调用 dump 自己，直到标量分支打印为止" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="ctA4" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+<marker id="ctA4c" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-c" d="M0 0 L8 4 L0 8 Z" fill="#b03a2e"/></marker>
+</defs>
+<rect class="bx-q" x="20" y="24" width="240" height="42" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="140" y="42" text-anchor="middle" font-size="10" fill="#2b2a26">@typeInfo(T)</text>
+<text class="ts" x="140" y="58" text-anchor="middle" font-size="9" fill="#6b675e">「类型是什么」变成一份数据</text>
+<line class="fl" x1="260" y1="45" x2="296" y2="45" stroke="#6b675e" stroke-width="1.2" marker-end="url(#ctA4)"/>
+<rect class="bx-q" x="300" y="24" width="300" height="42" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="450" y="42" text-anchor="middle" font-size="10" fill="#2b2a26">结果是 tagged union</text>
+<text class="ts" x="450" y="58" text-anchor="middle" font-size="9" fill="#6b675e">.int / .@"struct" / .pointer … 逐支 switch</text>
+<rect class="bx-q" x="20" y="84" width="240" height="42" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="140" y="102" text-anchor="middle" font-size="10" fill="#2b2a26">inline for (info.fields)</text>
+<text class="ts" x="140" y="118" text-anchor="middle" font-size="9" fill="#6b675e">在字段元数据上编译期循环</text>
+<line class="fl" x1="260" y1="105" x2="296" y2="105" stroke="#6b675e" stroke-width="1.2" marker-end="url(#ctA4)"/>
+<rect class="bx-q" x="300" y="84" width="300" height="42" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="450" y="102" text-anchor="middle" font-size="10" fill="#2b2a26">@field(value, f.name)</text>
+<text class="ts" x="450" y="118" text-anchor="middle" font-size="9" fill="#6b675e">名字是编译期字符串，取值是普通调用</text>
+<path class="flc" d="M 600 105 C 640 105 640 45 604 45" fill="none" stroke="#b03a2e" stroke-width="1.3" marker-end="url(#ctA4c)"/>
+<text class="tc" x="628" y="140" text-anchor="middle" font-size="9.5" fill="#b03a2e">字段值递归 dump</text>
+<rect class="bx" x="20" y="146" width="580" height="38" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="310" y="170" text-anchor="middle" font-size="9.5" fill="#2b2a26">Article → { title = 文本 "听雨", views = 整型 1024, draft = 布尔 false }</text>
+</svg>
+</figure>
 
 对照一下：Rust 没有运行时反射，`serde` 的 `#[derive(Serialize)]` 本质是在编译期读 token 流、生成新代码，代价是错误信息要从生成的代码里往回追。C++ 的静态反射喊了很多年，至今仍在路上。Zig 这边没有单独的「反射系统」，反射就是 `@typeInfo` 一个函数。
 
