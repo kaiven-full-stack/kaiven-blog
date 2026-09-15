@@ -132,6 +132,12 @@ export const concepts: ConceptMeta[] = [
     ],
   },
   {
+    id: 'numa-topology',
+    label: 'NUMA 与拓扑',
+    description: '核与核、核与数据的远近关系决定访问价钱',
+    posts: ['hardware-numa', 'hardware-cache-line', 'hardware-hyperthreading'],
+  },
+  {
     id: 'page-table',
     label: '页表',
     description: '虚拟地址到物理页的翻译地图',
