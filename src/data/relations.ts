@@ -505,7 +505,7 @@ export const concepts: ConceptMeta[] = [
     id: 'page-fault',
     label: '缺页异常',
     description: '首次触碰才分配，读落零页写转正',
-    posts: ['kernel-primer', 'kernel-page-tables', 'kernel-copy-on-write', 'kernel-two-stacks'],
+    posts: ['kernel-primer', 'kernel-page-tables', 'kernel-copy-on-write', 'kernel-two-stacks', 'kernel-elf-execve'],
   },
   {
     id: 'stack-growth',
@@ -522,8 +522,14 @@ export const concepts: ConceptMeta[] = [
   {
     id: 'task-model',
     label: '任务模型',
-    description: '内核只有 task_struct：进程与线程只差 clone 报关单',
-    posts: ['kernel-task-birth', 'kernel-two-stacks'],
+    description: '内核只有 task_struct：出生只差 clone 报关单，exec 换装不换人',
+    posts: ['kernel-task-birth', 'kernel-elf-execve', 'kernel-two-stacks'],
+  },
+  {
+    id: 'elf-loading',
+    label: 'ELF 加载',
+    description: 'Segment 视角按需映射，RELRO 事后补刀，maps 是验货单',
+    posts: ['kernel-elf-execve'],
   },
   // ---- 消息队列系列 ----
   {
