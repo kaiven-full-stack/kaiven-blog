@@ -72,6 +72,47 @@ d: offset=9
 
 声明在第三位的 `c` 被放到了 `b` 前面。两个 `u32` 连在一起，两个 `u8` 随后落座，尾部再留两字节 padding，总大小从想象中的 16 收到了 12。
 
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 224" role="img" aria-label="Record 布局对照：按声明顺序摆放需要 16 字节，a 占 0 到 3，b 占 4 后面补三字节，c 占 8 到 11，d 占 12 后面再补三字节；Zig 0.16.0 实际把两个 u32 排在一起，a 占 0 到 3，c 占 4 到 7，b 占 8，d 占 9，尾部补两字节，共 12 字节" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="24" font-size="11" fill="#6b675e">想象中：按声明顺序（16 字节）</text>
+<rect class="bx-q" x="60" y="34" width="136" height="34" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="128" y="56" text-anchor="middle" font-size="10" fill="#2b2a26">a · u32</text>
+<rect class="bx-q" x="196" y="34" width="34" height="34" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="213" y="56" text-anchor="middle" font-size="10" fill="#2b2a26">b</text>
+<rect class="bx-gone" x="230" y="34" width="102" height="34" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="4 3"/>
+<text class="ts" x="281" y="56" text-anchor="middle" font-size="9" fill="#a29d90">padding ×3</text>
+<rect class="bx-q" x="332" y="34" width="136" height="34" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="400" y="56" text-anchor="middle" font-size="10" fill="#2b2a26">c · u32</text>
+<rect class="bx-q" x="468" y="34" width="34" height="34" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="485" y="56" text-anchor="middle" font-size="10" fill="#2b2a26">d</text>
+<rect class="bx-gone" x="502" y="34" width="102" height="34" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="4 3"/>
+<text class="ts" x="553" y="56" text-anchor="middle" font-size="9" fill="#a29d90">padding ×3</text>
+<text class="ts" x="60" y="86" font-size="9" fill="#a29d90">0</text>
+<text class="ts" x="196" y="86" font-size="9" fill="#a29d90">4</text>
+<text class="ts" x="332" y="86" font-size="9" fill="#a29d90">8</text>
+<text class="ts" x="468" y="86" font-size="9" fill="#a29d90">12</text>
+<text class="ts" x="592" y="86" font-size="9" fill="#a29d90">16</text>
+<text class="ts" x="20" y="124" font-size="11" fill="#6b675e">实际：Zig 0.16.0 自己安排（12 字节）</text>
+<rect class="bx-q" x="60" y="134" width="136" height="34" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="128" y="156" text-anchor="middle" font-size="10" fill="#2b2a26">a · u32</text>
+<rect class="bx" x="196" y="134" width="136" height="34" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="264" y="156" text-anchor="middle" font-size="10" fill="#2b2a26">c · u32</text>
+<rect class="bx-q" x="332" y="134" width="34" height="34" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="349" y="156" text-anchor="middle" font-size="10" fill="#2b2a26">b</text>
+<rect class="bx-q" x="366" y="134" width="34" height="34" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="383" y="156" text-anchor="middle" font-size="10" fill="#2b2a26">d</text>
+<rect class="bx-gone" x="400" y="134" width="68" height="34" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="4 3"/>
+<text class="ts" x="434" y="156" text-anchor="middle" font-size="9" fill="#a29d90">pad ×2</text>
+<text class="ts" x="60" y="186" font-size="9" fill="#a29d90">0</text>
+<text class="ts" x="196" y="186" font-size="9" fill="#a29d90">4</text>
+<text class="ts" x="332" y="186" font-size="9" fill="#a29d90">8</text>
+<text class="ts" x="400" y="186" font-size="9" fill="#a29d90">10</text>
+<text class="ts" x="458" y="186" font-size="9" fill="#a29d90">12</text>
+<text class="tc" x="492" y="156" font-size="10.5" fill="#b03a2e">同一份声明，省出 4 字节</text>
+<text class="ts" x="60" y="214" font-size="9.5" fill="#6b675e">重排是本次构建的事实：普通 struct 不承诺字段顺序，这份布局不能写进磁盘格式</text>
+</svg>
+</figure>
+
 这不能当成「Zig 总会按大小排序」来依赖。语言参考的原话更直接：
 
 > Zig gives no guarantees about the order of fields and the size of the struct, but the fields are guaranteed to be ABI-aligned.
@@ -184,6 +225,36 @@ GCC 在同一台机器上打印：
 
 大小、对齐、五个偏移逐项一致。字段不再被 Zig 自行重排，声明顺序就是 C 看见的顺序；该留的 padding 也一字节不少。
 
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 168" role="img" aria-label="extern struct Record 的 32 字节图：a 是 u8 占偏移 0，1 到 7 是 padding，b 是 u64 占偏移 8 到 15，c 是 u8 占偏移 16，17 到 19 是 padding，d 是 u32 占偏移 20 到 23，e 是 u16 占偏移 24 到 25，26 到 31 是尾部 padding；与 GCC 的 sizeof 和 offsetof 完全一致" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="22" font-size="11" fill="#6b675e">extern struct Record · size = 32 · align = 8（1 格 = 1 字节）</text>
+<rect class="bx-q" x="60" y="34" width="17" height="40" rx="1" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="68" y="24" text-anchor="middle" font-size="9" fill="#2b2a26">a</text>
+<rect class="bx-gone" x="77" y="34" width="119" height="40" rx="1" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="4 3"/>
+<text class="ts" x="136" y="58" text-anchor="middle" font-size="9" fill="#a29d90">padding ×7</text>
+<rect class="bx" x="196" y="34" width="136" height="40" rx="1" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="264" y="58" text-anchor="middle" font-size="10" fill="#2b2a26">b · u64</text>
+<rect class="bx-q" x="332" y="34" width="17" height="40" rx="1" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="340" y="24" text-anchor="middle" font-size="9" fill="#2b2a26">c</text>
+<rect class="bx-gone" x="349" y="34" width="51" height="40" rx="1" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="4 3"/>
+<text class="ts" x="374" y="58" text-anchor="middle" font-size="8.5" fill="#a29d90">pad ×3</text>
+<rect class="bx-q" x="400" y="34" width="68" height="40" rx="1" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="434" y="58" text-anchor="middle" font-size="10" fill="#2b2a26">d · u32</text>
+<rect class="bx-q" x="468" y="34" width="34" height="40" rx="1" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="485" y="90" text-anchor="middle" font-size="9" fill="#2b2a26">e</text>
+<rect class="bx-gone" x="502" y="34" width="102" height="40" rx="1" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="4 3"/>
+<text class="ts" x="553" y="58" text-anchor="middle" font-size="9" fill="#a29d90">padding ×6</text>
+<line class="axis" x1="60" y1="102" x2="604" y2="102" stroke="#a29d90" stroke-width="1"/>
+<text class="ts" x="60" y="118" text-anchor="middle" font-size="9" fill="#6b675e">0</text>
+<text class="ts" x="196" y="118" text-anchor="middle" font-size="9" fill="#6b675e">8</text>
+<text class="ts" x="332" y="118" text-anchor="middle" font-size="9" fill="#6b675e">16</text>
+<text class="ts" x="400" y="118" text-anchor="middle" font-size="9" fill="#6b675e">20</text>
+<text class="ts" x="468" y="118" text-anchor="middle" font-size="9" fill="#6b675e">24</text>
+<text class="ts" x="604" y="118" text-anchor="middle" font-size="9" fill="#6b675e">32</text>
+<text class="ts" x="60" y="148" font-size="9.5" fill="#6b675e">GCC 打印 32 8 0 8 16 20 24：两侧逐字节相同 · 换 ABI 数值可能再变</text>
+</svg>
+</figure>
+
 所以 `extern` 不是「压紧」，更不是「取消 padding」，它的意思是遵从当前目标的 C ABI——换一个 ABI，具体数值仍可能变化。若你要和 C 函数、系统调用或外部库交换结构体，它正是该用的类型；若你要定义一个跨平台文件格式，`extern struct` 仍不是天然答案，因为 C ABI 从未许诺所有平台长得一样。
 
 它对字段类型也更挑剔。普通 `struct`、切片、非指针 optional、error union 等没有稳定 C 内存表示的类型，不能随意塞进去：
@@ -213,6 +284,49 @@ note: slices have no guaranteed in-memory representation
 ```
 
 `11`、八个 `22`、`33`、四个 `44`、两个 `55` 都如约而至；夹在它们之间的字节却带着栈上的旧痕。这些位置属于结构体大小，却不属于任何字段，Zig 没有答应替你初始化。
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 156" role="img" aria-label="32 字节内存转储着色图：字段字节 11、八个 22、33、四个 44、两个 55 按偏移落座；其余 14 个字节是 padding，内容是栈上旧痕，未初始化且不可信赖" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="20" font-size="10.5" fill="#6b675e">偏移 0..15</text>
+<rect class="bx-q" x="20" y="28" width="36" height="28" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/><text class="ts" x="38" y="46" text-anchor="middle" font-size="9" fill="#2b2a26">11</text>
+<rect class="bx-sick" x="58" y="28" width="36" height="28" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/><text class="ts" x="76" y="46" text-anchor="middle" font-size="9" fill="#b03a2e">c8</text>
+<rect class="bx-sick" x="96" y="28" width="36" height="28" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/><text class="ts" x="114" y="46" text-anchor="middle" font-size="9" fill="#b03a2e">8a</text>
+<rect class="bx-sick" x="134" y="28" width="36" height="28" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/><text class="ts" x="152" y="46" text-anchor="middle" font-size="9" fill="#b03a2e">1a</text>
+<rect class="bx-sick" x="172" y="28" width="36" height="28" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/><text class="ts" x="190" y="46" text-anchor="middle" font-size="9" fill="#b03a2e">fe</text>
+<rect class="bx-sick" x="210" y="28" width="36" height="28" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/><text class="ts" x="228" y="46" text-anchor="middle" font-size="9" fill="#b03a2e">7f</text>
+<rect class="bx-sick" x="248" y="28" width="36" height="28" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/><text class="ts" x="266" y="46" text-anchor="middle" font-size="9" fill="#b03a2e">00</text>
+<rect class="bx-sick" x="286" y="28" width="36" height="28" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/><text class="ts" x="304" y="46" text-anchor="middle" font-size="9" fill="#b03a2e">00</text>
+<rect class="bx-q" x="324" y="28" width="36" height="28" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/><text class="ts" x="342" y="46" text-anchor="middle" font-size="9" fill="#2b2a26">22</text>
+<rect class="bx-q" x="362" y="28" width="36" height="28" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/><text class="ts" x="380" y="46" text-anchor="middle" font-size="9" fill="#2b2a26">22</text>
+<rect class="bx-q" x="400" y="28" width="36" height="28" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/><text class="ts" x="418" y="46" text-anchor="middle" font-size="9" fill="#2b2a26">22</text>
+<rect class="bx-q" x="438" y="28" width="36" height="28" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/><text class="ts" x="456" y="46" text-anchor="middle" font-size="9" fill="#2b2a26">22</text>
+<rect class="bx-q" x="476" y="28" width="36" height="28" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/><text class="ts" x="494" y="46" text-anchor="middle" font-size="9" fill="#2b2a26">22</text>
+<rect class="bx-q" x="514" y="28" width="36" height="28" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/><text class="ts" x="532" y="46" text-anchor="middle" font-size="9" fill="#2b2a26">22</text>
+<rect class="bx-q" x="552" y="28" width="36" height="28" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/><text class="ts" x="570" y="46" text-anchor="middle" font-size="9" fill="#2b2a26">22</text>
+<rect class="bx-q" x="590" y="28" width="36" height="28" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/><text class="ts" x="608" y="46" text-anchor="middle" font-size="9" fill="#2b2a26">22</text>
+<text class="ts" x="20" y="76" font-size="10.5" fill="#6b675e">偏移 16..31</text>
+<rect class="bx-q" x="20" y="84" width="36" height="28" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/><text class="ts" x="38" y="102" text-anchor="middle" font-size="9" fill="#2b2a26">33</text>
+<rect class="bx-sick" x="58" y="84" width="36" height="28" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/><text class="ts" x="76" y="102" text-anchor="middle" font-size="9" fill="#b03a2e">c8</text>
+<rect class="bx-sick" x="96" y="84" width="36" height="28" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/><text class="ts" x="114" y="102" text-anchor="middle" font-size="9" fill="#b03a2e">8a</text>
+<rect class="bx-sick" x="134" y="84" width="36" height="28" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/><text class="ts" x="152" y="102" text-anchor="middle" font-size="9" fill="#b03a2e">1a</text>
+<rect class="bx-q" x="172" y="84" width="36" height="28" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/><text class="ts" x="190" y="102" text-anchor="middle" font-size="9" fill="#2b2a26">44</text>
+<rect class="bx-q" x="210" y="84" width="36" height="28" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/><text class="ts" x="228" y="102" text-anchor="middle" font-size="9" fill="#2b2a26">44</text>
+<rect class="bx-q" x="248" y="84" width="36" height="28" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/><text class="ts" x="266" y="102" text-anchor="middle" font-size="9" fill="#2b2a26">44</text>
+<rect class="bx-q" x="286" y="84" width="36" height="28" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/><text class="ts" x="304" y="102" text-anchor="middle" font-size="9" fill="#2b2a26">44</text>
+<rect class="bx-q" x="324" y="84" width="36" height="28" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/><text class="ts" x="342" y="102" text-anchor="middle" font-size="9" fill="#2b2a26">55</text>
+<rect class="bx-q" x="362" y="84" width="36" height="28" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/><text class="ts" x="380" y="102" text-anchor="middle" font-size="9" fill="#2b2a26">55</text>
+<rect class="bx-sick" x="400" y="84" width="36" height="28" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/><text class="ts" x="418" y="102" text-anchor="middle" font-size="9" fill="#b03a2e">1d</text>
+<rect class="bx-sick" x="438" y="84" width="36" height="28" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/><text class="ts" x="456" y="102" text-anchor="middle" font-size="9" fill="#b03a2e">01</text>
+<rect class="bx-sick" x="476" y="84" width="36" height="28" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/><text class="ts" x="494" y="102" text-anchor="middle" font-size="9" fill="#b03a2e">00</text>
+<rect class="bx-sick" x="514" y="84" width="36" height="28" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/><text class="ts" x="532" y="102" text-anchor="middle" font-size="9" fill="#b03a2e">00</text>
+<rect class="bx-sick" x="552" y="84" width="36" height="28" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/><text class="ts" x="570" y="102" text-anchor="middle" font-size="9" fill="#b03a2e">00</text>
+<rect class="bx-sick" x="590" y="84" width="36" height="28" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/><text class="ts" x="608" y="102" text-anchor="middle" font-size="9" fill="#b03a2e">00</text>
+<rect class="bx-q" x="20" y="128" width="16" height="12" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="44" y="138" font-size="9.5" fill="#6b675e">字段值：a、b、c、d、e 如约落座</text>
+<rect class="bx-sick" x="270" y="128" width="16" height="12" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1"/>
+<text class="ts" x="294" y="138" font-size="9.5" fill="#6b675e">padding：14 个字节是栈上旧痕，memcmp 与序列化都不可信</text>
+</svg>
+</figure>
 
 因此，不能把含 padding 的结构体拿来做朴素的逐字节相等判断，也不能因为字段逐个相等，就断定 `memcmp` 一定返回零。更不能把整块对象原样写进文件或网络：除了端序与 ABI 问题，你还可能把未定义的 padding 一并送出去，既不稳定，也可能泄露旧内存。
 
@@ -258,6 +372,41 @@ std.debug.print("0x{x}\n", .{raw});
 
 低三位是 `101`，高五位是 `10011`，合起来正是 `10011101`。这个排法不是编译器的巧合，是 packed struct 的布局保证。
 
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 178" role="img" aria-label="Pair 的位布局：u8 的 bit0 到 bit2 是 low 字段值 101，bit3 到 bit7 是 high 字段值 10011，字段从最低有效位向最高有效位排开，整字节读出 0x9d" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="22" font-size="11" fill="#6b675e">packed struct(u8) 的八个位 · 字段从最低有效位排起</text>
+<rect class="bx-q" x="60" y="34" width="66" height="42" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="t" x="93" y="61" text-anchor="middle" font-size="13" fill="#2b2a26">1</text>
+<rect class="bx-q" x="126" y="34" width="66" height="42" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="t" x="159" y="61" text-anchor="middle" font-size="13" fill="#2b2a26">0</text>
+<rect class="bx-q" x="192" y="34" width="66" height="42" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="t" x="225" y="61" text-anchor="middle" font-size="13" fill="#2b2a26">1</text>
+<rect class="bx" x="258" y="34" width="66" height="42" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="t" x="291" y="61" text-anchor="middle" font-size="13" fill="#2b2a26">1</text>
+<rect class="bx" x="324" y="34" width="66" height="42" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="t" x="357" y="61" text-anchor="middle" font-size="13" fill="#2b2a26">1</text>
+<rect class="bx" x="390" y="34" width="66" height="42" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="t" x="423" y="61" text-anchor="middle" font-size="13" fill="#2b2a26">0</text>
+<rect class="bx" x="456" y="34" width="66" height="42" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="t" x="489" y="61" text-anchor="middle" font-size="13" fill="#2b2a26">0</text>
+<rect class="bx" x="522" y="34" width="66" height="42" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="t" x="555" y="61" text-anchor="middle" font-size="13" fill="#2b2a26">1</text>
+<text class="ts" x="93" y="94" text-anchor="middle" font-size="9" fill="#6b675e">bit 0</text>
+<text class="ts" x="159" y="94" text-anchor="middle" font-size="9" fill="#6b675e">1</text>
+<text class="ts" x="225" y="94" text-anchor="middle" font-size="9" fill="#6b675e">2</text>
+<text class="ts" x="291" y="94" text-anchor="middle" font-size="9" fill="#6b675e">3</text>
+<text class="ts" x="357" y="94" text-anchor="middle" font-size="9" fill="#6b675e">4</text>
+<text class="ts" x="423" y="94" text-anchor="middle" font-size="9" fill="#6b675e">5</text>
+<text class="ts" x="489" y="94" text-anchor="middle" font-size="9" fill="#6b675e">6</text>
+<text class="ts" x="555" y="94" text-anchor="middle" font-size="9" fill="#6b675e">bit 7</text>
+<line class="axis" x1="60" y1="106" x2="258" y2="106" stroke="#a29d90" stroke-width="1.2"/>
+<text class="ts" x="159" y="124" text-anchor="middle" font-size="10" fill="#2b2a26">low: u3 = 0b101</text>
+<line class="axis" x1="258" y1="106" x2="588" y2="106" stroke="#a29d90" stroke-width="1.2"/>
+<text class="ts" x="423" y="124" text-anchor="middle" font-size="10" fill="#2b2a26">high: u5 = 0b10011</text>
+<text class="tc" x="60" y="156" font-size="10.5" fill="#b03a2e">@bitCast(pair) 整字节读出：0b10011101 = 0x9d</text>
+</svg>
+</figure>
+
 不写 backing integer 也可以，Zig 会按字段总位数推断一个无符号整数；显式写出来的好处是把总宽度也纳入编译检查。对协议头、位图和硬件寄存器，每一位归谁，落笔之前便已定下。
 
 ## `@bitOffsetOf` 与位域指针
@@ -284,13 +433,29 @@ comptime {
 
 这五个字段刚好占满 64 位：
 
-```text
-version   bits  0..2
-kind      bits  3..7
-length    bits  8..23
-sequence  bits 24..55
-flags     bits 56..63
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 158" role="img" aria-label="Header 的 64 位按宽度比例切分：version 占 bit 0 到 2，kind 占 bit 3 到 7，length 占 bit 8 到 23，sequence 占 bit 24 到 55，flags 占 bit 56 到 63，五个字段无 padding 占满 backing integer" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="22" font-size="11" fill="#6b675e">packed struct(u64) · 宽度按位数比例</text>
+<rect class="bx-q" x="60" y="56" width="26" height="44" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<rect class="bx-q" x="86" y="56" width="44" height="44" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<rect class="bx" x="130" y="56" width="140" height="44" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="200" y="82" text-anchor="middle" font-size="10" fill="#2b2a26">length · 16 位</text>
+<rect class="bx" x="270" y="56" width="280" height="44" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="410" y="82" text-anchor="middle" font-size="10" fill="#2b2a26">sequence · 32 位</text>
+<rect class="bx-q" x="550" y="56" width="70" height="44" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="585" y="82" text-anchor="middle" font-size="9.5" fill="#2b2a26">flags · 8</text>
+<text class="ts" x="73" y="44" text-anchor="middle" font-size="9" fill="#2b2a26">version·3</text>
+<text class="ts" x="108" y="122" text-anchor="middle" font-size="9" fill="#2b2a26">kind·5</text>
+<line class="axis" x1="60" y1="112" x2="620" y2="112" stroke="#a29d90" stroke-width="1"/>
+<text class="ts" x="60" y="130" text-anchor="middle" font-size="9" fill="#6b675e">0</text>
+<text class="ts" x="86" y="130" text-anchor="middle" font-size="9" fill="#6b675e">3</text>
+<text class="ts" x="130" y="130" text-anchor="middle" font-size="9" fill="#6b675e">8</text>
+<text class="ts" x="270" y="130" text-anchor="middle" font-size="9" fill="#6b675e">24</text>
+<text class="ts" x="550" y="130" text-anchor="middle" font-size="9" fill="#6b675e">56</text>
+<text class="ts" x="620" y="130" text-anchor="middle" font-size="9" fill="#6b675e">64</text>
+<text class="ts" x="60" y="150" font-size="9.5" fill="#6b675e">@bitOffsetOf 逐字段核对的就是这些起点：3 + 5 + 16 + 32 + 8 = 64，一位不剩</text>
+</svg>
+</figure>
 
 `@offsetOf` 仍可用于 packed struct，但对非字节对齐字段，它只能告诉你所在的 host 字节；要问精确的第几位，应使用 `@bitOffsetOf`。
 
@@ -373,6 +538,39 @@ const h: Header = .{
 第一层是位序。packed struct 的第一个字段从 backing integer 的最低有效位开始；协议却把 version 放在第一个字节的最高三位。第二层是字节序。`length` 与 `sequence` 在内存中的多字节表示服从本机端序，协议要求的是 big-endian。
 
 把整个 `u64` 做一次 `@byteSwap` 也救不回来。byte swap 只会颠倒八个字节，不能把每个字节内部的字段从低位搬到高位。位序与字节序是两套独立的坐标，不能靠一次翻面混为一谈。
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 182" role="img" aria-label="协议期望的八字节 20 04 00 11 22 33 44 ff 与在 little-endian 机器上直接 bitCast 发出的 01 00 04 44 33 22 11 ff 逐字节对照：前七个字节全部不同，只有最后的 flags 一致" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="22" font-size="11" fill="#6b675e">同一组字段值，两种字节序列</text>
+<text class="ts" x="118" y="48" text-anchor="middle" font-size="8.5" fill="#a29d90">byte0</text>
+<text class="ts" x="178" y="48" text-anchor="middle" font-size="8.5" fill="#a29d90">1</text>
+<text class="ts" x="238" y="48" text-anchor="middle" font-size="8.5" fill="#a29d90">2</text>
+<text class="ts" x="298" y="48" text-anchor="middle" font-size="8.5" fill="#a29d90">3</text>
+<text class="ts" x="358" y="48" text-anchor="middle" font-size="8.5" fill="#a29d90">4</text>
+<text class="ts" x="418" y="48" text-anchor="middle" font-size="8.5" fill="#a29d90">5</text>
+<text class="ts" x="478" y="48" text-anchor="middle" font-size="8.5" fill="#a29d90">6</text>
+<text class="ts" x="538" y="48" text-anchor="middle" font-size="8.5" fill="#a29d90">7</text>
+<text class="ts" x="20" y="74" font-size="9.5" fill="#2b2a26">协议期望</text>
+<rect class="bx-q" x="90" y="56" width="56" height="30" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/><text class="ts" x="118" y="76" text-anchor="middle" font-size="10" fill="#2b2a26">20</text>
+<rect class="bx-q" x="150" y="56" width="56" height="30" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/><text class="ts" x="178" y="76" text-anchor="middle" font-size="10" fill="#2b2a26">04</text>
+<rect class="bx-q" x="210" y="56" width="56" height="30" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/><text class="ts" x="238" y="76" text-anchor="middle" font-size="10" fill="#2b2a26">00</text>
+<rect class="bx-q" x="270" y="56" width="56" height="30" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/><text class="ts" x="298" y="76" text-anchor="middle" font-size="10" fill="#2b2a26">11</text>
+<rect class="bx-q" x="330" y="56" width="56" height="30" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/><text class="ts" x="358" y="76" text-anchor="middle" font-size="10" fill="#2b2a26">22</text>
+<rect class="bx-q" x="390" y="56" width="56" height="30" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/><text class="ts" x="418" y="76" text-anchor="middle" font-size="10" fill="#2b2a26">33</text>
+<rect class="bx-q" x="450" y="56" width="56" height="30" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/><text class="ts" x="478" y="76" text-anchor="middle" font-size="10" fill="#2b2a26">44</text>
+<rect class="bx-q" x="510" y="56" width="56" height="30" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/><text class="ts" x="538" y="76" text-anchor="middle" font-size="10" fill="#2b2a26">ff</text>
+<text class="ts" x="14" y="126" font-size="9" fill="#2b2a26">@bitCast 直发</text>
+<rect class="bx-sick" x="90" y="108" width="56" height="30" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.1"/><text class="ts" x="118" y="128" text-anchor="middle" font-size="10" fill="#b03a2e">01</text>
+<rect class="bx-sick" x="150" y="108" width="56" height="30" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.1"/><text class="ts" x="178" y="128" text-anchor="middle" font-size="10" fill="#b03a2e">00</text>
+<rect class="bx-sick" x="210" y="108" width="56" height="30" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.1"/><text class="ts" x="238" y="128" text-anchor="middle" font-size="10" fill="#b03a2e">04</text>
+<rect class="bx-sick" x="270" y="108" width="56" height="30" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.1"/><text class="ts" x="298" y="128" text-anchor="middle" font-size="10" fill="#b03a2e">44</text>
+<rect class="bx-sick" x="330" y="108" width="56" height="30" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.1"/><text class="ts" x="358" y="128" text-anchor="middle" font-size="10" fill="#b03a2e">33</text>
+<rect class="bx-sick" x="390" y="108" width="56" height="30" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.1"/><text class="ts" x="418" y="128" text-anchor="middle" font-size="10" fill="#b03a2e">22</text>
+<rect class="bx-sick" x="450" y="108" width="56" height="30" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.1"/><text class="ts" x="478" y="128" text-anchor="middle" font-size="10" fill="#b03a2e">11</text>
+<rect class="bx-q" x="510" y="108" width="56" height="30" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/><text class="ts" x="538" y="128" text-anchor="middle" font-size="10" fill="#2b2a26">ff</text>
+<text class="tc" x="90" y="164" font-size="10.5" fill="#b03a2e">八个字节错了七个：byte0 错位序，多字节字段错端序；只有单字节的 flags 幸存</text>
+</svg>
+</figure>
 
 `packed` 管的是字段如何切分 backing integer；wire format 管的是每一位、每一字节怎样排列在传输序列里。两者可能恰好一致，却绝不是同义词。
 
