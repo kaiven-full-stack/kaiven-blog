@@ -47,17 +47,32 @@ CPython 3.14.7 输出：
 
 所以“Future 完成以后协程继续执行”中间还有几层：
 
-```text
-Future 状态变为 finished
-        ↓
-把 Task 的唤醒回调排入 ready queue
-        ↓
-事件循环取出回调
-        ↓
-Task 再次推进 coroutine
-        ↓
-原来的 coroutine frame 从 await 处恢复
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 288" role="img" aria-label="从 Future 完成到协程恢复的五层：Future 状态变为 finished；Task 的唤醒回调被排入 ready queue；事件循环取出回调；Task 再次推进 coroutine；原来的 coroutine frame 从 await 处恢复" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="aioA1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-q" x="140" y="20" width="380" height="36" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="330" y="43" text-anchor="middle" font-size="10.5" fill="#2b2a26">Future 状态变为 finished</text>
+<text class="ts" x="536" y="43" font-size="9.5" fill="#6b675e">① 改状态</text>
+<line class="fl" x1="330" y1="56" x2="330" y2="70" stroke="#6b675e" stroke-width="1.3" marker-end="url(#aioA1)"/>
+<rect class="bx-q" x="140" y="74" width="380" height="36" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="330" y="97" text-anchor="middle" font-size="10.5" fill="#2b2a26">把 Task 的唤醒回调排入 ready queue</text>
+<text class="ts" x="536" y="97" font-size="9.5" fill="#6b675e">② 只排队</text>
+<line class="fl" x1="330" y1="110" x2="330" y2="124" stroke="#6b675e" stroke-width="1.3" marker-end="url(#aioA1)"/>
+<rect class="bx-q" x="140" y="128" width="380" height="36" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="330" y="151" text-anchor="middle" font-size="10.5" fill="#2b2a26">事件循环取出回调</text>
+<text class="ts" x="536" y="151" font-size="9.5" fill="#6b675e">③ 轮到它</text>
+<line class="fl" x1="330" y1="164" x2="330" y2="178" stroke="#6b675e" stroke-width="1.3" marker-end="url(#aioA1)"/>
+<rect class="bx-q" x="140" y="182" width="380" height="36" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="330" y="205" text-anchor="middle" font-size="10.5" fill="#2b2a26">Task 再次推进 coroutine</text>
+<text class="ts" x="536" y="205" font-size="9.5" fill="#6b675e">④ 推一步</text>
+<line class="fl" x1="330" y1="218" x2="330" y2="232" stroke="#6b675e" stroke-width="1.3" marker-end="url(#aioA1)"/>
+<rect class="bx" x="140" y="236" width="380" height="36" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="330" y="259" text-anchor="middle" font-size="10.5" fill="#2b2a26">原来的 coroutine frame 从 await 处恢复</text>
+<text class="ts" x="536" y="259" font-size="9.5" fill="#6b675e">⑤ 醒在原处</text>
+</svg>
+</figure>
 
 上一篇停在 CPython 的执行层：`SEND`、`YIELD_VALUE` 与内嵌 frame 解释了 coroutine 怎样暂停、怎样恢复。这一篇进入 `asyncio` 调度层，回答另一半问题：谁决定何时再去恢复它。
 
@@ -87,12 +102,29 @@ coroutine 回答的是：
 
 `asyncio.Future` 是一只状态容器。主状态可以概括为：
 
-```text
-PENDING
-   ├── set_result(value)    → FINISHED，保存结果
-   ├── set_exception(exc)   → FINISHED，保存异常
-   └── cancel()             → CANCELLED
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 196" role="img" aria-label="Future 状态机：PENDING 经 set_result 保存结果或 set_exception 保存异常进入 FINISHED，经 cancel 进入 CANCELLED；状态单向，进入终态不再回退" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="aioA2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx" x="40" y="72" width="150" height="52" rx="6" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="t" x="115" y="94" text-anchor="middle" font-size="11.5" fill="#2b2a26">PENDING</text>
+<text class="ts" x="115" y="112" text-anchor="middle" font-size="9" fill="#6b675e">结果尚未产生</text>
+<line class="fl" x1="190" y1="86" x2="416" y2="56" stroke="#6b675e" stroke-width="1.3" marker-end="url(#aioA2)"/>
+<text class="ts" x="250" y="62" font-size="9.5" fill="#6b675e">set_result(value)</text>
+<line class="fl" x1="190" y1="104" x2="416" y2="86" stroke="#6b675e" stroke-width="1.3" marker-end="url(#aioA2)"/>
+<text class="ts" x="250" y="104" font-size="9.5" fill="#6b675e">set_exception(exc)</text>
+<rect class="bx-q" x="420" y="36" width="190" height="64" rx="6" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="t" x="515" y="60" text-anchor="middle" font-size="11.5" fill="#2b2a26">FINISHED</text>
+<text class="ts" x="515" y="82" text-anchor="middle" font-size="9" fill="#6b675e">保存结果或异常</text>
+<line class="fl" x1="190" y1="120" x2="416" y2="148" stroke="#6b675e" stroke-width="1.3" marker-end="url(#aioA2)"/>
+<text class="ts" x="250" y="146" font-size="9.5" fill="#6b675e">cancel()</text>
+<rect class="bx-sick" x="420" y="126" width="190" height="48" rx="6" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.3"/>
+<text class="t" x="515" y="147" text-anchor="middle" font-size="11.5" fill="#b03a2e">CANCELLED</text>
+<text class="ts" x="515" y="165" text-anchor="middle" font-size="9" fill="#6b675e">取消也是终态</text>
+<text class="ts" x="40" y="186" font-size="10" fill="#6b675e">三条边都单向：done() 为真之后不再回退</text>
+</svg>
+</figure>
 
 它还保存所属事件循环和完成回调。Future 回答的是：
 
@@ -114,11 +146,31 @@ Task
 
 因此更准确的关系是：
 
-```text
-coroutine   可暂停的计算过程
-Task        调度并推进这段计算，也代表它的最终结果
-Future      可等待的结果占位与完成通知机制
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 200" role="img" aria-label="三种对象的关系：coroutine 是可暂停的计算过程，保存内嵌 frame；Task 是驱动者，一次次推进 coroutine，其 return 或异常决定结果；Task 同时满足 Future 接口；Future 是可等待的结果占位与完成通知机制" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="aioA3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx" x="245" y="20" width="170" height="66" rx="6" fill="#ece9e2" stroke="#6b675e" stroke-width="1.5"/>
+<text class="t" x="330" y="44" text-anchor="middle" font-size="12" fill="#2b2a26">Task</text>
+<text class="ts" x="330" y="62" text-anchor="middle" font-size="9" fill="#6b675e">调度并推进这段计算</text>
+<text class="ts" x="330" y="77" text-anchor="middle" font-size="9" fill="#6b675e">也代表它的最终结果</text>
+<rect class="bx-q" x="40" y="126" width="200" height="66" rx="6" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="t" x="140" y="150" text-anchor="middle" font-size="12" fill="#2b2a26">coroutine</text>
+<text class="ts" x="140" y="168" text-anchor="middle" font-size="9" fill="#6b675e">可暂停的计算过程</text>
+<text class="ts" x="140" y="183" text-anchor="middle" font-size="9" fill="#6b675e">保存内嵌 frame</text>
+<rect class="bx-q" x="420" y="126" width="200" height="66" rx="6" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="t" x="520" y="150" text-anchor="middle" font-size="12" fill="#2b2a26">Future</text>
+<text class="ts" x="520" y="168" text-anchor="middle" font-size="9" fill="#6b675e">可等待的结果占位</text>
+<text class="ts" x="520" y="183" text-anchor="middle" font-size="9" fill="#6b675e">+ 完成通知机制</text>
+<line class="fl" x1="270" y1="86" x2="172" y2="122" stroke="#6b675e" stroke-width="1.3" marker-end="url(#aioA3)"/>
+<text class="ts" x="164" y="106" font-size="9.5" fill="#6b675e">驱动：send / throw</text>
+<line class="fl" x1="216" y1="126" x2="306" y2="90" stroke="#6b675e" stroke-width="1.3" marker-end="url(#aioA3)"/>
+<text class="ts" x="252" y="128" font-size="9.5" fill="#6b675e">return / 异常 → 结果</text>
+<line class="fl" x1="400" y1="86" x2="492" y2="122" stroke="#6b675e" stroke-width="1.2" stroke-dasharray="5 3" marker-end="url(#aioA3)"/>
+<text class="ts" x="452" y="98" text-anchor="middle" font-size="9.5" fill="#6b675e">Task 同时满足 Future 接口</text>
+</svg>
+</figure>
 
 ## `create_task()` 先排一次推进，不默认同步执行正文
 
@@ -196,22 +248,39 @@ else:
 
 随后依据推进结果分流：
 
-```text
-coroutine return value
-        → Task FINISHED，保存 value
-
-coroutine raise CancelledError
-        → Task CANCELLED
-
-coroutine raise other exception
-        → Task FINISHED，保存 exception
-
-coroutine yield pending Future
-        → 注册唤醒回调，Task 暂停等待
-
-coroutine bare yield
-        → 把下一次 step 重新排入 ready queue
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 232" role="img" aria-label="Task step 的五个出口：coroutine 返回值则 Task FINISHED 保存 value；抛 CancelledError 则 Task CANCELLED；抛其他异常则 FINISHED 保存 exception；yield 出 pending Future 则注册唤醒回调暂停等待；bare yield 则把下一次 step 重新排入 ready queue" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="aioA5" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="22" font-size="12" fill="#6b675e">一次 step 推进，五个出口</text>
+<rect class="bx-q" x="20" y="34" width="250" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="34" y="54" font-size="10" fill="#2b2a26">coroutine return value</text>
+<line class="fl" x1="270" y1="49" x2="306" y2="49" stroke="#6b675e" stroke-width="1.2" marker-end="url(#aioA5)"/>
+<rect class="bx-q" x="310" y="34" width="330" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="324" y="54" font-size="10" fill="#2b2a26">Task FINISHED · 保存 value</text>
+<rect class="bx-q" x="20" y="72" width="250" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="34" y="92" font-size="10" fill="#2b2a26">coroutine raise CancelledError</text>
+<line class="fl" x1="270" y1="87" x2="306" y2="87" stroke="#6b675e" stroke-width="1.2" marker-end="url(#aioA5)"/>
+<rect class="bx-sick" x="310" y="72" width="330" height="30" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="ts" x="324" y="92" font-size="10" fill="#b03a2e">Task CANCELLED</text>
+<rect class="bx-q" x="20" y="110" width="250" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="34" y="130" font-size="10" fill="#2b2a26">coroutine raise 其他异常</text>
+<line class="fl" x1="270" y1="125" x2="306" y2="125" stroke="#6b675e" stroke-width="1.2" marker-end="url(#aioA5)"/>
+<rect class="bx-q" x="310" y="110" width="330" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="324" y="130" font-size="10" fill="#2b2a26">Task FINISHED · 保存 exception</text>
+<rect class="bx" x="20" y="148" width="250" height="30" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="34" y="168" font-size="10" fill="#2b2a26">coroutine yield pending Future</text>
+<line class="fl" x1="270" y1="163" x2="306" y2="163" stroke="#6b675e" stroke-width="1.4" marker-end="url(#aioA5)"/>
+<rect class="bx" x="310" y="148" width="330" height="30" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="324" y="168" font-size="10" fill="#2b2a26">注册唤醒回调 · Task 暂停等待（本文主线）</text>
+<rect class="bx-q" x="20" y="186" width="250" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="34" y="206" font-size="10" fill="#2b2a26">coroutine bare yield</text>
+<line class="fl" x1="270" y1="201" x2="306" y2="201" stroke="#6b675e" stroke-width="1.2" marker-end="url(#aioA5)"/>
+<rect class="bx-q" x="310" y="186" width="330" height="30" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="324" y="206" font-size="10" fill="#2b2a26">把下一次 step 重新排入 ready queue</text>
+</svg>
+</figure>
 
 C 实现不会真的用 Python 语法调用每一步：普通推进通过 `PyIter_Send(coro, Py_None, &result)` 进入生成器/协程协议，返回时再区分 `PYGEN_NEXT`、`PYGEN_RETURN` 与错误。但控制结构与 Python 等价实现相同。
 
@@ -304,17 +373,29 @@ Future 完成路径会：
 
 关键是第 5 步。Future 不直接执行 Task wakeup，而是把它包装成 Handle 放入 ready queue：
 
-```text
-future.set_result(21)
-        ↓
-Future = FINISHED
-        ↓
-loop.call_soon(task wakeup, future)
-        ↓
-_ready.append(handle)
-        ↓
-set_result() 返回
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 166" role="img" aria-label="set_result 只做通知：状态改为 FINISHED，把 task wakeup 经 loop.call_soon 包装成 Handle 追加进 _ready，然后 set_result 立即返回；此时协程还没有被推进，wakeup 要等事件循环下一批执行" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="aioA7" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-q" x="20" y="30" width="190" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="ts" x="115" y="57" text-anchor="middle" font-size="10.5" fill="#2b2a26">future.set_result(21)</text>
+<line class="fl" x1="210" y1="52" x2="238" y2="52" stroke="#6b675e" stroke-width="1.3" marker-end="url(#aioA7)"/>
+<rect class="bx-q" x="242" y="30" width="180" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="332" y="57" text-anchor="middle" font-size="10.5" fill="#2b2a26">Future = FINISHED</text>
+<line class="fl" x1="422" y1="52" x2="450" y2="52" stroke="#6b675e" stroke-width="1.3" marker-end="url(#aioA7)"/>
+<rect class="bx-q" x="454" y="30" width="190" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="549" y="49" text-anchor="middle" font-size="9.5" fill="#2b2a26">loop.call_soon(</text>
+<text class="ts" x="549" y="64" text-anchor="middle" font-size="9.5" fill="#2b2a26">task wakeup, future)</text>
+<line class="fl" x1="549" y1="74" x2="549" y2="102" stroke="#6b675e" stroke-width="1.3" marker-end="url(#aioA7)"/>
+<rect class="bx-q" x="454" y="106" width="190" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="549" y="133" text-anchor="middle" font-size="10.5" fill="#2b2a26">_ready.append(handle)</text>
+<line class="fl" x1="454" y1="128" x2="426" y2="128" stroke="#6b675e" stroke-width="1.3" marker-end="url(#aioA7)"/>
+<rect class="bx" x="242" y="106" width="180" height="44" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="332" y="133" text-anchor="middle" font-size="10.5" fill="#2b2a26">set_result() 返回</text>
+<text class="tc" x="20" y="133" font-size="10.5" fill="#b03a2e">此刻协程还没动</text>
+</svg>
+</figure>
 
 可以单独验证这条边界：
 
@@ -383,27 +464,48 @@ worker 中 value = 21
 
 于是从开场到恢复的完整链路是：
 
-```text
-Task 首次 step
-    ↓ coro.send(None)
-worker 执行到 await future
-    ↓ pending Future yield 自己
-Task 记录 _fut_waiter，注册 wakeup
-    ↓
-Task 暂停
-
-某处 future.set_result(21)
-    ↓
-wakeup Handle 进入 ready queue
-    ↓
-事件循环执行 wakeup
-    ↓
-Task 再次 step
-    ↓
-Future.__await__ 返回 21
-    ↓
-原 coroutine frame 从 await 后继续
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 330" role="img" aria-label="完整链路两栏：左栏暂停前，Task 首次 step 用 coro.send(None) 推进，worker 执行到 await future，pending Future 把自己 yield 出来，Task 记录 _fut_waiter 并注册 wakeup 后暂停；右栏恢复，某处 set_result(21) 后 wakeup Handle 进入 ready queue，事件循环执行 wakeup，Task 再次 step，Future.__await__ 返回 21，原 coroutine frame 从 await 后继续" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="aioA8" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="t" x="170" y="26" text-anchor="middle" font-size="11.5" fill="#2b2a26">暂停以前</text>
+<text class="t" x="495" y="26" text-anchor="middle" font-size="11.5" fill="#2b2a26">恢复</text>
+<line class="grid" x1="332" y1="36" x2="332" y2="312" stroke="#a29d90" stroke-width="1" stroke-dasharray="4 4"/>
+<rect class="bx-q" x="40" y="38" width="260" height="32" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="170" y="58" text-anchor="middle" font-size="9.5" fill="#2b2a26">Task 首次 step · coro.send(None)</text>
+<line class="fl" x1="170" y1="70" x2="170" y2="82" stroke="#6b675e" stroke-width="1.2" marker-end="url(#aioA8)"/>
+<rect class="bx-q" x="40" y="86" width="260" height="32" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="170" y="106" text-anchor="middle" font-size="9.5" fill="#2b2a26">worker 执行到 await future</text>
+<line class="fl" x1="170" y1="118" x2="170" y2="130" stroke="#6b675e" stroke-width="1.2" marker-end="url(#aioA8)"/>
+<rect class="bx-q" x="40" y="134" width="260" height="32" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="170" y="154" text-anchor="middle" font-size="9.5" fill="#2b2a26">pending Future 把自己 yield 出来</text>
+<line class="fl" x1="170" y1="166" x2="170" y2="178" stroke="#6b675e" stroke-width="1.2" marker-end="url(#aioA8)"/>
+<rect class="bx-q" x="40" y="182" width="260" height="32" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="170" y="202" text-anchor="middle" font-size="9.5" fill="#2b2a26">Task 记 _fut_waiter · 注册 wakeup</text>
+<line class="fl" x1="170" y1="214" x2="170" y2="226" stroke="#6b675e" stroke-width="1.2" marker-end="url(#aioA8)"/>
+<rect class="bx-gone" x="40" y="230" width="260" height="32" rx="4" fill="#ece9e2" stroke="#a29d90" stroke-width="1.2" stroke-dasharray="5 3"/>
+<text class="ts" x="170" y="250" text-anchor="middle" font-size="9.5" fill="#6b675e">Task 暂停 · frame 留在 coroutine 里</text>
+<rect class="bx-sick" x="365" y="38" width="260" height="32" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="ts" x="495" y="58" text-anchor="middle" font-size="9.5" fill="#b03a2e">某处 future.set_result(21)</text>
+<line class="fl" x1="495" y1="70" x2="495" y2="82" stroke="#6b675e" stroke-width="1.2" marker-end="url(#aioA8)"/>
+<rect class="bx-q" x="365" y="86" width="260" height="32" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="495" y="106" text-anchor="middle" font-size="9.5" fill="#2b2a26">wakeup Handle 进入 ready queue</text>
+<line class="fl" x1="495" y1="118" x2="495" y2="130" stroke="#6b675e" stroke-width="1.2" marker-end="url(#aioA8)"/>
+<rect class="bx-q" x="365" y="134" width="260" height="32" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="495" y="154" text-anchor="middle" font-size="9.5" fill="#2b2a26">事件循环执行 wakeup</text>
+<line class="fl" x1="495" y1="166" x2="495" y2="178" stroke="#6b675e" stroke-width="1.2" marker-end="url(#aioA8)"/>
+<rect class="bx-q" x="365" y="182" width="260" height="32" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="495" y="202" text-anchor="middle" font-size="9.5" fill="#2b2a26">Task 再次 step</text>
+<line class="fl" x1="495" y1="214" x2="495" y2="226" stroke="#6b675e" stroke-width="1.2" marker-end="url(#aioA8)"/>
+<rect class="bx-q" x="365" y="230" width="260" height="32" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="495" y="250" text-anchor="middle" font-size="9.5" fill="#2b2a26">Future.__await__ 返回 21</text>
+<line class="fl" x1="495" y1="262" x2="495" y2="274" stroke="#6b675e" stroke-width="1.2" marker-end="url(#aioA8)"/>
+<rect class="bx" x="365" y="278" width="260" height="32" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="495" y="298" text-anchor="middle" font-size="9.5" fill="#2b2a26">原 coroutine frame 从 await 后继续</text>
+<text class="tc" x="170" y="298" text-anchor="middle" font-size="10" fill="#b03a2e">中间隔着真实世界的一段时间</text>
+</svg>
+</figure>
 
 ## `_run_once()` 把就绪、定时器与 I/O 汇到一轮
 
@@ -418,19 +520,38 @@ while not stopping:
 
 在本文 Linux selector loop 中，一次 `_run_once()` 可以概括为：
 
-```text
-清理已取消的 timer handles
-        ↓
-根据 _ready 和最近定时器计算 selector timeout
-        ↓
-selector.select(timeout)
-        ↓
-把发生的 I/O 事件转成 ready callbacks
-        ↓
-把已经到点的 timer handles 移入 _ready
-        ↓
-执行本轮开始执行阶段时已有的 ready handles
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 240" role="img" aria-label="_run_once 六步一轮：清理已取消的 timer handles；根据 _ready 与最近定时器计算 selector timeout；selector.select 可能阻塞；把发生的 I/O 事件转成 ready callbacks；把到点的 timer handles 移入 _ready；执行本轮开始时已有的 ready handles；然后进入下一轮" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="aioA9" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-q" x="34" y="36" width="190" height="48" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="129" y="56" text-anchor="middle" font-size="9.5" fill="#2b2a26">清理已取消的</text>
+<text class="ts" x="129" y="72" text-anchor="middle" font-size="9.5" fill="#2b2a26">timer handles</text>
+<line class="fl" x1="224" y1="60" x2="238" y2="60" stroke="#6b675e" stroke-width="1.3" marker-end="url(#aioA9)"/>
+<rect class="bx-q" x="242" y="36" width="190" height="48" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="337" y="56" text-anchor="middle" font-size="9.5" fill="#2b2a26">用 _ready 与最近定时器</text>
+<text class="ts" x="337" y="72" text-anchor="middle" font-size="9.5" fill="#2b2a26">计算 selector timeout</text>
+<line class="fl" x1="432" y1="60" x2="446" y2="60" stroke="#6b675e" stroke-width="1.3" marker-end="url(#aioA9)"/>
+<rect class="bx-q" x="450" y="36" width="190" height="48" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="545" y="56" text-anchor="middle" font-size="9.5" fill="#2b2a26">selector.select(timeout)</text>
+<text class="ts" x="545" y="72" text-anchor="middle" font-size="9" fill="#6b675e">线程可能阻塞在这里</text>
+<line class="fl" x1="545" y1="84" x2="545" y2="132" stroke="#6b675e" stroke-width="1.3" marker-end="url(#aioA9)"/>
+<rect class="bx-q" x="450" y="136" width="190" height="48" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="545" y="156" text-anchor="middle" font-size="9.5" fill="#2b2a26">I/O 事件转成</text>
+<text class="ts" x="545" y="172" text-anchor="middle" font-size="9.5" fill="#2b2a26">ready callbacks</text>
+<line class="fl" x1="450" y1="160" x2="436" y2="160" stroke="#6b675e" stroke-width="1.3" marker-end="url(#aioA9)"/>
+<rect class="bx-q" x="242" y="136" width="190" height="48" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="337" y="156" text-anchor="middle" font-size="9.5" fill="#2b2a26">到点的 timer handles</text>
+<text class="ts" x="337" y="172" text-anchor="middle" font-size="9.5" fill="#2b2a26">移入 _ready</text>
+<line class="fl" x1="242" y1="160" x2="228" y2="160" stroke="#6b675e" stroke-width="1.3" marker-end="url(#aioA9)"/>
+<rect class="bx" x="34" y="136" width="190" height="48" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="129" y="156" text-anchor="middle" font-size="9.5" fill="#2b2a26">执行本轮开始时</text>
+<text class="ts" x="129" y="172" text-anchor="middle" font-size="9.5" fill="#2b2a26">已有的 ready handles</text>
+<path class="fl" d="M 34 160 L 16 160 L 16 60 L 30 60" fill="none" stroke="#6b675e" stroke-width="1.2" marker-end="url(#aioA9)"/>
+<text class="ts" x="330" y="222" text-anchor="middle" font-size="10" fill="#6b675e">run_forever：while not stopping，一轮接一轮</text>
+</svg>
+</figure>
 
 三类来源最终汇入同一只 ready deque：
 
@@ -634,17 +755,38 @@ events           ['caught cancellation']
 
 selector loop 为此维护一对 self-pipe socket：
 
-```text
-其他线程 call_soon_threadsafe(callback)
-        ↓
-线程安全地把 Handle 放入 _ready
-        ↓
-向 self-pipe 写入一个字节
-        ↓
-selector 发现 self-pipe 可读并返回
-        ↓
-事件循环处理新加入的 Handle
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 296" role="img" aria-label="跨线程唤醒双泳道：其他线程 call_soon_threadsafe 把 Handle 线程安全地放入 _ready，再向 self-pipe 写入一个字节；阻塞在 selector.select 的 loop 线程因 self-pipe 可读而返回，事件循环随后处理新加入的 Handle" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="aioA11" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+<marker id="aioA11c" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-c" d="M0 0 L8 4 L0 8 Z" fill="#b03a2e"/></marker>
+</defs>
+<text class="t" x="165" y="26" text-anchor="middle" font-size="11.5" fill="#2b2a26">其他线程</text>
+<text class="t" x="495" y="26" text-anchor="middle" font-size="11.5" fill="#2b2a26">loop 线程</text>
+<line class="grid" x1="330" y1="36" x2="330" y2="278" stroke="#a29d90" stroke-width="1" stroke-dasharray="4 4"/>
+<rect class="bx-q" x="40" y="42" width="250" height="40" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="165" y="66" text-anchor="middle" font-size="9.5" fill="#2b2a26">call_soon_threadsafe(callback)</text>
+<line class="fl" x1="165" y1="82" x2="165" y2="100" stroke="#6b675e" stroke-width="1.2" marker-end="url(#aioA11)"/>
+<rect class="bx-q" x="40" y="104" width="250" height="40" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="165" y="128" text-anchor="middle" font-size="9.5" fill="#2b2a26">线程安全地把 Handle 放入 _ready</text>
+<line class="fl" x1="165" y1="144" x2="165" y2="162" stroke="#6b675e" stroke-width="1.2" marker-end="url(#aioA11)"/>
+<rect class="bx" x="40" y="166" width="250" height="40" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="165" y="190" text-anchor="middle" font-size="9.5" fill="#2b2a26">向 self-pipe 写入一个字节</text>
+<rect class="bx-gone" x="370" y="42" width="250" height="40" rx="4" fill="#ece9e2" stroke="#a29d90" stroke-width="1.2" stroke-dasharray="5 3"/>
+<text class="ts" x="495" y="59" text-anchor="middle" font-size="9.5" fill="#6b675e">正阻塞在 selector.select(timeout)</text>
+<text class="ts" x="495" y="74" text-anchor="middle" font-size="9" fill="#6b675e">不知道 _ready 已经变了</text>
+<line class="flc" x1="290" y1="186" x2="366" y2="186" stroke="#b03a2e" stroke-width="1.4" marker-end="url(#aioA11c)"/>
+<text class="tc" x="328" y="178" text-anchor="middle" font-size="9.5" fill="#b03a2e">一个字节</text>
+<rect class="bx-q" x="370" y="166" width="250" height="40" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="495" y="183" text-anchor="middle" font-size="9.5" fill="#2b2a26">self-pipe 可读</text>
+<text class="ts" x="495" y="198" text-anchor="middle" font-size="9.5" fill="#2b2a26">select 立刻返回</text>
+<line class="fl" x1="495" y1="206" x2="495" y2="224" stroke="#6b675e" stroke-width="1.2" marker-end="url(#aioA11)"/>
+<rect class="bx-q" x="370" y="228" width="250" height="40" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="495" y="252" text-anchor="middle" font-size="9.5" fill="#2b2a26">事件循环处理新加入的 Handle</text>
+<text class="ts" x="40" y="252" font-size="9.5" fill="#6b675e">只入队不叫醒：Handle 会在</text>
+<text class="ts" x="40" y="268" font-size="9.5" fill="#6b675e">select 超时后才被注意到</text>
+</svg>
+</figure>
 
 因此 `call_soon_threadsafe()` 的“threadsafe”不仅关乎共享队列，还包含唤醒阻塞 I/O poll 的机制。信号处理和主线程收到第一次 Ctrl-C 后请求取消主 Task，也会利用类似路径让 loop 尽快从等待中回来。
 
