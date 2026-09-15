@@ -11,7 +11,7 @@ import { getCollection, type CollectionEntry } from 'astro:content';
 export type BlogPost = CollectionEntry<'blog'>;
 
 /** 文章分类，与 content.config.ts 中 frontmatter 的 category 枚举一一对应 */
-export type Category = 'zig' | 'redis' | 'cpython' | 'kernel' | 'mysql' | 'mq' | 'life';
+export type Category = 'zig' | 'redis' | 'cpython' | 'kernel' | 'hardware' | 'mysql' | 'mq' | 'life';
 
 /** 分类展示名 */
 export const CATEGORY_LABELS: Record<Category, string> = {
@@ -19,6 +19,7 @@ export const CATEGORY_LABELS: Record<Category, string> = {
   redis: 'Redis',
   cpython: 'CPython',
   kernel: 'Linux 内核',
+  hardware: '硬件原理',
   mysql: 'MySQL',
   mq: '消息队列',
   life: '生活',
@@ -65,6 +66,12 @@ export const SERIES_ORDER: readonly SeriesMeta[] = [
     title: 'Linux 内核系列',
     description: '从页表、写时复制到伙伴系统与 OOM，沿着一次访存沉进 Linux 内核的内存现场。',
     category: 'kernel',
+  },
+  {
+    id: 'hardware',
+    title: '硬件原理系列',
+    description: '从缓存金字塔、Cache Line 到 TLB、NUMA 与内存时序，把软件性能底下的硬件事实在自己的机器上逐件量过。',
+    category: 'hardware',
   },
   {
     id: 'mysql',

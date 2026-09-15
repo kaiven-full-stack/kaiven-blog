@@ -69,10 +69,22 @@ export const concepts: ConceptMeta[] = [
     posts: ['redis-eviction-policy', 'kernel-oom-killer', 'mysql-innodb-buffer-pool-lru'],
   },
   {
+    id: 'cache-line',
+    label: '缓存行',
+    description: '64 字节的行是缓存搬运与命中的基本单位',
+    posts: ['hardware-cache-line', 'cpython-set-open-addressing', 'redis-object-encoding'],
+  },
+  {
     id: 'cache-locality',
     label: '缓存与局部性',
     description: '中点插入与时间窗：一次访问不足以驻留',
     posts: ['kernel-page-cache-writeback', 'mysql-innodb-buffer-pool-lru'],
+  },
+  {
+    id: 'false-sharing',
+    label: '伪共享',
+    description: '同一行里的无关变量让多核互相拖慢',
+    posts: ['hardware-cache-line', 'zig-atomic-ordering', 'kernel-slab-slub'],
   },
   {
     id: 'fsync-durability',
@@ -110,6 +122,7 @@ export const concepts: ConceptMeta[] = [
       'zig-c-interop',
       'zig-integer-overflow',
       'zig-tagged-union',
+      'hardware-cache-line',
     ],
   },
   {
