@@ -72,13 +72,19 @@ export const concepts: ConceptMeta[] = [
     id: 'cache-line',
     label: '缓存行',
     description: '64 字节的行是缓存搬运与命中的基本单位',
-    posts: ['hardware-cache-line', 'cpython-set-open-addressing', 'redis-object-encoding'],
+    posts: ['hardware-cache-line', 'hardware-dram-internals', 'cpython-set-open-addressing', 'redis-object-encoding'],
   },
   {
     id: 'cache-locality',
     label: '缓存与局部性',
     description: '中点插入与时间窗：一次访问不足以驻留',
     posts: ['kernel-page-cache-writeback', 'mysql-innodb-buffer-pool-lru', 'hardware-memory-mountain'],
+  },
+  {
+    id: 'dram-row-locality',
+    label: '内存行局部性',
+    description: '行缓冲命中与否决定内存的真实带宽',
+    posts: ['hardware-dram-internals', 'hardware-memory-mountain', 'kafka-log-segments'],
   },
   {
     id: 'false-sharing',
