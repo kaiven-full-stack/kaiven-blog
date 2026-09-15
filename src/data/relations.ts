@@ -102,7 +102,7 @@ export const concepts: ConceptMeta[] = [
     id: 'huge-page',
     label: '透明大页',
     description: '2MiB 巨页换 TLB 命中率，代价是碎片与拆分',
-    posts: ['kernel-page-tables', 'kernel-buddy-allocator', 'kernel-copy-on-write', 'redis-fork-cow', 'hardware-memory-mountain'],
+    posts: ['kernel-page-tables', 'kernel-buddy-allocator', 'kernel-copy-on-write', 'redis-fork-cow', 'hardware-memory-mountain', 'hardware-tlb-page-walk'],
   },
   {
     id: 'integer-overflow',
@@ -129,7 +129,13 @@ export const concepts: ConceptMeta[] = [
     id: 'page-table',
     label: '页表',
     description: '虚拟地址到物理页的翻译地图',
-    posts: ['kernel-primer', 'kernel-page-tables', 'kernel-copy-on-write', 'redis-fork-cow'],
+    posts: ['kernel-primer', 'kernel-page-tables', 'kernel-copy-on-write', 'redis-fork-cow', 'hardware-tlb-page-walk'],
+  },
+  {
+    id: 'tlb',
+    label: 'TLB',
+    description: '地址翻译的缓存，触达 = 条目数 × 页大小',
+    posts: ['hardware-tlb-page-walk', 'kernel-page-tables'],
   },
   {
     id: 'ordered-index',
