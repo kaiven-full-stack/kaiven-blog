@@ -35,6 +35,41 @@ Allocator 大小: 16 字节
 
 两个字段：一个指针指向分配器自己的状态，一张函数表装着 `alloc`、`resize`、`remap`、`free` 四个函数。系列第一篇讲 comptime 时用过的 `@typeInfo` 又出场了，连「分配器是什么」都能用普通代码在编译期问出来。
 
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 216" role="img" aria-label="Allocator 的解剖：16 字节的值由 ptr 与 vtable 两格组成；vtable 指向 alloc、resize、remap、free 四个函数指针；ptr 指向具体策略的状态，DebugAllocator、ArenaAllocator、FixedBufferAllocator、page_allocator、smp_allocator 都实现同一张表" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="alA1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx" x="20" y="50" width="210" height="90" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="125" y="72" text-anchor="middle" font-size="10.5" fill="#2b2a26">std.mem.Allocator · 16 字节</text>
+<rect class="bx-q" x="34" y="82" width="86" height="42" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="77" y="100" text-anchor="middle" font-size="9" fill="#2b2a26">ptr</text>
+<text class="ts" x="77" y="115" text-anchor="middle" font-size="8" fill="#6b675e">*anyopaque</text>
+<rect class="bx-q" x="128" y="82" width="86" height="42" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="171" y="100" text-anchor="middle" font-size="9" fill="#2b2a26">vtable</text>
+<text class="ts" x="171" y="115" text-anchor="middle" font-size="8" fill="#6b675e">*const VTable</text>
+<line class="fl" x1="214" y1="100" x2="286" y2="60" stroke="#6b675e" stroke-width="1.3" marker-end="url(#alA1)"/>
+<rect class="bx-q" x="290" y="24" width="350" height="52" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="465" y="45" text-anchor="middle" font-size="10" fill="#2b2a26">VTable：alloc · resize · remap · free</text>
+<text class="ts" x="465" y="64" text-anchor="middle" font-size="9" fill="#6b675e">四个函数指针，接口就这么多</text>
+<line class="fl" x1="120" y1="124" x2="286" y2="150" stroke="#6b675e" stroke-width="1.3" marker-end="url(#alA1)"/>
+<rect class="bx" x="290" y="100" width="350" height="96" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="465" y="120" text-anchor="middle" font-size="10" fill="#2b2a26">具体策略的状态</text>
+<rect class="bx-q" x="302" y="130" width="104" height="24" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="354" y="146" text-anchor="middle" font-size="8.5" fill="#2b2a26">DebugAllocator</text>
+<rect class="bx-q" x="412" y="130" width="104" height="24" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="464" y="146" text-anchor="middle" font-size="8.5" fill="#2b2a26">ArenaAllocator</text>
+<rect class="bx-q" x="522" y="130" width="104" height="24" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="574" y="146" text-anchor="middle" font-size="8.5" fill="#2b2a26">FixedBuffer</text>
+<rect class="bx-q" x="357" y="160" width="104" height="24" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="409" y="176" text-anchor="middle" font-size="8.5" fill="#2b2a26">page_allocator</text>
+<rect class="bx-q" x="467" y="160" width="104" height="24" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1"/>
+<text class="ts" x="519" y="176" text-anchor="middle" font-size="8.5" fill="#2b2a26">smp_allocator</text>
+<text class="ts" x="20" y="176" font-size="9.5" fill="#6b675e">ptr 指向谁家，</text>
+<text class="ts" x="20" y="192" font-size="9.5" fill="#6b675e">这 16 字节就是哪种分配风格</text>
+</svg>
+</figure>
+
 这个结构的含义比它的大小重要：分配器不是进程里的全局设施，是一个可以传来传去的值。函数签名里写 `Allocator` 就像写 `u32` 一样平常。「接受哪个分配器」因此成了 API 设计的一部分：函数只声明需要分配能力，至于是栈上的一块预分配内存还是带泄漏检查的调试堆，调用的时候再定。
 
 ## 同一个函数，栈上跑，堆上跑
@@ -75,6 +110,32 @@ pub fn main() !void {
 
 第一次调用，内存在 `main` 的栈帧里，函数返回时连分配器的影子都不剩；第二次调用走调试堆，有泄漏检查、有越界保护。`normalize` 一个字都没改。
 
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 240" role="img" aria-label="同一个 normalize 函数跑在两种策略上：传入 FixedBufferAllocator 时内存在 main 的栈帧里切分，零系统调用，随作用域结束消失；传入 DebugAllocator 时走调试堆，每次分配记录来源，调用者负责 free，deinit 时泄漏点名" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="alA2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx" x="140" y="16" width="380" height="44" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="330" y="35" text-anchor="middle" font-size="10" fill="#2b2a26">fn normalize(alloc: Allocator, raw: []const u8) ![]u8</text>
+<text class="ts" x="330" y="52" text-anchor="middle" font-size="9" fill="#6b675e">业务代码一个字不改</text>
+<line class="fl" x1="240" y1="60" x2="160" y2="96" stroke="#6b675e" stroke-width="1.3" marker-end="url(#alA2)"/>
+<line class="fl" x1="420" y1="60" x2="500" y2="96" stroke="#6b675e" stroke-width="1.3" marker-end="url(#alA2)"/>
+<rect class="bx-q" x="30" y="100" width="270" height="106" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="165" y="122" text-anchor="middle" font-size="10" fill="#2b2a26">FixedBufferAllocator</text>
+<text class="ts" x="165" y="142" text-anchor="middle" font-size="9" fill="#6b675e">在 stack_buf: [128]u8 里切分</text>
+<text class="ts" x="165" y="160" text-anchor="middle" font-size="9" fill="#6b675e">零系统调用 · 大小封顶</text>
+<text class="ts" x="165" y="178" text-anchor="middle" font-size="9" fill="#6b675e">结果随 main 栈帧一起消失</text>
+<text class="ts" x="165" y="196" text-anchor="middle" font-size="9" fill="#6b675e">无需逐块归还</text>
+<rect class="bx" x="370" y="100" width="270" height="106" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="505" y="122" text-anchor="middle" font-size="10" fill="#2b2a26">DebugAllocator（调试堆）</text>
+<text class="ts" x="505" y="142" text-anchor="middle" font-size="9" fill="#6b675e">每次分配记录来源与行号</text>
+<text class="ts" x="505" y="160" text-anchor="middle" font-size="9" fill="#6b675e">free 核对「真分配过、没还过」</text>
+<text class="ts" x="505" y="178" text-anchor="middle" font-size="9" fill="#6b675e">调用者 defer free(b)</text>
+<text class="ts" x="505" y="196" text-anchor="middle" font-size="9" fill="#6b675e">deinit 时未还的逐块点名</text>
+<text class="ts" x="140" y="230" font-size="10" fill="#6b675e">策略从实参进来：每一次调用都可以换一种选法</text>
+</svg>
+</figure>
+
 这就是「分配是策略」的意思。别的语言里策略被语言选定：Java 里只有堆，逃逸分析是编译器背着你做的优化；Rust 默认只有一个全局分配器，想换要动 `#[global_allocator]`，换的是全局属性。Zig 把选择权下放到每一次调用。
 
 ## 标准库是一排现成策略
@@ -88,6 +149,38 @@ pub fn main() !void {
 - **`smp_allocator`**：多线程场景的高性能分配器，ReleaseFast 下的默认选择。
 
 连「程序默认用哪个」都没有藏起来。0.16.0 标准库 `start.zig` 的逻辑是：Debug 构建用 `DebugAllocator`，链接了 libc 就用 `c_allocator`，ReleaseFast 且多线程用 `smp_allocator`。没有哪个分配器是内定的，都是按构建模式查表选出来的普通策略；你自己的代码可以做同样的选择。
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 180" role="img" aria-label="默认分配器的查表逻辑：Debug 构建选 DebugAllocator；否则链接了 libc 选 c_allocator；否则 ReleaseFast 且多线程选 smp_allocator；三个问题按序询问，没有内定答案" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="alA4" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-q" x="20" y="24" width="180" height="44" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="110" y="51" text-anchor="middle" font-size="10" fill="#2b2a26">Debug 构建？</text>
+<line class="fl" x1="110" y1="68" x2="110" y2="98" stroke="#6b675e" stroke-width="1.2" marker-end="url(#alA4)"/>
+<text class="ts" x="120" y="88" font-size="9" fill="#6b675e">是</text>
+<rect class="bx" x="20" y="102" width="180" height="40" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="110" y="127" text-anchor="middle" font-size="10" fill="#2b2a26">DebugAllocator</text>
+<line class="fl" x1="200" y1="46" x2="236" y2="46" stroke="#6b675e" stroke-width="1.2" marker-end="url(#alA4)"/>
+<text class="ts" x="212" y="38" font-size="9" fill="#6b675e">否</text>
+<rect class="bx-q" x="240" y="24" width="180" height="44" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="330" y="51" text-anchor="middle" font-size="10" fill="#2b2a26">链接了 libc？</text>
+<line class="fl" x1="330" y1="68" x2="330" y2="98" stroke="#6b675e" stroke-width="1.2" marker-end="url(#alA4)"/>
+<text class="ts" x="340" y="88" font-size="9" fill="#6b675e">是</text>
+<rect class="bx" x="240" y="102" width="180" height="40" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="330" y="127" text-anchor="middle" font-size="10" fill="#2b2a26">c_allocator</text>
+<line class="fl" x1="420" y1="46" x2="456" y2="46" stroke="#6b675e" stroke-width="1.2" marker-end="url(#alA4)"/>
+<text class="ts" x="432" y="38" font-size="9" fill="#6b675e">否</text>
+<rect class="bx-q" x="460" y="24" width="180" height="44" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="550" y="43" text-anchor="middle" font-size="9.5" fill="#2b2a26">ReleaseFast</text>
+<text class="ts" x="550" y="59" text-anchor="middle" font-size="9.5" fill="#2b2a26">且多线程？</text>
+<line class="fl" x1="550" y1="68" x2="550" y2="98" stroke="#6b675e" stroke-width="1.2" marker-end="url(#alA4)"/>
+<text class="ts" x="560" y="88" font-size="9" fill="#6b675e">是</text>
+<rect class="bx" x="460" y="102" width="180" height="40" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="550" y="127" text-anchor="middle" font-size="10" fill="#2b2a26">smp_allocator</text>
+<text class="ts" x="20" y="168" font-size="9.5" fill="#6b675e">start.zig 的查表顺序 · 你的代码可以做同样的选择</text>
+</svg>
+</figure>
 
 ## 场景：处理一个请求
 
@@ -186,6 +279,48 @@ std.debug.print("容量: {d}\n", .{arena.queryCapacity()});
 ```
 
 同样的 `free(B)`、同样的再分配：B 在末尾时回退生效，D 原地复用，容量纹丝不动；B 被夹在中间时，free 是静默空操作，D 逼着缓冲区从 62 扩张到 88。真实语义是：只有被 free 的恰好是最后一块分配时才回退内部指针，其余情况静默忽略。这是设计使然：按分配顺序回退是 O(1)，任意回收就得维护空闲链表，那就不是 arena 了。
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 292" role="img" aria-label="arena free 的两种结局：B 是最后一块时，free(B) 回退内部指针，随后分配的 D 原地复用 B 的位置，容量 62 不变；B 被夹在 A 与 C 中间时，free(B) 静默忽略，洞不记录不复用，随后分配的 D 逼着缓冲区扩张到 88" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="alA3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="22" font-size="11" fill="#6b675e">情形一：B 是最后一块</text>
+<rect class="bx-q" x="30" y="32" width="90" height="36" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="75" y="55" text-anchor="middle" font-size="10" fill="#2b2a26">A · 16</text>
+<rect class="bx-q" x="120" y="32" width="90" height="36" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="165" y="55" text-anchor="middle" font-size="10" fill="#2b2a26">B · 16</text>
+<rect class="bx-gone" x="210" y="32" width="200" height="36" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="4 3"/>
+<text class="ts" x="310" y="55" text-anchor="middle" font-size="9" fill="#a29d90">未分配（容量 62）</text>
+<line class="fl" x1="165" y1="68" x2="165" y2="86" stroke="#6b675e" stroke-width="1.2" marker-end="url(#alA3)"/>
+<text class="tc" x="180" y="82" font-size="9" fill="#b03a2e">free(B)：末尾回退，指针倒回 B 的起点</text>
+<rect class="bx-q" x="30" y="90" width="90" height="36" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="75" y="113" text-anchor="middle" font-size="10" fill="#2b2a26">A · 16</text>
+<rect class="bx" x="120" y="90" width="90" height="36" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="165" y="113" text-anchor="middle" font-size="10" fill="#2b2a26">D · 16</text>
+<rect class="bx-gone" x="210" y="90" width="200" height="36" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="4 3"/>
+<text class="ts" x="310" y="113" text-anchor="middle" font-size="9" fill="#a29d90">未分配</text>
+<text class="tc" x="430" y="113" font-size="9.5" fill="#b03a2e">D 原地复用 · 容量仍是 62</text>
+<text class="ts" x="20" y="166" font-size="11" fill="#6b675e">情形二：B 被夹在中间</text>
+<rect class="bx-q" x="30" y="176" width="90" height="36" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="75" y="199" text-anchor="middle" font-size="10" fill="#2b2a26">A · 16</text>
+<rect class="bx-q" x="120" y="176" width="90" height="36" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="165" y="199" text-anchor="middle" font-size="10" fill="#2b2a26">B · 16</text>
+<rect class="bx-q" x="210" y="176" width="130" height="36" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="275" y="199" text-anchor="middle" font-size="10" fill="#2b2a26">C · 24（占满）</text>
+<line class="fl" x1="165" y1="212" x2="165" y2="230" stroke="#6b675e" stroke-width="1.2" marker-end="url(#alA3)"/>
+<text class="tc" x="180" y="226" font-size="9" fill="#b03a2e">free(B)：静默忽略，洞不记录、不复用</text>
+<rect class="bx-q" x="30" y="234" width="90" height="36" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="75" y="257" text-anchor="middle" font-size="10" fill="#2b2a26">A · 16</text>
+<rect class="bx-gone" x="120" y="234" width="90" height="36" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="4 3"/>
+<text class="ts" x="165" y="257" text-anchor="middle" font-size="9" fill="#a29d90">B 的洞</text>
+<rect class="bx-q" x="210" y="234" width="130" height="36" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="275" y="257" text-anchor="middle" font-size="10" fill="#2b2a26">C · 24</text>
+<rect class="bx-sick" x="340" y="234" width="90" height="36" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="ts" x="385" y="257" text-anchor="middle" font-size="10" fill="#b03a2e">D · 16</text>
+<text class="tc" x="450" y="257" font-size="9.5" fill="#b03a2e">D 逼出扩张：容量 62 → 88</text>
+</svg>
+</figure>
 
 所以 arena 的正确用法是干脆不 free，等 `deinit` 或 `reset`。`free` 留在接口里，只是为了让 arena 能传给「签名要 Allocator」的函数。踩过坑再读文档，那句「allocations are only freed en masse」才真正看进眼里：文档早就说了，是我以为自己可以例外。
 
