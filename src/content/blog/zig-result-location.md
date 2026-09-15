@@ -43,15 +43,26 @@ const packet: Packet = .{
 
 `@intCast` 没有明写目标类型，仍知道该把 `wide` 变成 `u16`。这条线索的来路是：
 
-```text
-packet 的类型 Packet
-        ↓
-匿名结构体字面量的 result type 是 Packet
-        ↓
-length 字段的 result type 是 u16
-        ↓
-@intCast 的目标类型是 u16
-```
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 226" role="img" aria-label="result type 向内流动：packet 的标注类型 Packet 传给匿名结构体字面量，字面量把 length 字段的类型 u16 传给字段初始化表达式，@intCast 由此得知目标类型是 u16" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="rlA1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<line class="fl" x1="80" y1="30" x2="80" y2="190" stroke="#6b675e" stroke-width="1.3" marker-end="url(#rlA1)"/>
+<text class="ts" x="68" y="110" text-anchor="middle" font-size="9.5" fill="#6b675e" transform="rotate(-90 68 110)">传播方向：从外层到内层</text>
+<rect class="bx" x="120" y="20" width="420" height="38" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="330" y="44" text-anchor="middle" font-size="10.5" fill="#2b2a26">const packet: Packet — 标注写下 Packet</text>
+<line class="fl" x1="330" y1="58" x2="330" y2="70" stroke="#6b675e" stroke-width="1.2" marker-end="url(#rlA1)"/>
+<rect class="bx-q" x="120" y="74" width="420" height="38" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="330" y="98" text-anchor="middle" font-size="10.5" fill="#2b2a26">匿名字面量 .{ … } 的 result type = Packet</text>
+<line class="fl" x1="330" y1="112" x2="330" y2="124" stroke="#6b675e" stroke-width="1.2" marker-end="url(#rlA1)"/>
+<rect class="bx-q" x="120" y="128" width="420" height="38" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="330" y="152" text-anchor="middle" font-size="10.5" fill="#2b2a26">.length 字段初始化式的 result type = u16</text>
+<line class="fl" x1="330" y1="166" x2="330" y2="178" stroke="#6b675e" stroke-width="1.2" marker-end="url(#rlA1)"/>
+<rect class="bx-sick" x="120" y="182" width="420" height="38" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="ts" x="330" y="206" text-anchor="middle" font-size="10.5" fill="#b03a2e">@intCast(wide) 的目标类型 = u16</text>
+</svg>
+</figure>
 
 这就是 Result Location Semantics 的第一半：**result type**。类型不一定只从表达式内部向外推断，也可以从外层上下文向内流动。
 
@@ -113,6 +124,34 @@ out.right = 34;
 ```
 
 程序并不先在别处造出一个 `Pair`，再把整块字节搬给 `out.*`；匿名字面量直接实例化外层交来的位置，各字段写进各自的格子。
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 196" role="img" aria-label="result location 的拆分传递：out.* 赋值把 out 交给匿名字面量作为 result location，字面量再把 out.left 的地址交给 .left = 21，把 out.right 的地址交给 .right = 34，两个值分别直写目的格子，没有中间副本" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="rlA2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="22" font-size="11" fill="#6b675e">out.* = .{ .left = 21, .right = 34 }</text>
+<rect class="bx-q" x="30" y="40" width="230" height="96" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="ts" x="145" y="62" text-anchor="middle" font-size="10" fill="#2b2a26">匿名结构体字面量</text>
+<text class="ts" x="145" y="80" text-anchor="middle" font-size="9" fill="#6b675e">result location = out</text>
+<text class="ts" x="60" y="106" font-size="9.5" fill="#2b2a26">.left = 21</text>
+<text class="ts" x="60" y="126" font-size="9.5" fill="#2b2a26">.right = 34</text>
+<rect class="bx" x="420" y="40" width="210" height="96" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="525" y="62" text-anchor="middle" font-size="10" fill="#2b2a26">out: *Pair</text>
+<rect class="bx-q" x="436" y="74" width="84" height="40" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="478" y="91" text-anchor="middle" font-size="9" fill="#6b675e">left</text>
+<text class="ts" x="478" y="107" text-anchor="middle" font-size="10" fill="#2b2a26">21</text>
+<rect class="bx-q" x="530" y="74" width="84" height="40" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="572" y="91" text-anchor="middle" font-size="9" fill="#6b675e">right</text>
+<text class="ts" x="572" y="107" text-anchor="middle" font-size="10" fill="#2b2a26">34</text>
+<line class="fl" x1="260" y1="102" x2="430" y2="92" stroke="#6b675e" stroke-width="1.2" marker-end="url(#rlA2)"/>
+<text class="ts" x="345" y="88" text-anchor="middle" font-size="8.5" fill="#6b675e">&amp;out.left</text>
+<line class="fl" x1="260" y1="122" x2="524" y2="108" stroke="#6b675e" stroke-width="1.2" marker-end="url(#rlA2)"/>
+<text class="ts" x="400" y="124" text-anchor="middle" font-size="8.5" fill="#6b675e">&amp;out.right</text>
+<text class="ts" x="30" y="166" font-size="10" fill="#6b675e">位置像类型一样可以拆：外层交给字面量，字面量按字段继续分</text>
+<text class="ts" x="30" y="186" font-size="9.5" fill="#a29d90">全程没有一份完整的临时 Pair</text>
+</svg>
+</figure>
 
 我把它放进测试：
 
@@ -181,6 +220,52 @@ pair[1] = pair[0];
 第一行写完，`pair` 已经变成 `{ 2, 2 }`；第二行再读 `pair[0]`，读到的当然也是 `2`。
 
 这不是优化器把程序改坏了，也不是 Debug 模式的一次怪事。Zig 的官方语言参考就用这个例子说明：result location 会干预这种看似同时、实则逐项发生的交换。
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 262" role="img" aria-label="一行交换的两种展开：就地写入时 pair 收到自己的地址，第一步 pair[0] = pair[1] 把数组变成 2,2，第二步 pair[1] = pair[0] 读到的已是 2，结果两个 2；加一层 @as 或临时变量后，右边先在独立位置算出 2,1，再整体赋值，交换正确" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="rlA3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="11" fill="#b03a2e">pair = .{ pair[1], pair[0] } · 位置就是 pair 自己</text>
+<rect class="bx-q" x="24" y="40" width="36" height="32" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="42" y="61" text-anchor="middle" font-size="11" fill="#2b2a26">1</text>
+<rect class="bx-q" x="62" y="40" width="36" height="32" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="80" y="61" text-anchor="middle" font-size="11" fill="#2b2a26">2</text>
+<line class="fl" x1="110" y1="56" x2="146" y2="56" stroke="#6b675e" stroke-width="1.2" marker-end="url(#rlA3)"/>
+<text class="ts" x="128" y="44" text-anchor="middle" font-size="8.5" fill="#6b675e">pair[0] = pair[1]</text>
+<rect class="bx-sick" x="150" y="40" width="36" height="32" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="tc" x="168" y="61" text-anchor="middle" font-size="11" fill="#b03a2e">2</text>
+<rect class="bx-q" x="188" y="40" width="36" height="32" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="206" y="61" text-anchor="middle" font-size="11" fill="#2b2a26">2</text>
+<line class="fl" x1="236" y1="56" x2="272" y2="56" stroke="#6b675e" stroke-width="1.2" marker-end="url(#rlA3)"/>
+<text class="ts" x="254" y="44" text-anchor="middle" font-size="8.5" fill="#6b675e">pair[1] = pair[0]</text>
+<rect class="bx-sick" x="276" y="40" width="36" height="32" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="tc" x="294" y="61" text-anchor="middle" font-size="11" fill="#b03a2e">2</text>
+<rect class="bx-sick" x="314" y="40" width="36" height="32" rx="2" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="tc" x="332" y="61" text-anchor="middle" font-size="11" fill="#b03a2e">2</text>
+<text class="tc" x="372" y="61" font-size="10" fill="#b03a2e">读到的 pair[0] 已经是新值：两个 2</text>
+<text class="ts" x="20" y="124" font-size="11" fill="#2b2a26">pair = @as([2]u32, .{ pair[1], pair[0] }) · @as 截断位置</text>
+<rect class="bx-q" x="24" y="140" width="36" height="32" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="42" y="161" text-anchor="middle" font-size="11" fill="#2b2a26">1</text>
+<rect class="bx-q" x="62" y="140" width="36" height="32" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="80" y="161" text-anchor="middle" font-size="11" fill="#2b2a26">2</text>
+<line class="fl" x1="110" y1="156" x2="146" y2="156" stroke="#6b675e" stroke-width="1.2" marker-end="url(#rlA3)"/>
+<text class="ts" x="128" y="144" text-anchor="middle" font-size="8.5" fill="#6b675e">先在独立位置算</text>
+<rect class="bx-q" x="150" y="140" width="36" height="32" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="168" y="161" text-anchor="middle" font-size="11" fill="#2b2a26">2</text>
+<rect class="bx-q" x="188" y="140" width="36" height="32" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="206" y="161" text-anchor="middle" font-size="11" fill="#2b2a26">1</text>
+<line class="fl" x1="236" y1="156" x2="272" y2="156" stroke="#6b675e" stroke-width="1.2" marker-end="url(#rlA3)"/>
+<text class="ts" x="254" y="144" text-anchor="middle" font-size="8.5" fill="#6b675e">再整体赋值</text>
+<rect class="bx" x="276" y="140" width="36" height="32" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="294" y="161" text-anchor="middle" font-size="11" fill="#2b2a26">2</text>
+<rect class="bx" x="314" y="140" width="36" height="32" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="332" y="161" text-anchor="middle" font-size="11" fill="#2b2a26">1</text>
+<text class="ts" x="372" y="161" font-size="10" fill="#6b675e">读写分开，次序恢复熟悉的样子</text>
+<text class="ts" x="20" y="208" font-size="10" fill="#6b675e">两条路只差一件事：右边有没有拿到左边那块内存的地址</text>
+<text class="ts" x="20" y="232" font-size="9.5" fill="#a29d90">临时变量 swapped 与 @as 同理：都是给右半边一处独立的落脚点</text>
+</svg>
+</figure>
 
 ## 正确写法：独立位置，或 `@as` 边界
 
@@ -261,6 +346,28 @@ pub fn main() void {
 第三层是**目标 ABI**。某些聚合体通过隐藏的返回地址传递，常被称为 `sret`；较小的值又可能直接走寄存器。具体界线由架构、调用约定、类型和构建方式决定。
 
 三层彼此相关，但不是同一回事：Result Location Semantics 是语言怎样理解表达式，返回槽是编译器的一种 lowering，`sret` 是 ABI 怎样让函数交付聚合值。把三者都叫「返回值优化」，等于把语义、实现和调用约定混成一行。
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 212" role="img" aria-label="return 的三层：语言语义层 Result Location Semantics 规定表达式知道类型与写入位置；编译器 lowering 层用返回槽逐字段直写；目标 ABI 层决定聚合值经寄存器还是 sret 隐藏指针跨越调用边界；三层稳定范围各不相同" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="rlA5" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx" x="110" y="20" width="420" height="46" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="320" y="39" text-anchor="middle" font-size="10.5" fill="#2b2a26">语言语义 · Result Location Semantics</text>
+<text class="ts" x="320" y="57" text-anchor="middle" font-size="9" fill="#6b675e">表达式知道什么类型、值该写到哪 · Zig 语言规则</text>
+<line class="fl" x1="320" y1="66" x2="320" y2="80" stroke="#6b675e" stroke-width="1.2" marker-end="url(#rlA5)"/>
+<rect class="bx-q" x="110" y="84" width="420" height="46" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="320" y="103" text-anchor="middle" font-size="10.5" fill="#2b2a26">编译器 lowering · 返回槽</text>
+<text class="ts" x="320" y="121" text-anchor="middle" font-size="9" fill="#6b675e">makeBig 逐字段直写调用方给的槽 · 随 Zig 版本与后端变</text>
+<line class="fl" x1="320" y1="130" x2="320" y2="144" stroke="#6b675e" stroke-width="1.2" marker-end="url(#rlA5)"/>
+<rect class="bx-q" x="110" y="148" width="420" height="46" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="320" y="167" text-anchor="middle" font-size="10.5" fill="#2b2a26">目标 ABI · sret 或寄存器</text>
+<text class="ts" x="320" y="185" text-anchor="middle" font-size="9" fill="#6b675e">聚合值怎样跨调用边界 · 由平台与调用约定决定</text>
+<text class="ts" x="546" y="48" font-size="9" fill="#a29d90">最稳定</text>
+<text class="ts" x="546" y="112" font-size="9" fill="#a29d90">随实现</text>
+<text class="ts" x="546" y="176" font-size="9" fill="#a29d90">随平台</text>
+</svg>
+</figure>
 
 ## 汇编里没看到 `memcpy`，说明不了什么
 
@@ -368,6 +475,32 @@ reg.* = next;
 ```
 
 这里的中间变量是故意留的。对普通内存，省去中间值常是好事；到了 MMIO 边界，写几次、以多大宽度写，本身就是程序含义。涉及 volatile、原子操作或外设副作用时，不能想当然地认为机器会替你一笔写完。
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 224" role="img" aria-label="MMIO 边界两种写法：把匿名字面量直接赋给 volatile 寄存器指针，聚合赋值可能逐字段落到设备上，写入次数与宽度由 lowering 决定；先在普通内存形成完整 Control 值再整体赋给寄存器，才保证一次完整宽度的 volatile 写入" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="rlA6" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="tc" x="20" y="26" font-size="11" fill="#b03a2e">✗ 直接赋字面量</text>
+<rect class="bx-q" x="20" y="36" width="270" height="48" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="155" y="56" text-anchor="middle" font-size="9.5" fill="#2b2a26">reg.* = .{ .enable = true,</text>
+<text class="ts" x="155" y="72" text-anchor="middle" font-size="9.5" fill="#2b2a26">.mode = 3, .reserved = 0 }</text>
+<line class="fl" x1="290" y1="60" x2="346" y2="60" stroke="#6b675e" stroke-width="1.3" marker-end="url(#rlA6)"/>
+<rect class="bx-sick" x="350" y="36" width="290" height="48" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.3"/>
+<text class="ts" x="495" y="56" text-anchor="middle" font-size="9.5" fill="#b03a2e">逐字段直写 result location</text>
+<text class="ts" x="495" y="72" text-anchor="middle" font-size="9" fill="#6b675e">写几次、多宽，由 lowering 决定</text>
+<text class="tc" x="350" y="104" font-size="9.5" fill="#b03a2e">设备可能看到多次半成品写入：语义变了</text>
+<text class="ts" x="20" y="140" font-size="11" fill="#2b2a26">✓ 先形成完整值</text>
+<rect class="bx-q" x="20" y="150" width="270" height="48" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="155" y="170" text-anchor="middle" font-size="9.5" fill="#2b2a26">const next: Control = .{ … }</text>
+<text class="ts" x="155" y="186" text-anchor="middle" font-size="9" fill="#6b675e">普通内存里把值拼完整</text>
+<line class="fl" x1="290" y1="174" x2="346" y2="174" stroke="#6b675e" stroke-width="1.3" marker-end="url(#rlA6)"/>
+<rect class="bx" x="350" y="150" width="290" height="48" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="495" y="170" text-anchor="middle" font-size="9.5" fill="#2b2a26">reg.* = next</text>
+<text class="ts" x="495" y="186" text-anchor="middle" font-size="9" fill="#6b675e">一次完整宽度的 volatile 写入</text>
+<text class="ts" x="20" y="218" font-size="9.5" fill="#6b675e">副作用边界上，中间变量不是浪费，是协议的一部分</text>
+</svg>
+</figure>
 
 ## 收束：读 Zig 时多问的两个问题
 
