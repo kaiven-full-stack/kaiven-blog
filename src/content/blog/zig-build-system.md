@@ -40,6 +40,34 @@ All your codebase are belong to us.
 
 从 `zig init` 到程序跑起来，本机实测 2.5 秒，其中还包含把构建脚本本身编译一遍的时间。两个世界的分界线很清楚：单文件走命令，项目走 `build.zig`，没有中间形态。
 
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 232" role="img" aria-label="两个世界：单文件世界 zig run 一步完成编译缓存执行，不需要 build.zig；项目世界 zig build 找到 build.zig，把它当普通 Zig 程序编译执行，再照它搭出的依赖图干活，全程在用户态" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="bsA1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-q" x="20" y="26" width="280" height="180" rx="6" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="t" x="160" y="50" text-anchor="middle" font-size="11" fill="#2b2a26">单文件世界</text>
+<rect class="bx-q" x="40" y="64" width="240" height="32" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.1"/>
+<text class="ts" x="160" y="85" text-anchor="middle" font-size="10" fill="#2b2a26">zig run single.zig</text>
+<line class="fl" x1="160" y1="96" x2="160" y2="114" stroke="#6b675e" stroke-width="1.2" marker-end="url(#bsA1)"/>
+<rect class="bx-q" x="40" y="118" width="240" height="32" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.1"/>
+<text class="ts" x="160" y="139" text-anchor="middle" font-size="10" fill="#2b2a26">编译 · 缓存 · 执行，一步到位</text>
+<text class="ts" x="160" y="176" text-anchor="middle" font-size="9" fill="#6b675e">zig test 同理 · 不需要 build.zig</text>
+<line class="grid" x1="330" y1="26" x2="330" y2="206" stroke="#a29d90" stroke-width="1.2" stroke-dasharray="6 4"/>
+<rect class="bx" x="360" y="26" width="280" height="180" rx="6" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="t" x="500" y="50" text-anchor="middle" font-size="11" fill="#2b2a26">项目世界</text>
+<rect class="bx-q" x="380" y="62" width="240" height="28" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="500" y="81" text-anchor="middle" font-size="10" fill="#2b2a26">zig build</text>
+<line class="fl" x1="500" y1="90" x2="500" y2="102" stroke="#6b675e" stroke-width="1.2" marker-end="url(#bsA1)"/>
+<rect class="bx-q" x="380" y="106" width="240" height="38" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="500" y="122" text-anchor="middle" font-size="9.5" fill="#2b2a26">把 build.zig 当普通程序编译执行</text>
+<text class="ts" x="500" y="137" text-anchor="middle" font-size="8.5" fill="#6b675e">用户态 · 不碰编译器私有接口</text>
+<line class="fl" x1="500" y1="144" x2="500" y2="156" stroke="#6b675e" stroke-width="1.2" marker-end="url(#bsA1)"/>
+<rect class="bx-q" x="380" y="160" width="240" height="28" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="500" y="179" text-anchor="middle" font-size="10" fill="#2b2a26">照它搭出的依赖图干活</text>
+</svg>
+</figure>
+
 而 `zig build` 这个命令本身，值得先看清它是什么。它不带内置规则，不知道 C 文件该怎么编，也不知道头文件去哪儿找。它只做一件事：在项目根目录找到 `build.zig`，把它当作普通 Zig 程序编译执行，然后照着它搭出来的依赖图干活。用 `--verbose` 看，能看到底下真正执行的编译命令：
 
 ```text
@@ -99,6 +127,38 @@ build.zig:3:24: error: expected type 'u32', found '*const [9:0]u8'
 
 这也是为什么构建脚本里不该有副作用：它每次都会被完整执行（改了构建脚本，就得重新搭一遍图），你的 `print` 会出现在每次构建里，而文件操作会做一遍又一遍。想「做事」，把它挂成图上的一个节点。
 
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 240" role="img" aria-label="搭图与执行分工：build 函数内部只创建节点（addExecutable、addRunArtifact、step）并用 dependOn 连边，然后返回；外部 runner 拿到图后按依赖调度，能并行的并行，能靠缓存跳过的跳过，真正的编译链接运行都发生在这一步" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="bsA2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-q" x="20" y="24" width="330" height="190" rx="6" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="185" y="46" text-anchor="middle" font-size="10.5" fill="#2b2a26">build(b) 函数内：只搭图，不构建</text>
+<rect class="bx-q" x="40" y="60" width="140" height="30" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.1"/>
+<text class="ts" x="110" y="80" text-anchor="middle" font-size="9" fill="#2b2a26">exe（addExecutable）</text>
+<rect class="bx-q" x="200" y="60" width="130" height="30" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.1"/>
+<text class="ts" x="265" y="80" text-anchor="middle" font-size="9" fill="#2b2a26">install</text>
+<line class="fl" x1="180" y1="75" x2="196" y2="75" stroke="#6b675e" stroke-width="1.1" marker-end="url(#bsA2)"/>
+<rect class="bx-q" x="40" y="120" width="160" height="30" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.1"/>
+<text class="ts" x="120" y="140" text-anchor="middle" font-size="9" fill="#2b2a26">run_cmd（addRunArtifact）</text>
+<rect class="bx-q" x="220" y="120" width="110" height="30" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.1"/>
+<text class="ts" x="275" y="140" text-anchor="middle" font-size="9" fill="#2b2a26">step "run"</text>
+<line class="fl" x1="220" y1="135" x2="204" y2="135" stroke="#6b675e" stroke-width="1.1" marker-end="url(#bsA2)"/>
+<text class="ts" x="212" y="128" text-anchor="middle" font-size="8" fill="#6b675e">dependOn</text>
+<line class="fl" x1="110" y1="120" x2="110" y2="94" stroke="#6b675e" stroke-width="1.1" marker-end="url(#bsA2)"/>
+<text class="ts" x="185" y="180" text-anchor="middle" font-size="9" fill="#6b675e">节点 = 函数调用 · 边 = dependOn</text>
+<text class="ts" x="185" y="198" text-anchor="middle" font-size="9" fill="#6b675e">函数返回时，一个字节都还没编译</text>
+<line class="fl" x1="350" y1="119" x2="386" y2="119" stroke="#6b675e" stroke-width="1.4" marker-end="url(#bsA2)"/>
+<text class="ts" x="368" y="108" text-anchor="middle" font-size="9" fill="#6b675e">交图</text>
+<rect class="bx" x="390" y="24" width="250" height="190" rx="6" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="515" y="46" text-anchor="middle" font-size="10.5" fill="#2b2a26">外部 runner：按图调度</text>
+<text class="ts" x="515" y="80" text-anchor="middle" font-size="9.5" fill="#6b675e">真正的编译、链接、运行在这里</text>
+<text class="ts" x="515" y="106" text-anchor="middle" font-size="9.5" fill="#6b675e">能并行的并行</text>
+<text class="ts" x="515" y="132" text-anchor="middle" font-size="9.5" fill="#6b675e">输入没变的节点靠缓存跳过</text>
+<text class="ts" x="515" y="158" text-anchor="middle" font-size="9.5" fill="#6b675e">--watch 常驻：存盘即重搭图</text>
+</svg>
+</figure>
+
 ## 依赖：URL 换哈希
 
 加第三方库是另一处「不适应」的重灾区，因为找不到 `zig install`。Zig 的包管理没有中央仓库，不发布到 npm 或 crates.io，流程是反过来的。
@@ -150,6 +210,29 @@ const xev = @import("libxev");
 
 三步走完，编译通过。
 
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 212" role="img" aria-label="依赖三步：zig fetch --save 一条命令完成下载、算哈希、写进 build.zig.zon；build.zig 里用 b.dependency 接线成 module；源码中直接 import 使用；哈希是包的身份，对不上当场报错" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="bsA3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-q" x="20" y="24" width="280" height="52" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="160" y="44" text-anchor="middle" font-size="9.5" fill="#2b2a26">① zig fetch --save &lt;URL&gt;</text>
+<text class="ts" x="160" y="62" text-anchor="middle" font-size="9" fill="#6b675e">下载 · 算哈希 · 写进 build.zig.zon</text>
+<line class="fl" x1="300" y1="50" x2="336" y2="50" stroke="#6b675e" stroke-width="1.3" marker-end="url(#bsA3)"/>
+<rect class="bx-q" x="340" y="24" width="300" height="52" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="490" y="44" text-anchor="middle" font-size="9.5" fill="#2b2a26">② build.zig 里接线</text>
+<text class="ts" x="490" y="62" text-anchor="middle" font-size="8.5" fill="#6b675e">b.dependency("libxev", .{}).module("xev")</text>
+<line class="fl" x1="490" y1="76" x2="490" y2="98" stroke="#6b675e" stroke-width="1.3" marker-end="url(#bsA3)"/>
+<rect class="bx" x="340" y="102" width="300" height="40" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="490" y="127" text-anchor="middle" font-size="9.5" fill="#2b2a26">③ 源码里 @import("libxev")</text>
+<rect class="bx-sick" x="20" y="102" width="280" height="66" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="tc" x="160" y="124" text-anchor="middle" font-size="10" fill="#b03a2e">hash = 包的身份</text>
+<text class="ts" x="160" y="142" text-anchor="middle" font-size="9" fill="#6b675e">身份锚定内容：改一个字节就是另一个包</text>
+<text class="ts" x="160" y="158" text-anchor="middle" font-size="9" fill="#6b675e">对不上：hash mismatch 当场报错</text>
+<text class="ts" x="20" y="196" font-size="9.5" fill="#6b675e">build.zig.zon：清单本身也是一段 Zig 字面量</text>
+</svg>
+</figure>
+
 这套设计里最重要的是那个哈希。Zon 注释里写着一句关键的话：包不来自 URL，包来自哈希；URL 只是获取这个哈希对应内容的镜像之一。哈希是从包目录内容算出来的（由 `paths` 字段圈定哪些文件算数），所以 URL 挂了可以换镜像，内容变了就是另一个包。防投毒靠它，可复现构建也靠它。把故意改错的哈希放回去，报错很干脆：
 
 ```text
@@ -184,6 +267,30 @@ ELF 64-bit LSB executable, x86-64, statically linked (musl)
 
 没有 `--host`、`--target` 配对，没有工具链文件，没有 sysroot 折腾。`zig targets` 数一数，这套工具链认识 58 种 CPU 架构、42 种操作系统。秘密在两处：一是编译器自带所有目标的代码生成后端和 libc 源码（musl、mingw-w64 随二进制发行，链接时现编）；二是交叉编译根本不是特殊路径，本机编译只是 target 恰好等于 host 的普通编译。
 
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 200" role="img" aria-label="交叉编译扇出：同一份源码与 build.zig，加一个 -Dtarget 参数分别产出 aarch64-linux 的静态 ELF、x86_64-windows 的 PE32+、aarch64-macos 的 Mach-O 与 x86_64-linux-musl 的静态 ELF，file 命令逐一验证格式" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="bsA5" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx" x="20" y="70" width="170" height="60" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="105" y="94" text-anchor="middle" font-size="10" fill="#2b2a26">同一份 src +</text>
+<text class="ts" x="105" y="112" text-anchor="middle" font-size="10" fill="#2b2a26">build.zig</text>
+<line class="fl" x1="190" y1="84" x2="256" y2="42" stroke="#6b675e" stroke-width="1.2" marker-end="url(#bsA5)"/>
+<line class="fl" x1="190" y1="94" x2="256" y2="82" stroke="#6b675e" stroke-width="1.2" marker-end="url(#bsA5)"/>
+<line class="fl" x1="190" y1="106" x2="256" y2="122" stroke="#6b675e" stroke-width="1.2" marker-end="url(#bsA5)"/>
+<line class="fl" x1="190" y1="116" x2="256" y2="162" stroke="#6b675e" stroke-width="1.2" marker-end="url(#bsA5)"/>
+<rect class="bx-q" x="260" y="24" width="380" height="32" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="276" y="45" font-size="9" fill="#2b2a26">-Dtarget=aarch64-linux → ELF · ARM aarch64 · 静态链接</text>
+<rect class="bx-q" x="260" y="64" width="380" height="32" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="276" y="85" font-size="9" fill="#2b2a26">-Dtarget=x86_64-windows → PE32+ · console · x86-64</text>
+<rect class="bx-q" x="260" y="104" width="380" height="32" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="276" y="125" font-size="9" fill="#2b2a26">-Dtarget=aarch64-macos → Mach-O 64-bit arm64</text>
+<rect class="bx-q" x="260" y="144" width="380" height="32" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="276" y="165" font-size="9" fill="#2b2a26">-Dtarget=x86_64-linux-musl → ELF · x86-64 · musl 静态</text>
+<text class="ts" x="20" y="192" font-size="9.5" fill="#6b675e">本机编译 = target 恰好等于 host 的普通编译 · zig cc 给 C 项目同样待遇</text>
+</svg>
+</figure>
+
 连 C 代码也享受同等待遇。`zig cc` 是个披着 gcc 外皮的 Zig 编译器前端：
 
 ```console
@@ -204,6 +311,20 @@ $ zig build          # 紧接着再跑一次
 ```
 
 第二次实测 0.1 秒。缓存以内容哈希为键，按「输入没变输出就不会变」的原则复用一切可复用的东西：编译产物、构建脚本本身、fetch 下来的依赖。缓存分两层：项目内 `.zig-cache` 和全局 `~/.cache/zig`，依赖包落在全局层，所以十个项目用同一个库只存一份。
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 158" role="img" aria-label="两层缓存：项目内的 .zig-cache 存编译产物与构建脚本本身；全局的 ~/.cache/zig 存 fetch 下来的依赖包，十个项目用同一个库只存一份" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<rect class="bx-q" x="20" y="24" width="300" height="86" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="170" y="48" text-anchor="middle" font-size="10.5" fill="#2b2a26">项目层 · .zig-cache</text>
+<text class="ts" x="170" y="72" text-anchor="middle" font-size="9" fill="#6b675e">编译产物 · 构建脚本本身</text>
+<text class="ts" x="170" y="90" text-anchor="middle" font-size="9" fill="#6b675e">每个项目一份</text>
+<rect class="bx" x="340" y="24" width="300" height="86" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="490" y="48" text-anchor="middle" font-size="10.5" fill="#2b2a26">全局层 · ~/.cache/zig</text>
+<text class="ts" x="490" y="72" text-anchor="middle" font-size="9" fill="#6b675e">fetch 下来的依赖包</text>
+<text class="ts" x="490" y="90" text-anchor="middle" font-size="9" fill="#6b675e">十个项目共用同一个库 → 只存一份</text>
+<text class="ts" x="20" y="138" font-size="9.5" fill="#6b675e">键是内容哈希：输入不变 → 输出直接复用，第二次构建 0.1 秒 · 代价是磁盘（本机实验项目 217 MB）</text>
+</svg>
+</figure>
 
 前面说的「构建系统在用户态」在这里兑现了价值：既然构建只是普通程序，它的输入输出就能被完整哈希追踪。C 时代那些「改了头文件不重编、只好 `make clean`」的祖传疑难，根源是构建系统看不见编译器的真实输入；Zig 的编译器和构建系统是一家人，输入输出都对得上。
 
