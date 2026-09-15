@@ -39,6 +39,34 @@ pub fn main() !void {
 
 三行展示了三种处理方式：`try` 把错误继续往上抛；`catch` 给默认值；`catch |err|` 捕获后按错误类型分支。`try` 只是 `catch |err| return err` 的语法糖，没有任何隐藏机制。
 
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 208" role="img" aria-label="error union 解剖：签名 error{NotFound,PermissionDenied}![]const u8 表示要么成功给出切片值，要么失败给出错误集里的一个错误；三种处理是 try 继续上抛、catch 提供默认值、catch 捕获后穷尽 switch 分支" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="ehA1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx" x="120" y="14" width="420" height="40" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="330" y="31" text-anchor="middle" font-size="9.5" fill="#2b2a26">error{ NotFound, PermissionDenied }![]const u8</text>
+<text class="ts" x="330" y="47" text-anchor="middle" font-size="9" fill="#6b675e">error union：二选一的返回</text>
+<line class="fl" x1="250" y1="54" x2="180" y2="80" stroke="#6b675e" stroke-width="1.2" marker-end="url(#ehA1)"/>
+<line class="fl" x1="410" y1="54" x2="480" y2="80" stroke="#6b675e" stroke-width="1.2" marker-end="url(#ehA1)"/>
+<rect class="bx-q" x="50" y="84" width="260" height="40" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="180" y="101" text-anchor="middle" font-size="9.5" fill="#2b2a26">成功：[]const u8 的值</text>
+<text class="ts" x="180" y="117" text-anchor="middle" font-size="9" fill="#6b675e">"title: 听雨"</text>
+<rect class="bx-sick" x="350" y="84" width="260" height="40" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="ts" x="480" y="101" text-anchor="middle" font-size="9.5" fill="#b03a2e">失败：错误集里的一个成员</text>
+<text class="ts" x="480" y="117" text-anchor="middle" font-size="9" fill="#6b675e">一个指针大小的整数，不带负载</text>
+<rect class="bx-q" x="20" y="148" width="196" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="118" y="166" text-anchor="middle" font-size="9.5" fill="#2b2a26">try</text>
+<text class="ts" x="118" y="182" text-anchor="middle" font-size="8.5" fill="#6b675e">继续上抛 = catch |err| return err</text>
+<rect class="bx-q" x="232" y="148" width="196" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="330" y="166" text-anchor="middle" font-size="9.5" fill="#2b2a26">catch 默认值</text>
+<text class="ts" x="330" y="182" text-anchor="middle" font-size="8.5" fill="#6b675e">就地兜底，函数不再失败</text>
+<rect class="bx-q" x="444" y="148" width="196" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="542" y="166" text-anchor="middle" font-size="9.5" fill="#2b2a26">catch |err| switch</text>
+<text class="ts" x="542" y="182" text-anchor="middle" font-size="8.5" fill="#6b675e">按错误分支 · 穷尽检查</text>
+</svg>
+</figure>
+
 这里有个容易被略过的细节：`catch |err| switch (err)` 的分支是穷尽检查的。漏写一个分支，或者写了不属于这个错误集的分支，编译都过不去。我故意写错试试：
 
 ```zig
@@ -68,6 +96,29 @@ const LoadError = FsError || NetError;
 ```
 
 `||` 在这里不是「或」运算，是集合的并：`LoadError` 有四个成员，可以在编译期用 `@typeInfo` 数出来。子函数的错误集自动并进父函数的推断错误集（`!T` 省略错误集时的行为），所以加一个底层函数、多一种错误，上层签名自动跟上，不需要手工同步。
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 176" role="img" aria-label="错误集的并集运算：FsError 含 NotFound 与 PermissionDenied，NetError 含 Timeout 与 ConnectionRefused，双竖线把两个集合合并成 LoadError，共四个成员，编译期可以用 typeInfo 数出来" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="ehA3" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<rect class="bx-q" x="20" y="20" width="220" height="68" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="130" y="40" text-anchor="middle" font-size="10" fill="#2b2a26">FsError</text>
+<text class="ts" x="130" y="60" text-anchor="middle" font-size="9" fill="#6b675e">NotFound</text>
+<text class="ts" x="130" y="76" text-anchor="middle" font-size="9" fill="#6b675e">PermissionDenied</text>
+<rect class="bx-q" x="420" y="20" width="220" height="68" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="530" y="40" text-anchor="middle" font-size="10" fill="#2b2a26">NetError</text>
+<text class="ts" x="530" y="60" text-anchor="middle" font-size="9" fill="#6b675e">Timeout</text>
+<text class="ts" x="530" y="76" text-anchor="middle" font-size="9" fill="#6b675e">ConnectionRefused</text>
+<text class="tc" x="330" y="52" text-anchor="middle" font-size="16" fill="#b03a2e">||</text>
+<text class="ts" x="330" y="72" text-anchor="middle" font-size="9" fill="#6b675e">集合并，不是布尔或</text>
+<line class="fl" x1="130" y1="88" x2="270" y2="114" stroke="#6b675e" stroke-width="1.2" marker-end="url(#ehA3)"/>
+<line class="fl" x1="530" y1="88" x2="390" y2="114" stroke="#6b675e" stroke-width="1.2" marker-end="url(#ehA3)"/>
+<rect class="bx" x="180" y="118" width="300" height="44" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="330" y="136" text-anchor="middle" font-size="10" fill="#2b2a26">LoadError · 四个成员</text>
+<text class="ts" x="330" y="153" text-anchor="middle" font-size="9" fill="#6b675e">编译期数据：可数、可并、可穷尽检查</text>
+</svg>
+</figure>
 
 更值得停一下的是错误的身份。Zig 的错误不带负载，它全部的信息就是自己是谁：
 
@@ -131,6 +182,41 @@ fn initManual(alloc: Allocator) !Reader {
 ```
 
 三步初始化就要写两层嵌套的清理，每加一个资源，前面所有 catch 块都要跟着改。C 项目里那些「goto cleanup」模式本质上就是在手工模拟 `errdefer`。而 `errdefer` 版本里，清理代码紧贴着分配代码写，资源在哪儿申请的、失败时怎么还，两行代码说清，读者不需要在脑子里维护一份「目前已分配清单」。
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 306" role="img" aria-label="Reader.init 的 errdefer 登记与两种结局：三次分配各自紧跟一条 errdefer 清理登记；全部成功时直接返回结构体，一条 errdefer 都不执行；第三步注入 OutOfMemory 失败时，已登记的清理按逆序执行，free body 再 free index，错误返回" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="ehA2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="22" font-size="11" fill="#6b675e">Reader.init 内部：清理紧贴着分配登记</text>
+<rect class="bx-q" x="20" y="32" width="310" height="32" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="34" y="53" font-size="9.5" fill="#2b2a26">① index = try alloc.alloc(u8, 16)</text>
+<rect class="bx-gone" x="40" y="70" width="290" height="28" rx="4" fill="#ece9e2" stroke="#a29d90" stroke-width="1.1" stroke-dasharray="4 3"/>
+<text class="ts" x="54" y="89" font-size="9" fill="#6b675e">errdefer alloc.free(index)</text>
+<rect class="bx-q" x="20" y="106" width="310" height="32" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="34" y="127" font-size="9.5" fill="#2b2a26">② body = try alloc.alloc(u8, 64)</text>
+<rect class="bx-gone" x="40" y="144" width="290" height="28" rx="4" fill="#ece9e2" stroke="#a29d90" stroke-width="1.1" stroke-dasharray="4 3"/>
+<text class="ts" x="54" y="163" font-size="9" fill="#6b675e">errdefer alloc.free(body)</text>
+<rect class="bx-q" x="20" y="180" width="310" height="32" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="34" y="201" font-size="9.5" fill="#2b2a26">③ notes = try alloc.alloc(u8, 8)</text>
+<rect class="bx-gone" x="40" y="218" width="290" height="28" rx="4" fill="#ece9e2" stroke="#a29d90" stroke-width="1.1" stroke-dasharray="4 3"/>
+<text class="ts" x="54" y="237" font-size="9" fill="#6b675e">errdefer alloc.free(notes)</text>
+<line class="fl" x1="330" y1="120" x2="376" y2="86" stroke="#6b675e" stroke-width="1.3" marker-end="url(#ehA2)"/>
+<text class="ts" x="346" y="88" font-size="9" fill="#6b675e">全部成功</text>
+<rect class="bx-q" x="380" y="40" width="260" height="76" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.3"/>
+<text class="ts" x="510" y="62" text-anchor="middle" font-size="10" fill="#2b2a26">return .{ index, body, notes }</text>
+<text class="ts" x="510" y="82" text-anchor="middle" font-size="9" fill="#6b675e">三块内存整体交给调用方</text>
+<text class="ts" x="510" y="100" text-anchor="middle" font-size="9" fill="#6b675e">errdefer 一条都不执行</text>
+<line class="flc" x1="330" y1="196" x2="376" y2="216" stroke="#b03a2e" stroke-width="1.3" marker-end="url(#ehA2)"/>
+<text class="tc" x="340" y="222" font-size="9" fill="#b03a2e">③ 处失败</text>
+<rect class="bx-sick" x="380" y="160" width="260" height="100" rx="5" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.3"/>
+<text class="ts" x="510" y="182" text-anchor="middle" font-size="10" fill="#b03a2e">OutOfMemory 向上传</text>
+<text class="ts" x="510" y="202" text-anchor="middle" font-size="9" fill="#6b675e">逆序执行已登记的清理：</text>
+<text class="ts" x="510" y="220" text-anchor="middle" font-size="9" fill="#6b675e">free(body) → free(index)</text>
+<text class="ts" x="510" y="242" text-anchor="middle" font-size="9" fill="#6b675e">③ 自己没分配成，无须清理</text>
+<text class="ts" x="20" y="290" font-size="10" fill="#6b675e">登记顺序就是逆序保证：新增资源只加两行，旧代码一行不动</text>
+</svg>
+</figure>
 
 `errdefer` 还能捕获错误值，清理时可以知道自己是在给哪个错误善后：
 
@@ -232,6 +318,38 @@ trace.zig:19 in main — return err
 ```
 
 每一层怎么把错误传上来的，一行一帧。而在 ReleaseFast 构建下，这些记录完全消失，`try` 就是纯粹的比较和跳转。诊断信息的成本摆在台面上，要不要它由构建模式决定，和 `defer`、`errdefer` 是同一种思路。
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 246" role="img" aria-label="error return trace：main 调 handleConnection 调 parseRequest 调 parseHeader，EmptyHeader 沿原路逐层上抛，Debug 构建在每层留下一条路过记录，错误真正发生时才收集输出；ReleaseFast 下记录全部消失，try 只剩比较和跳转" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="ehA4" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+<marker id="ehA4c" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-c" d="M0 0 L8 4 L0 8 Z" fill="#b03a2e"/></marker>
+</defs>
+<rect class="bx-q" x="40" y="20" width="220" height="34" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="150" y="42" text-anchor="middle" font-size="10" fill="#2b2a26">main</text>
+<rect class="bx-q" x="40" y="70" width="220" height="34" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="150" y="92" text-anchor="middle" font-size="10" fill="#2b2a26">handleConnection</text>
+<rect class="bx-q" x="40" y="120" width="220" height="34" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="150" y="142" text-anchor="middle" font-size="10" fill="#2b2a26">parseRequest</text>
+<rect class="bx-sick" x="40" y="170" width="220" height="34" rx="4" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.3"/>
+<text class="ts" x="150" y="192" text-anchor="middle" font-size="10" fill="#b03a2e">parseHeader：return error.EmptyHeader</text>
+<line class="fl" x1="90" y1="54" x2="90" y2="66" stroke="#6b675e" stroke-width="1.1" marker-end="url(#ehA4)"/>
+<line class="fl" x1="90" y1="104" x2="90" y2="116" stroke="#6b675e" stroke-width="1.1" marker-end="url(#ehA4)"/>
+<line class="fl" x1="90" y1="154" x2="90" y2="166" stroke="#6b675e" stroke-width="1.1" marker-end="url(#ehA4)"/>
+<line class="flc" x1="230" y1="170" x2="230" y2="58" stroke="#b03a2e" stroke-width="1.5" marker-end="url(#ehA4c)"/>
+<text class="tc" x="240" y="118" font-size="9.5" fill="#b03a2e">错误原路上抛</text>
+<text class="ts" x="240" y="134" font-size="9" fill="#6b675e">每层留一条「路过」记录</text>
+<rect class="bx-q" x="380" y="40" width="260" height="70" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="510" y="62" text-anchor="middle" font-size="10" fill="#2b2a26">Debug / ReleaseSafe</text>
+<text class="ts" x="510" y="82" text-anchor="middle" font-size="9" fill="#6b675e">trace 记录在案，错误真发生时才输出</text>
+<text class="ts" x="510" y="99" text-anchor="middle" font-size="9" fill="#6b675e">一行一帧：trace.zig:4 → :9 → :13 → :19</text>
+<rect class="bx-gone" x="380" y="130" width="260" height="70" rx="5" fill="#ece9e2" stroke="#a29d90" stroke-width="1.2" stroke-dasharray="5 3"/>
+<text class="ts" x="510" y="152" text-anchor="middle" font-size="10" fill="#6b675e">ReleaseFast / ReleaseSmall</text>
+<text class="ts" x="510" y="172" text-anchor="middle" font-size="9" fill="#6b675e">记录全部消失</text>
+<text class="ts" x="510" y="189" text-anchor="middle" font-size="9" fill="#6b675e">try = 一次比较 + 一次跳转</text>
+<text class="ts" x="40" y="232" font-size="9.5" fill="#6b675e">成功路径上，trace 一个字节的成本都不产生</text>
+</svg>
+</figure>
 
 ---
 
