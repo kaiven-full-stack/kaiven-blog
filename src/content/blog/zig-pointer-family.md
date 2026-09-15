@@ -160,6 +160,40 @@ thread panic: index out of bounds: index 10, len 4
 
 ReleaseFast 与 ReleaseSmall 会移除这道安全检查；越界依旧是非法行为，只是不再有人替你当场报警。和上一篇的普通溢出一样，拆掉护栏不等于另获一份合法语义。
 
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 216" role="img" aria-label="切片的边界检查对照：[]u8 由 ptr 与 len 两个字组成，slice[10] 时 len=4 可查，Debug 与 ReleaseSafe 当场 panic；把 .ptr 单独取成 [*]u8 后长度留在身后，raw[100] 无从检查，越界成为无人报警的非法行为" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="ptrA2" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="20" y="24" font-size="11" fill="#6b675e">[]u8：两个字随身带</text>
+<rect class="bx" x="20" y="34" width="130" height="56" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="85" y="56" text-anchor="middle" font-size="10" fill="#2b2a26">.ptr</text>
+<text class="ts" x="85" y="76" text-anchor="middle" font-size="10" fill="#2b2a26">.len = 4</text>
+<line class="fl" x1="150" y1="62" x2="206" y2="62" stroke="#6b675e" stroke-width="1.3" marker-end="url(#ptrA2)"/>
+<rect class="bx-q" x="210" y="44" width="56" height="36" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="238" y="67" text-anchor="middle" font-size="10" fill="#2b2a26">10</text>
+<rect class="bx-q" x="266" y="44" width="56" height="36" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="294" y="67" text-anchor="middle" font-size="10" fill="#2b2a26">20</text>
+<rect class="bx-q" x="322" y="44" width="56" height="36" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="350" y="67" text-anchor="middle" font-size="10" fill="#2b2a26">30</text>
+<rect class="bx-q" x="378" y="44" width="56" height="36" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="406" y="67" text-anchor="middle" font-size="10" fill="#2b2a26">40</text>
+<text class="tc" x="456" y="58" font-size="10" fill="#b03a2e">slice[10]？</text>
+<text class="tc" x="456" y="76" font-size="9.5" fill="#b03a2e">len=4 可查 → panic</text>
+<text class="ts" x="20" y="124" font-size="11" fill="#6b675e">[*]u8：只取走 .ptr 之后</text>
+<rect class="bx-gone" x="20" y="134" width="130" height="56" rx="4" fill="#ece9e2" stroke="#a29d90" stroke-width="1.2" stroke-dasharray="5 3"/>
+<text class="ts" x="85" y="156" text-anchor="middle" font-size="10" fill="#6b675e">raw = slice.ptr</text>
+<text class="ts" x="85" y="176" text-anchor="middle" font-size="9" fill="#a29d90">len 留在身后</text>
+<line class="fl" x1="150" y1="162" x2="206" y2="162" stroke="#6b675e" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ptrA2)"/>
+<rect class="bx-q" x="210" y="144" width="56" height="36" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="238" y="167" text-anchor="middle" font-size="10" fill="#2b2a26">10</text>
+<rect class="bx-gone" x="266" y="144" width="168" height="36" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="4 3"/>
+<text class="ts" x="350" y="167" text-anchor="middle" font-size="9.5" fill="#a29d90">往后还有多少？类型不知道</text>
+<text class="tc" x="456" y="158" font-size="10" fill="#b03a2e">raw[100]？</text>
+<text class="tc" x="456" y="176" font-size="9.5" fill="#b03a2e">无从检查 → 非法行为</text>
+</svg>
+</figure>
+
 ## 看起来像切片，未必是切片
 
 这里有一个颇能体现 Zig 性情的细节。许多人见到 `array[a..b]`，便认定结果一定是切片。实测并非如此：
@@ -254,6 +288,29 @@ len=4, sentinel=0
 
 这份承诺只说终点那一格是零，不说前面绝对不会提前出现零。哨兵切片不是「扫描到第一个零自动算长度」的魔法；它仍有明确的 `.len`，哨兵只是边界之外多出来的一份保证。
 
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 158" role="img" aria-label="哨兵切片 [:0]u8 的内存图：r、a、i、n 四格计入 len=4，紧随其后的第五格是类型承诺的 0，z[z.len] 可以合法读取；哨兵只管 len 位置这一格" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="64" font-size="10.5" fill="#2b2a26">[:0]const u8</text>
+<rect class="bx-q" x="140" y="36" width="56" height="42" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="168" y="62" text-anchor="middle" font-size="11" fill="#2b2a26">r</text>
+<rect class="bx-q" x="196" y="36" width="56" height="42" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="224" y="62" text-anchor="middle" font-size="11" fill="#2b2a26">a</text>
+<rect class="bx-q" x="252" y="36" width="56" height="42" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="280" y="62" text-anchor="middle" font-size="11" fill="#2b2a26">i</text>
+<rect class="bx-q" x="308" y="36" width="56" height="42" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="336" y="62" text-anchor="middle" font-size="11" fill="#2b2a26">n</text>
+<rect class="bx" x="364" y="36" width="56" height="42" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="tc" x="392" y="62" text-anchor="middle" font-size="11" fill="#b03a2e">0</text>
+<line class="axis" x1="140" y1="90" x2="364" y2="90" stroke="#a29d90" stroke-width="1.2"/>
+<line class="axis" x1="140" y1="86" x2="140" y2="94" stroke="#a29d90" stroke-width="1.2"/>
+<line class="axis" x1="364" y1="86" x2="364" y2="94" stroke="#a29d90" stroke-width="1.2"/>
+<text class="ts" x="252" y="108" text-anchor="middle" font-size="10" fill="#6b675e">.len = 4</text>
+<text class="ts" x="392" y="108" text-anchor="middle" font-size="10" fill="#6b675e">第 len 格</text>
+<text class="ts" x="140" y="138" font-size="10.5" fill="#6b675e">z[z.len] 合法读出 0：承诺多出一格，也只多这一格</text>
+<text class="ts" x="140" y="154" font-size="9.5" fill="#a29d90">前面四格里有没有提前的 0，类型不管</text>
+</svg>
+</figure>
+
 若手里只有普通缓冲区，可以用带哨兵的切片语法当场核验：
 
 ```zig
@@ -305,6 +362,33 @@ pub fn main() void {
 逐字拆开：它是一个只读指针，指向长度为 5、以 0 为哨兵的 `u8` 数组。地址、长度、只读性、结尾零，四份信息都在类型里。
 
 需要普通文本 API 时，它可以隐式变成 `[]const u8`；需要 C 风格字符串时，又可以变成 `[*:0]const u8`。字面量原本携带的信息足够多，可以按接收方需要放下一部分。
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 196" role="img" aria-label="字符串字面量 hello 的真实类型 *const [5:0]u8 解剖：只读指针、编译期长度 5、零哨兵、u8 元素四份信息都写在类型里；内存为 h e l l o 五格加一个 0 哨兵格" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="t" x="330" y="30" text-anchor="middle" font-size="14" fill="#2b2a26">"hello" : *const [5:0]u8</text>
+<rect class="bx-q" x="150" y="44" width="52" height="40" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="176" y="69" text-anchor="middle" font-size="11" fill="#2b2a26">h</text>
+<rect class="bx-q" x="202" y="44" width="52" height="40" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="228" y="69" text-anchor="middle" font-size="11" fill="#2b2a26">e</text>
+<rect class="bx-q" x="254" y="44" width="52" height="40" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="280" y="69" text-anchor="middle" font-size="11" fill="#2b2a26">l</text>
+<rect class="bx-q" x="306" y="44" width="52" height="40" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="332" y="69" text-anchor="middle" font-size="11" fill="#2b2a26">l</text>
+<rect class="bx-q" x="358" y="44" width="52" height="40" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="384" y="69" text-anchor="middle" font-size="11" fill="#2b2a26">o</text>
+<rect class="bx" x="410" y="44" width="52" height="40" rx="2" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="tc" x="436" y="69" text-anchor="middle" font-size="11" fill="#b03a2e">0</text>
+<rect class="bx-q" x="30" y="110" width="140" height="34" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="100" y="131" text-anchor="middle" font-size="9.5" fill="#2b2a26">*const · 只读指针</text>
+<rect class="bx-q" x="185" y="110" width="140" height="34" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="255" y="131" text-anchor="middle" font-size="9.5" fill="#2b2a26">[5 · 编译期长度</text>
+<rect class="bx-q" x="340" y="110" width="140" height="34" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="410" y="131" text-anchor="middle" font-size="9.5" fill="#2b2a26">:0] · 零哨兵</text>
+<rect class="bx-q" x="495" y="110" width="140" height="34" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="565" y="131" text-anchor="middle" font-size="9.5" fill="#2b2a26">u8 · 元素是字节</text>
+<text class="ts" x="30" y="176" font-size="10" fill="#6b675e">四份信息都在场，才谈得上「按需放下」：给文本 API 变 []const u8，给 C 接口变 [*:0]const u8</text>
+</svg>
+</figure>
 
 中文也不例外。源码字符串装的是 UTF-8 字节，长度和索引都按字节计算。「听雨」不是两个 `u8`；若从中间随手切一刀，完全可能切进某个汉字的多字节编码里。指针类型能替你守内存边界，不能替你把字节自动理解成文字。这条界线，也得自己划。
 
@@ -391,6 +475,22 @@ if (p == 42) {
 
 普通指针不允许零地址，optional 可以借零表示 null；C 指针本身已经允许零，外面再套 optional，只能另找地方记录「缺席」，于是多出一个机器字。
 
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 190" role="img" aria-label="optional 指针的尺寸对照：?*u8 共 8 字节，因为 *u8 本就不允许地址 0，null 直接借用 0 这个空位；?[*c]u8 共 16 字节，因为 [*c]u8 的 0 是合法地址，缺席只能另加一个机器字记录" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="58" font-size="10.5" fill="#2b2a26">?*u8 · 8 字节</text>
+<rect class="bx-q" x="150" y="36" width="240" height="36" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="270" y="59" text-anchor="middle" font-size="10" fill="#2b2a26">一个地址字</text>
+<text class="ts" x="404" y="52" font-size="9.5" fill="#6b675e">*u8 不许 0：</text>
+<text class="tc" x="404" y="68" font-size="9.5" fill="#b03a2e">0 这个空位正好拿来写 null</text>
+<text class="ts" x="20" y="132" font-size="10.5" fill="#2b2a26">?[*c]u8 · 16 字节</text>
+<rect class="bx-q" x="150" y="110" width="200" height="36" rx="3" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="250" y="133" text-anchor="middle" font-size="10" fill="#2b2a26">地址字（0 是合法值）</text>
+<rect class="bx-sick" x="358" y="110" width="200" height="36" rx="3" fill="#efe0d9" stroke="#b03a2e" stroke-width="1.2"/>
+<text class="ts" x="458" y="133" text-anchor="middle" font-size="10" fill="#b03a2e">另加一字记录缺席</text>
+<text class="ts" x="150" y="174" font-size="10" fill="#6b675e">null 有没有空位可借，决定要不要多付一个机器字</text>
+</svg>
+</figure>
+
 C pointer 不是第九种更强的指针。它是一只过境用的旧箱子，里面装着 C 没能说清的东西。接过来可以，带进自己的程序里四处摆放，就辜负了 Zig 前面做的所有区分。
 
 ## 类型转换，本质是交还信息
@@ -411,6 +511,45 @@ C pointer 不是第九种更强的指针。它是一只过境用的旧箱子，�
 因此，许多隐式转换都可以理解为「交还信息」。`*[N]T` 变成 `[]T`，把编译期长度交给运行时；变成 `[*]T`，干脆放下长度；`*T` 变成 `*const T`，放下写权限；带哨兵的数组指针变成普通切片，放下终点保证。
 
 这条路通常只能从强承诺走向弱承诺。要逆着走，就得重新拿出证据：检查长度、核验哨兵、断言对齐，或者显式处理 null。类型系统不阻止你下山，只是不许你声称自己已经站回山顶，而手里没有路引。
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 252" role="img" aria-label="指针家族的信息下坡：左链 *[N]T 把编译期长度交给运行时成为 []T，再放下长度成为 [*]T；右链 *[N:0]T 同样下坡到 [:0]T 与 [*:0]T 但哨兵一路保留；单列 *T 可放宽为 ?*T 允许缺席；[*c]T 单独放在坡外，承接 C 的原始含混" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<defs>
+<marker id="ptrA1" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path class="mk-s" d="M0 0 L8 4 L0 8 Z" fill="#6b675e"/></marker>
+</defs>
+<text class="ts" x="115" y="24" text-anchor="middle" font-size="10" fill="#6b675e">无哨兵一系</text>
+<text class="ts" x="375" y="24" text-anchor="middle" font-size="10" fill="#6b675e">带哨兵一系</text>
+<rect class="bx" x="40" y="34" width="150" height="40" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="115" y="59" text-anchor="middle" font-size="11" fill="#2b2a26">*[N]T</text>
+<rect class="bx" x="300" y="34" width="150" height="40" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.4"/>
+<text class="ts" x="375" y="59" text-anchor="middle" font-size="11" fill="#2b2a26">*[N:0]T</text>
+<line class="fl" x1="115" y1="74" x2="115" y2="104" stroke="#6b675e" stroke-width="1.3" marker-end="url(#ptrA1)"/>
+<text class="ts" x="125" y="94" font-size="9" fill="#6b675e">长度交给运行时</text>
+<line class="fl" x1="375" y1="74" x2="375" y2="104" stroke="#6b675e" stroke-width="1.3" marker-end="url(#ptrA1)"/>
+<text class="ts" x="385" y="94" font-size="9" fill="#6b675e">长度交给运行时</text>
+<rect class="bx-q" x="40" y="108" width="150" height="40" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="115" y="133" text-anchor="middle" font-size="11" fill="#2b2a26">[]T</text>
+<rect class="bx-q" x="300" y="108" width="150" height="40" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="375" y="133" text-anchor="middle" font-size="11" fill="#2b2a26">[:0]T</text>
+<line class="fl" x1="115" y1="148" x2="115" y2="178" stroke="#6b675e" stroke-width="1.3" marker-end="url(#ptrA1)"/>
+<text class="ts" x="125" y="168" font-size="9" fill="#6b675e">放下长度</text>
+<line class="fl" x1="375" y1="148" x2="375" y2="178" stroke="#6b675e" stroke-width="1.3" marker-end="url(#ptrA1)"/>
+<text class="ts" x="385" y="168" font-size="9" fill="#6b675e">放下长度，留下哨兵</text>
+<rect class="bx-q" x="40" y="182" width="150" height="40" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="115" y="207" text-anchor="middle" font-size="11" fill="#2b2a26">[*]T</text>
+<rect class="bx-q" x="300" y="182" width="150" height="40" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="375" y="207" text-anchor="middle" font-size="11" fill="#2b2a26">[*:0]T</text>
+<rect class="bx-q" x="510" y="34" width="130" height="40" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="575" y="59" text-anchor="middle" font-size="11" fill="#2b2a26">*T</text>
+<line class="fl" x1="575" y1="74" x2="575" y2="104" stroke="#6b675e" stroke-width="1.3" marker-end="url(#ptrA1)"/>
+<text class="ts" x="575" y="94" text-anchor="middle" font-size="9" fill="#6b675e">允许缺席</text>
+<rect class="bx-q" x="510" y="108" width="130" height="40" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="575" y="133" text-anchor="middle" font-size="11" fill="#2b2a26">?*T</text>
+<rect class="bx-gone" x="510" y="182" width="130" height="40" rx="5" fill="#ece9e2" stroke="#a29d90" stroke-width="1.2" stroke-dasharray="5 3"/>
+<text class="ts" x="575" y="207" text-anchor="middle" font-size="11" fill="#6b675e">[*c]T</text>
+<text class="ts" x="510" y="240" font-size="9" fill="#a29d90">坡外：C 的含混原样封存</text>
+</svg>
+</figure>
 
 从这个角度看，Zig 的指针类型并非过多。C 用一个 `T *` 装下了八种处境，Zig 只是把它们逐一倒出来，让每一种处境有自己的名字。
 
