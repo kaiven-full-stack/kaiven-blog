@@ -531,6 +531,12 @@ export const concepts: ConceptMeta[] = [
     description: 'Segment 视角按需映射，RELRO 事后补刀，maps 是验货单',
     posts: ['kernel-elf-execve'],
   },
+  {
+    id: 'scheduler-fairness',
+    label: '公平调度',
+    description: '三代秤：O(1) bitmap、CFS vruntime 最左、EEVDF 资格线与 deadline',
+    posts: ['kernel-scheduler-eevdf'],
+  },
   // ---- 消息队列系列 ----
   {
     id: 'mq-decouple',
