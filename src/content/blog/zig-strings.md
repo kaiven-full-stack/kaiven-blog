@@ -158,6 +158,41 @@ cut: [�]
 
 切出来的是残缺的 UTF-8 序列，打印出替换符，程序照常往下跑。没有崩溃，没有报错，因为对 `[]const u8` 来说，`s[0..2]` 是一次完全合法的切片操作，字节没有越界，「越界」的是文字。内存的边界类型系统能守，语义的边界它不接管。
 
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 234" role="img" aria-label="听雨二字的字节解剖：六个字节 e5 90 ac 属于听 U+542C，e9 9b a8 属于雨 U+96E8，外加哨兵 0；s 取 0 到 2 的切片切进第一个字中间，得到残缺序列；按字节遍历得六项，经 Utf8View 按码点遍历得两项" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<text class="ts" x="20" y="22" font-size="11" fill="#6b675e">"听雨" 在内存里的两面</text>
+<line class="flc" x1="60" y1="34" x2="192" y2="34" stroke="#b03a2e" stroke-width="1.6"/>
+<text class="tc" x="196" y="38" font-size="9" fill="#b03a2e">s[0..2]：切进字中间，得到残缺序列</text>
+<rect class="bx-q" x="60" y="42" width="64" height="36" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="92" y="65" text-anchor="middle" font-size="9.5" fill="#2b2a26">e5</text>
+<rect class="bx-q" x="126" y="42" width="64" height="36" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="158" y="65" text-anchor="middle" font-size="9.5" fill="#2b2a26">90</text>
+<rect class="bx-q" x="192" y="42" width="64" height="36" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="224" y="65" text-anchor="middle" font-size="9.5" fill="#2b2a26">ac</text>
+<rect class="bx-q" x="258" y="42" width="64" height="36" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="290" y="65" text-anchor="middle" font-size="9.5" fill="#2b2a26">e9</text>
+<rect class="bx-q" x="324" y="42" width="64" height="36" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="356" y="65" text-anchor="middle" font-size="9.5" fill="#2b2a26">9b</text>
+<rect class="bx-q" x="390" y="42" width="64" height="36" rx="2" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.1"/>
+<text class="ts" x="422" y="65" text-anchor="middle" font-size="9.5" fill="#2b2a26">a8</text>
+<rect class="bx-gone" x="456" y="42" width="64" height="36" rx="2" fill="#ece9e2" stroke="#a29d90" stroke-width="1" stroke-dasharray="4 3"/>
+<text class="ts" x="488" y="65" text-anchor="middle" font-size="9.5" fill="#a29d90">00</text>
+<text class="ts" x="530" y="65" font-size="8.5" fill="#a29d90">哨兵 · 不占 len</text>
+<line class="axis" x1="60" y1="90" x2="256" y2="90" stroke="#a29d90" stroke-width="1.2"/>
+<text class="ts" x="158" y="108" text-anchor="middle" font-size="9.5" fill="#6b675e">听 · U+542C · 3 字节</text>
+<line class="axis" x1="258" y1="90" x2="454" y2="90" stroke="#a29d90" stroke-width="1.2"/>
+<text class="ts" x="356" y="108" text-anchor="middle" font-size="9.5" fill="#6b675e">雨 · U+96E8 · 3 字节</text>
+<rect class="bx-q" x="60" y="126" width="250" height="48" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="185" y="146" text-anchor="middle" font-size="9.5" fill="#2b2a26">字节视角：for (s) |b|</text>
+<text class="ts" x="185" y="164" text-anchor="middle" font-size="9" fill="#6b675e">六项 · len = 6 · 无需验证</text>
+<rect class="bx" x="330" y="126" width="270" height="48" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="465" y="146" text-anchor="middle" font-size="9.5" fill="#2b2a26">码点视角：Utf8View 迭代器</text>
+<text class="ts" x="465" y="164" text-anchor="middle" font-size="9" fill="#6b675e">两项 · init 先验证整段是合法 UTF-8</text>
+<text class="ts" x="60" y="204" font-size="10" fill="#6b675e">同样六个字节：怎么数、怎么切，取决于显式选用哪套工具</text>
+<text class="ts" x="60" y="224" font-size="9.5" fill="#a29d90">残缺的 cut 用 utf8ValidateSlice 一验便知：valid = false</text>
+</svg>
+</figure>
+
 数「字符」要显式走 Unicode 那条路：
 
 ```zig
@@ -188,6 +223,23 @@ valid: false
 ```
 
 还要交代一个容易混淆的层次：码点不等于「字」。`é` 可以是单个码点，也可以是 `e` 加组合变音符两个码点；emoji 的肤色、组字更是把一个视觉上的字拆成一串码点。Unicode 的正式概念叫字素（grapheme cluster），Zig 标准库到 0.16.0 为止没有提供字素切分，那需要完整的 Unicode 属性表，体量和维护成本都不小。标准库把线画在码点这一层；要按字素处理，得请 ICU 这类专门的库。
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 196" role="img" aria-label="文字的三层阶梯：字节层由切片与 mem 工具处理；码点层由 utf8CountCodepoints 与 Utf8View 处理，是标准库的边界；字素层涉及组合变音与 emoji 组字，标准库不提供，需要 ICU 这类带 Unicode 属性表的库" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<rect class="bx-q" x="20" y="20" width="300" height="44" rx="4" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="36" y="38" font-size="10" fill="#2b2a26">字节</text>
+<text class="ts" x="36" y="55" font-size="8.5" fill="#6b675e">e5 90 ac … · trim / indexOf / eql 在这一层</text>
+<rect class="bx" x="80" y="72" width="380" height="44" rx="4" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="96" y="90" font-size="10" fill="#2b2a26">码点（codepoint）</text>
+<text class="ts" x="96" y="107" font-size="8.5" fill="#6b675e">U+542C · utf8CountCodepoints / Utf8View · 验证合法性</text>
+<rect class="bx-gone" x="140" y="124" width="480" height="44" rx="4" fill="#ece9e2" stroke="#a29d90" stroke-width="1.2" stroke-dasharray="5 3"/>
+<text class="ts" x="156" y="142" font-size="10" fill="#6b675e">字素（grapheme cluster）</text>
+<text class="ts" x="156" y="159" font-size="8.5" fill="#6b675e">é = 1 或 2 个码点 · emoji 肤色是一串码点 · 需要 Unicode 属性表</text>
+<line class="flc" x1="20" y1="116" x2="640" y2="116" stroke="#b03a2e" stroke-width="1.2" stroke-dasharray="6 4"/>
+<text class="tc" x="636" y="110" text-anchor="end" font-size="9" fill="#b03a2e">标准库的线画在这里</text>
+<text class="ts" x="140" y="188" font-size="9.5" fill="#6b675e">线以下：ICU 这类专门库的地盘，体量与维护成本都不小</text>
+</svg>
+</figure>
 
 再往下一层还有个容易漏看的细节：`'A'` 也不是 `char`。Zig 根本没有 `char` 类型，`'A'` 是 `comptime_int`，值 65：
 
@@ -251,6 +303,27 @@ fixed: 第 3 章 (len 9)
 ```
 
 9 个字节：`第` 3 字节、空格 1、`3` 1、空格 1、`章` 3。装不下返回 `error.NoSpaceLeft`，不猜、不扩。
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 168" role="img" aria-label="拼接的三条路：编译期双加号要求两边编译期已知，结果仍是字面量零运行时成本；运行期 allocPrint 与 concat 接受 allocator，可能报 OutOfMemory，调用者 defer free；bufPrint 由调用方提供缓冲区，装不下报 NoSpaceLeft，零分配" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<rect class="bx-q" x="20" y="24" width="196" height="100" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="118" y="46" text-anchor="middle" font-size="10" fill="#2b2a26">编译期 ++</text>
+<text class="ts" x="118" y="68" text-anchor="middle" font-size="9" fill="#6b675e">"听雨" ++ "博客"</text>
+<text class="ts" x="118" y="86" text-anchor="middle" font-size="9" fill="#6b675e">两边必须编译期已知</text>
+<text class="ts" x="118" y="104" text-anchor="middle" font-size="9" fill="#6b675e">结果仍是字面量 · 零成本</text>
+<rect class="bx" x="232" y="24" width="196" height="100" rx="5" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="330" y="46" text-anchor="middle" font-size="10" fill="#2b2a26">运行期 allocPrint / concat</text>
+<text class="ts" x="330" y="68" text-anchor="middle" font-size="9" fill="#6b675e">新内存要有出处：</text>
+<text class="ts" x="330" y="86" text-anchor="middle" font-size="9" fill="#6b675e">签名收 allocator</text>
+<text class="ts" x="330" y="104" text-anchor="middle" font-size="9" fill="#6b675e">try + defer free</text>
+<rect class="bx-q" x="444" y="24" width="196" height="100" rx="5" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="542" y="46" text-anchor="middle" font-size="10" fill="#2b2a26">bufPrint · 调用方出缓冲区</text>
+<text class="ts" x="542" y="68" text-anchor="middle" font-size="9" fill="#6b675e">var buf: [32]u8</text>
+<text class="ts" x="542" y="86" text-anchor="middle" font-size="9" fill="#6b675e">装不下：error.NoSpaceLeft</text>
+<text class="ts" x="542" y="104" text-anchor="middle" font-size="9" fill="#6b675e">零分配 · 不猜、不扩</text>
+<text class="ts" x="20" y="152" font-size="9.5" fill="#6b675e">要逐段追加：std.Io.Writer.Allocating 站在 StringBuilder 的位置，同样自带 allocator</text>
+</svg>
+</figure>
 
 要一段一段往里追加，0.16.0 的写法是 `std.Io.Writer.Allocating`：
 
@@ -328,6 +401,26 @@ owned: [听雨，夜凉]
 ```
 
 分辨的方法切片那篇给过：看函数接不接受 allocator。接受，多半意味着「我要分配新的」；不接受，多半意味着「我只借用」。`trim` 与 `concat` 是这条规则最干净的一对例子。借用者便宜，但寿命受制于原件；复制者自立门户，但要把分配和释放写进你的代码。
+
+<figure class="art-fig" data-pagefind-ignore>
+<svg viewBox="0 0 660 224" role="img" aria-label="字符串操作的两个阵营：借用一侧的 trim、tokenize、split、startsWith、indexOf、eql 签名不收 allocator，返回输入的子切片或只读扫描结果，零分配但寿命受制于原件；新分配一侧的 concat、allocPrint、dupe 签名收 allocator，可能报 OutOfMemory，调用者负责 free" xmlns="http://www.w3.org/2000/svg" font-family="'Noto Serif SC','Songti SC','STSong',serif">
+<rect class="bx-q" x="20" y="24" width="300" height="166" rx="6" fill="#f6f3ec" stroke="#2b2a26" stroke-width="1.2"/>
+<text class="ts" x="170" y="48" text-anchor="middle" font-size="10.5" fill="#2b2a26">借用：签名不收 allocator</text>
+<text class="ts" x="40" y="74" font-size="9.5" fill="#6b675e">trim · 掐头去尾的子切片</text>
+<text class="ts" x="40" y="94" font-size="9.5" fill="#6b675e">tokenize / split · 视图迭代</text>
+<text class="ts" x="40" y="114" font-size="9.5" fill="#6b675e">startsWith / indexOf / eql · 只读扫描</text>
+<text class="ts" x="40" y="142" font-size="9.5" fill="#6b675e">零分配 · 结果只是输入的另一个视角</text>
+<text class="ts" x="40" y="162" font-size="9.5" fill="#6b675e">寿命受制于原件</text>
+<rect class="bx" x="340" y="24" width="300" height="166" rx="6" fill="#ece9e2" stroke="#6b675e" stroke-width="1.3"/>
+<text class="ts" x="490" y="48" text-anchor="middle" font-size="10.5" fill="#2b2a26">新分配：签名收 allocator</text>
+<text class="ts" x="360" y="74" font-size="9.5" fill="#6b675e">concat · 拼出第三段</text>
+<text class="ts" x="360" y="94" font-size="9.5" fill="#6b675e">allocPrint · 格式化进新内存</text>
+<text class="ts" x="360" y="114" font-size="9.5" fill="#6b675e">dupe · 复制一份独立存储</text>
+<text class="ts" x="360" y="142" font-size="9.5" fill="#6b675e">可能报 OutOfMemory</text>
+<text class="ts" x="360" y="162" font-size="9.5" fill="#6b675e">调用者负责 defer free</text>
+<text class="ts" x="20" y="214" font-size="10" fill="#6b675e">拿到一个陌生函数先翻签名：allocator 在不在参数里，阵营立判</text>
+</svg>
+</figure>
 
 ## 标准库没有的事：大小写、排序、本地化
 
