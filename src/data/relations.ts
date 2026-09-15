@@ -519,6 +519,12 @@ export const concepts: ConceptMeta[] = [
     description: '地址空间按 VMA 记账与合并',
     posts: ['kernel-vma-malloc', 'kernel-two-stacks'],
   },
+  {
+    id: 'task-model',
+    label: '任务模型',
+    description: '内核只有 task_struct：进程与线程只差 clone 报关单',
+    posts: ['kernel-task-birth', 'kernel-two-stacks'],
+  },
   // ---- 消息队列系列 ----
   {
     id: 'mq-decouple',

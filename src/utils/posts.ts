@@ -64,7 +64,7 @@ export const SERIES_ORDER: readonly SeriesMeta[] = [
   {
     id: 'kernel',
     title: 'Linux 内核系列',
-    description: '从页表、写时复制到伙伴系统与 OOM，沿着一次访存沉进 Linux 内核的内存现场。',
+    description: '从页表、写时复制到伙伴系统与 OOM，再沿一个任务的一生从 clone 走进调度，沉进 Linux 内核的内存与 CPU 两个现场。',
     category: 'kernel',
   },
   {
