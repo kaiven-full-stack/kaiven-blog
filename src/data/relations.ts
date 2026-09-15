@@ -99,6 +99,12 @@ export const concepts: ConceptMeta[] = [
     posts: ['hardware-cache-line', 'zig-atomic-ordering', 'kernel-slab-slub'],
   },
   {
+    id: 'sequential-io',
+    label: '顺序 IO',
+    description: '存储栈每一层都为顺序打折、对随机加价',
+    posts: ['hardware-disk-internals', 'hardware-dram-internals', 'kafka-log-segments', 'mysql-innodb-pages-btree', 'kernel-page-cache-writeback'],
+  },
+  {
     id: 'smt-hyperthreading',
     label: '超线程',
     description: '一个物理核的多线程共享执行单元，收益取决于流水线空窗',
