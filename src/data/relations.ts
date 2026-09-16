@@ -108,7 +108,7 @@ export const concepts: ConceptMeta[] = [
     id: 'smt-hyperthreading',
     label: '超线程',
     description: '一个物理核的多线程共享执行单元，收益取决于流水线空窗',
-    posts: ['hardware-hyperthreading', 'hardware-cache-line'],
+    posts: ['hardware-hyperthreading', 'hardware-cache-line', 'kernel-cpu-selection'],
   },
   {
     id: 'fsync-durability',
@@ -536,6 +536,12 @@ export const concepts: ConceptMeta[] = [
     label: '公平调度',
     description: '三代秤：O(1) bitmap、CFS vruntime 最左、EEVDF 资格线与 deadline',
     posts: ['kernel-scheduler-eevdf'],
+  },
+  {
+    id: 'cpu-selection',
+    label: '选核与亲和',
+    description: '唤醒选座的闸门顺序、负载均衡的出手条件、亲和性掩码免搬',
+    posts: ['kernel-cpu-selection'],
   },
   // ---- 消息队列系列 ----
   {
