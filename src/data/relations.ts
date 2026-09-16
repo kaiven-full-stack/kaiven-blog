@@ -111,6 +111,12 @@ export const concepts: ConceptMeta[] = [
     posts: ['hardware-hyperthreading', 'hardware-cache-line', 'kernel-cpu-selection'],
   },
   {
+    id: 'softirq-napi',
+    label: '软中断与 NAPI',
+    description: '硬中断举手、软中断干活、NAPI 定节拍；出勤与包数分开记账',
+    posts: ['net-receive-path', 'kernel-task-birth'],
+  },
+  {
     id: 'fsync-durability',
     label: '落盘语义',
     description: 'write 只进页缓存，fsync 才等设备',

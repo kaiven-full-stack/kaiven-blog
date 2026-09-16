@@ -11,7 +11,7 @@ import { getCollection, type CollectionEntry } from 'astro:content';
 export type BlogPost = CollectionEntry<'blog'>;
 
 /** 文章分类，与 content.config.ts 中 frontmatter 的 category 枚举一一对应 */
-export type Category = 'zig' | 'redis' | 'cpython' | 'kernel' | 'hardware' | 'mysql' | 'mq' | 'life';
+export type Category = 'zig' | 'redis' | 'cpython' | 'kernel' | 'hardware' | 'mysql' | 'mq' | 'network' | 'life';
 
 /** 分类展示名 */
 export const CATEGORY_LABELS: Record<Category, string> = {
@@ -22,6 +22,7 @@ export const CATEGORY_LABELS: Record<Category, string> = {
   hardware: '硬件原理',
   mysql: 'MySQL',
   mq: '消息队列',
+  network: 'Linux 网络',
   life: '生活',
 };
 
@@ -84,6 +85,13 @@ export const SERIES_ORDER: readonly SeriesMeta[] = [
     title: '消息队列系列',
     description: '从解耦、异步、削峰、投递语义到 Kafka 的日志段、副本与消费者组，沿着一条消息的旅程走进消息队列的现场。',
     category: 'mq',
+  },
+  {
+    id: 'network',
+    title: 'Linux 网络系列',
+    description:
+      '从一个包的收发、握手的现场到一条连接的价钱与 epoll 的红黑树，在自己的机器上把 Linux 网络栈一寸一寸量过去。',
+    category: 'network',
   },
   {
     id: 'life',
