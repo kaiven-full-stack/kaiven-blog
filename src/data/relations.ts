@@ -36,7 +36,7 @@ export const concepts: ConceptMeta[] = [
     id: 'allocator',
     label: '内存分配器',
     description: '分配策略显式化：pymalloc、slab 与调用方传入的分配器',
-    posts: ['zig-allocator', 'zig-object-model', 'zig-slice-lifetime', 'zig-strings', 'zig-testing', 'cpython-pymalloc-rss', 'kernel-slab-slub'],
+    posts: ['zig-allocator', 'zig-object-model', 'zig-slice-lifetime', 'zig-strings', 'zig-testing', 'cpython-pymalloc-rss', 'kernel-slab-slub', 'net-connection-memory'],
   },
   {
     id: 'concurrency',
