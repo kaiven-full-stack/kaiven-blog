@@ -123,6 +123,12 @@ export const concepts: ConceptMeta[] = [
     posts: ['net-send-path', 'kernel-page-cache-writeback'],
   },
   {
+    id: 'local-io',
+    label: '本机 IO',
+    description: 'RTN_LOCAL 改判走 lo 与 netns 双栈税：同一台机器内通信的近路与加价',
+    posts: ['net-local-io'],
+  },
+  {
     id: 'fsync-durability',
     label: '落盘语义',
     description: 'write 只进页缓存，fsync 才等设备',
