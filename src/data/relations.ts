@@ -129,6 +129,12 @@ export const concepts: ConceptMeta[] = [
     posts: ['net-local-io'],
   },
   {
+    id: 'tcp-queues',
+    label: '握手队列',
+    description: '半连接与全连接：三次握手的两条队列、三道闸与它们的计数器',
+    posts: ['net-tcp-handshake'],
+  },
+  {
     id: 'fsync-durability',
     label: '落盘语义',
     description: 'write 只进页缓存，fsync 才等设备',
