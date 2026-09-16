@@ -117,6 +117,12 @@ export const concepts: ConceptMeta[] = [
     posts: ['net-receive-path', 'kernel-task-birth'],
   },
   {
+    id: 'copy-accounting',
+    label: '拷贝账',
+    description: '用户数据每拷一次记一笔：页缓存与 skb 是同一本账的两页，零拷贝是销账的艺术',
+    posts: ['net-send-path', 'kernel-page-cache-writeback'],
+  },
+  {
     id: 'fsync-durability',
     label: '落盘语义',
     description: 'write 只进页缓存，fsync 才等设备',
