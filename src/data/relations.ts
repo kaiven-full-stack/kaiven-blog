@@ -159,13 +159,13 @@ export const concepts: ConceptMeta[] = [
     id: 'page-table',
     label: '页表',
     description: '虚拟地址到物理页的翻译地图',
-    posts: ['kernel-primer', 'kernel-page-tables', 'kernel-copy-on-write', 'redis-fork-cow', 'hardware-tlb-page-walk'],
+    posts: ['kernel-primer', 'kernel-page-tables', 'kernel-copy-on-write', 'redis-fork-cow', 'hardware-tlb-page-walk', 'kernel-context-switch'],
   },
   {
     id: 'tlb',
     label: 'TLB',
     description: '地址翻译的缓存，触达 = 条目数 × 页大小',
-    posts: ['hardware-tlb-page-walk', 'kernel-page-tables'],
+    posts: ['hardware-tlb-page-walk', 'kernel-page-tables', 'kernel-context-switch'],
   },
   {
     id: 'ordered-index',
@@ -542,6 +542,12 @@ export const concepts: ConceptMeta[] = [
     label: '选核与亲和',
     description: '唤醒选座的闸门顺序、负载均衡的出手条件、亲和性掩码免搬',
     posts: ['kernel-cpu-selection'],
+  },
+  {
+    id: 'context-switch',
+    label: '上下文切换',
+    description: '直接开销二十年不变，间接开销是工作集×容量余量×地址空间的函数',
+    posts: ['kernel-context-switch'],
   },
   // ---- 消息队列系列 ----
   {
