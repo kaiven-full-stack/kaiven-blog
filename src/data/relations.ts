@@ -135,6 +135,12 @@ export const concepts: ConceptMeta[] = [
     posts: ['net-tcp-handshake'],
   },
   {
+    id: 'fd-limits',
+    label: 'fd 限额',
+    description: 'nofile/nr_open/file-max 三层金字塔与四元组容量：谁在限制句柄和连接',
+    posts: ['net-connection-limits', 'kernel-task-birth'],
+  },
+  {
     id: 'fsync-durability',
     label: '落盘语义',
     description: 'write 只进页缓存，fsync 才等设备',
